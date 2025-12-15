@@ -6,7 +6,7 @@
 **Blockchain Transaction Relayer System (MSQ Relayer Service)**
 
 ### 문서 버전
-- **버전**: 7.0
+- **버전**: 12.0
 - **최종 수정일**: 2025-12-15
 - **상태**: Phase 1 구현 단계 (Direct + Gasless)
 
@@ -29,7 +29,7 @@ OpenZeppelin Defender 서비스가 2026년 7월에 종료됨에 따라, **OZ 오
 |----------|------|------|
 | **OZ Relayer** | v1.3.0 (Rust, Docker) | 트랜잭션 중계, Nonce 관리, Gas 추정, 재시도 로직 |
 | **OZ Monitor** | v1.1.0 (Rust, Docker) | 블록체인 이벤트 모니터링, 잔액 알림 |
-| **NestJS API Gateway** | 10.x | 인증, 정책 엔진, 할당량 관리, API 문서화 (Swagger/OpenAPI) |
+| **NestJS API Gateway** | 10.x | 인증, 정책 엔진, API 문서화 (Swagger/OpenAPI) |
 
 ### 1.3 핵심 기능
 
@@ -44,7 +44,6 @@ OpenZeppelin Defender 서비스가 2026년 7월에 종료됨에 따라, **OZ 오
 |------|------|----------|
 | **Queue System** | 트랜잭션 큐잉 및 순차 처리 | Redis(BullMQ) / AWS SQS (QUEUE_PROVIDER) |
 | **Policy Engine** | Contract/Method Whitelist, Blacklist | NestJS Policy Module |
-| **Quota Manager** | 사용량 제한 및 할당량 관리 | NestJS Quota Module |
 | **Monitor Service** | 블록체인 이벤트 모니터링 | OZ Monitor 활용 |
 
 ### 1.4 Phase 1 목표
@@ -108,14 +107,13 @@ OpenZeppelin Defender 서비스가 2026년 7월에 종료됨에 따라, **OZ 오
 | 기능 | 설명 |
 |------|------|
 | NestJS 프로젝트 | 프로덕션 스캐폴드 |
-| API Key 인증 | 인증 미들웨어 |
+| API Key 인증 | 단일 환경변수 (`API_GATEWAY_API_KEY`), Header: `X-API-Key` |
 | Health Check | `/api/v1/health` |
 | Direct TX 엔드포인트 | `/api/v1/relay/direct` |
 | Gasless TX 엔드포인트 | `/api/v1/relay/gasless` |
 | Nonce 조회 | `/api/v1/relay/nonce/{address}` |
-| 상태 조회 | `/api/v1/relay/status/{txId}` |
+| 상태 조회 | `/api/v1/relay/status/{txId}` (폴링 방식) |
 | EIP-712 서명 검증 | Gasless TX 사전 검증 |
-| Webhook 핸들러 | OZ Relayer 상태 알림 처리 |
 
 **Phase 1 Use Case**: 결제 시스템 연동
 - Direct TX: 정산 시 다수 사용자에게 토큰 전송
@@ -126,15 +124,20 @@ OpenZeppelin Defender 서비스가 2026년 7월에 종료됨에 따라, **OZ 오
 
 ### 3.2 Phase 2+: 추후 구현
 
+**TX History & Webhook (P1)**:
+- MySQL (Transaction History 저장)
+- Webhook Handler (OZ Relayer 상태 알림 처리)
+- 상태 변경 Push 알림
+
 **Queue System (P1)**:
 - Queue Adapter 패턴 (QUEUE_PROVIDER 설정)
 - Redis + BullMQ 구현 (기본)
 - AWS SQS 구현 (옵션)
 - Job 상태 추적 API
 
-**Policy & Quota (P1)**:
+**Policy Engine (P1)**:
 - Contract Whitelist 검증
-- Quota Manager
+- User Blacklist
 
 **Monitor Service (P2)**:
 - OZ Monitor 설정
@@ -142,7 +145,6 @@ OpenZeppelin Defender 서비스가 2026년 7월에 종료됨에 따라, **OZ 오
 - Slack/Discord 알림
 
 **Infrastructure 고도화 (P2)**:
-- HashiCorp Vault
 - Kubernetes 매니페스트
 - CI/CD 파이프라인
 
@@ -190,9 +192,9 @@ OpenZeppelin Defender 서비스가 2026년 7월에 종료됨에 따라, **OZ 오
 
 ### Phase 2+: 추후 확장 (미정)
 
+- TX History (MySQL) + Webhook Handler
 - Queue System (Redis/BullMQ 또는 AWS SQS)
 - Policy Engine (Contract/Method Whitelist)
-- Quota Manager
 - OZ Monitor 통합
 - Kubernetes / CI/CD
 
@@ -203,10 +205,10 @@ OpenZeppelin Defender 서비스가 2026년 7월에 종료됨에 따라, **OZ 오
 | 리스크 | 영향도 | 완화 방안 |
 |--------|--------|----------|
 | RPC 노드 장애 | 높음 | Multi-RPC, Circuit Breaker |
-| Private Key 유출 | 치명적 | HashiCorp Vault, Key Rotation |
+| Private Key 유출 | 치명적 | AWS KMS (Production), Key Rotation |
 | Nonce 충돌 | 높음 | OZ Relayer 내장 Nonce 관리 |
 | Gas 급등 | 중간 | Gas Price Cap (백엔드), 자동 중단 |
-| Gasless Abuse | 중간 | Rate Limit, Quota, Blacklist (백엔드) |
+| Gasless Abuse | 중간 | Policy Engine, Blacklist (백엔드) |
 | Relayer 잔액 고갈 | 높음 | OZ Monitor 잔액 모니터링, 자동 알림 |
 | OZ 취약점 발견 | 중간 | OZ 업데이트 모니터링, 신속 패치 |
 | AGPL-3.0 라이선스 | 중간 | 수정 사항 소스 공개 준비 |
@@ -225,13 +227,11 @@ OpenZeppelin Defender 서비스가 2026년 7월에 종료됨에 따라, **OZ 오
 
 ---
 
-## 관련 문서 참조
+## 관련 문서
 
-| 문서 | 설명 | 경로 |
-|------|------|------|
-| 기술 스펙 | 기술 스택, API, 스마트 컨트랙트 | `./tech.md` |
-| 시스템 구조 | 아키텍처, 디렉토리 구조, 데이터 흐름 | `./structure.md` |
-| Task Master PRD | 태스크 관리용 PRD | `.taskmaster/docs/prd.txt` |
+- 시스템 아키텍처 (WHERE) -> [structure.md](./structure.md)
+- 기술 상세 구현 (HOW) -> [tech.md](./tech.md)
+- 요구사항 (Task Master용) -> [prd.txt](../.taskmaster/docs/prd.txt)
 
 ---
 
@@ -239,7 +239,15 @@ OpenZeppelin Defender 서비스가 2026년 7월에 종료됨에 따라, **OZ 오
 
 | 버전 | 날짜 | 변경사항 |
 |------|------|----------|
-| 7.0 | 2025-12-15 | Phase 2 재설계 - Queue System 추가, Rate Limiting 제거, SDK 제거 후 API 문서화로 대체 |
+| 12.0 | 2025-12-15 | 문서 버전 동기화 - 전체 문서 구조 정리 완료, 중복 제거, 교차 참조 체계 수립 |
+| 11.3 | 2025-12-15 | 문서 역할 명확화 - 관련 문서 섹션 추가 (cross-references) |
+| 11.2 | 2025-12-15 | 문서 버전 동기화 - Docker Compose YAML Anchors 패턴 적용 (tech.md, prd.txt 참조) |
+| 11.1 | 2025-12-15 | API Key 인증 명세 추가 - Phase 1 단일 환경변수 방식 (API_GATEWAY_API_KEY) 명시 |
+| 11.0 | 2025-12-15 | SPEC-INFRA-001 기준 Docker 구조 동기화 - docker/ 디렉토리로 통합, 관련 문서(structure.md, tech.md) 업데이트 |
+| 10.0 | 2025-12-15 | MySQL/Prisma를 Phase 2+로 이동 - Phase 1은 OZ Relayer + Redis만 사용, DB 없음 |
+| 9.0 | 2025-12-15 | TX History, Webhook Handler를 Phase 2+로 이동 - Phase 1은 상태 폴링 방식 사용 |
+| 8.0 | 2025-12-15 | Rate Limiting, Quota Manager 완전 제거 - Phase 1은 Auth + Relay 기능만 유지 |
+| 7.0 | 2025-12-15 | Phase 2 재설계 - Queue System 추가, SDK 제거 후 API 문서화로 대체 |
 | 6.0 | 2025-12-15 | Phase 1에 Gasless TX 포함 - 결제 시스템 Gasless 결제 지원, ERC2771Forwarder/EIP-712 검증 Phase 1으로 이동, Policy/Quota는 Phase 2 유지 |
 | 5.0 | 2025-12-14 | Phase 1 중심으로 재정리 - MVP 용어를 Phase 1로 변경, 결제 시스템 연동 목표 |
 | 5.0 | 2025-12-13 | Phase 1 중심으로 간소화 - 결제 시스템 연동 목표, Gasless/Monitor를 Phase 2+로 분리 |

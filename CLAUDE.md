@@ -548,6 +548,51 @@ AskUserQuestion({
 
 ---
 
+## Rule 11: Git Commit Rules
+
+Alfred and all agents MUST follow these rules when creating Git commits:
+
+**Commit Message Requirements**:
+
+1. **English Only**: ALL commit messages MUST be written in English only
+   - Never use Korean or other languages in commit messages
+   - Technical terms and descriptions in English
+
+2. **No Emojis**: Never include emojis in commit messages
+   - ❌ Wrong: "🚀 feat: add new feature"
+   - ✅ Correct: "feat: add new feature"
+
+3. **Conventional Commits**: Follow conventional commit format
+   - `feat:` for new features
+   - `fix:` for bug fixes
+   - `docs:` for documentation changes
+   - `chore:` for maintenance tasks
+   - `refactor:` for code refactoring
+
+**Committer Configuration**:
+
+1. **Use Existing Git Config**: NEVER override git user.name or user.email
+   - Use the user's pre-configured git settings
+   - Do not set committer to "Claude" or any AI-related name
+   - Respect the existing `.gitconfig` settings
+
+2. **No Attribution Tags**: Do not add AI attribution in commit messages
+   - No "Co-authored-by: Claude" or similar tags
+   - No mentions of AI assistance in commit body
+
+**Example**:
+
+```bash
+# Correct commit
+git commit -m "docs: update SPEC-INFRA-001 environment variable naming"
+
+# Wrong commits
+git commit -m "📝 docs: 환경변수 명명 업데이트"  # Korean + emoji
+git commit -m "feat: add feature" --author="Claude <claude@anthropic.com>"  # Wrong author
+```
+
+---
+
 ## Alfred Quick Reference (Zero-Dependency)
 
 **Behavioral Constraints**:

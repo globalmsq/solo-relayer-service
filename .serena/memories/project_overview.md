@@ -8,7 +8,7 @@ Blockchain Transaction Relayer System - B2B Infrastructure for self-hosted block
 |-----------|---------|------|
 | **OZ Relayer** | v1.3.0 (Rust, Docker) | TX relay, Nonce/Gas management, retry logic |
 | **OZ Monitor** | v1.1.0 (Rust, Docker) | Blockchain event monitoring, balance alerts |
-| **NestJS API Gateway** | 10.x | Auth, policy engine, quota management |
+| **NestJS API Gateway** | 10.x | Auth, policy engine |
 
 ## Key Features
 - **Direct Transaction**: Automated TX execution (payments, airdrops, Oracle)
@@ -18,8 +18,8 @@ Blockchain Transaction Relayer System - B2B Infrastructure for self-hosted block
 ## Implementation Phases
 | Phase | Scope | Status |
 |-------|-------|--------|
-| **Phase 1** | OZ Relayer Pool (Multi-Key), Direct TX, Gasless TX, ERC2771Forwarder, EIP-712 verification, Load Balancing, Manual Scaling, Payment system integration | 🔄 In Progress |
-| **Phase 2+** | OZ Monitor, Policy Engine, Quota Manager, Auto Scaling, Vault, Kubernetes | 📋 Planned |
+| **Phase 1** | OZ Relayer Pool (Multi-Key), Direct TX, Gasless TX, ERC2771Forwarder, EIP-712 verification, Load Balancing, Manual Scaling, Status Polling, Payment system integration | 🔄 In Progress |
+| **Phase 2+** | TX History (MySQL), Webhook Handler, OZ Monitor, Policy Engine, Queue System, Auto Scaling, Kubernetes | 📋 Planned |
 
 ## Multi-Relayer Pool Architecture (Phase 1)
 - **Relayer Pool (Multi-Key)**: Each Relayer has independent Private Key to avoid Nonce collisions

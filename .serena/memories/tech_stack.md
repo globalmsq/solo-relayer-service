@@ -5,7 +5,7 @@
 - Language: Rust
 - Container: `ghcr.io/openzeppelin/openzeppelin-relayer:v1.3.0`
 - Queue: Redis 7.x
-- Key Management: HashiCorp Vault 1.15
+- Key Management: Local keystore (dev) / AWS KMS (prod)
 - Built-in: TX relay, Nonce management, Gas estimation, Retry logic, Webhook
 
 ### OZ Monitor v1.1.0 (Phase 2+)
@@ -38,7 +38,7 @@
 | Container | Docker Compose | AWS EKS |
 | Database | MySQL Container | AWS RDS MySQL |
 | Cache/Queue | Redis Container | AWS ElastiCache |
-| Secrets | .env | HashiCorp Vault |
+| Secrets | .env | AWS Secrets Manager |
 | Monitoring | Prometheus + Grafana | Prometheus + Grafana |
 
 ## Multi-Relayer Pool Architecture (Phase 1)

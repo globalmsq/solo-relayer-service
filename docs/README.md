@@ -2,26 +2,28 @@
 
 이 디렉토리에는 MSQ Relayer Service의 설계 문서가 포함되어 있습니다.
 
-## 문서 목록
+## 문서 역할 정의
 
-| 문서 | 역할 | 설명 |
-|------|------|------|
-| [product.md](./product.md) | **WHAT/WHY** | 제품 요구사항, 비즈니스 목표, 성공 지표 |
-| [structure.md](./structure.md) | **WHERE** | 시스템 아키텍처, 디렉토리 구조, 데이터 흐름 |
-| [tech.md](./tech.md) | **HOW** | 기술 스택, API 스펙, SDK, 설정 가이드 |
-
-## 관련 문서
-
-- **Task Master PRD**: [../.taskmaster/docs/prd.txt](../.taskmaster/docs/prd.txt) - 개발 태스크 파싱용
+| 문서 | 역할 | 질문 유형 |
+|------|------|----------|
+| [product.md](./product.md) | **WHAT/WHY** | "무엇을 만드나요?", "왜 필요한가요?" |
+| [structure.md](./structure.md) | **WHERE** | "어디에 있나요?", "어떻게 구성되나요?" |
+| [tech.md](./tech.md) | **HOW** | "어떻게 구현하나요?", "API 스펙은?" |
 
 ## 문서 버전
 
 | 문서 | 버전 | 최종 수정일 |
 |------|------|------------|
-| product.md | 5.0 | 2025-12-14 |
-| structure.md | 5.0 | 2025-12-14 |
-| tech.md | 5.0 | 2025-12-14 |
+| product.md | 12.0 | 2025-12-15 |
+| structure.md | 12.0 | 2025-12-15 |
+| tech.md | 12.2 | 2025-12-15 |
+
+## 관련 문서
+
+- **Task Master PRD**: [../.taskmaster/docs/prd.txt](../.taskmaster/docs/prd.txt) - 개발 태스크 파싱용
 
 ---
 
-**Phase 1 목표**: 결제 시스템 연동 (Direct TX)
+**상태**: Phase 1 구현 단계 (Direct + Gasless + Multi-Relayer Pool)
+**버전**: 12.0
+**최종 수정일**: 2025-12-15

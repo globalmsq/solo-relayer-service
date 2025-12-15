@@ -4,36 +4,47 @@
 
 OpenZeppelin Defender 서비스 종료(2026년 7월)에 대비한 self-hosted 블록체인 트랜잭션 릴레이 시스템입니다.
 
-## Overview
+## Quick Start
 
-MSQ Relayer Service는 내부 서비스들(결제 시스템, 에어드랍, NFT 서비스 등)이 블록체인 트랜잭션을 쉽게 처리할 수 있도록 지원하는 B2B Infrastructure입니다.
+```bash
+# 로컬 개발 환경 (Hardhat Node)
+docker compose -f docker/docker-compose.yaml up -d
 
-### Core Components
+# Polygon Amoy 테스트넷
+docker compose -f docker/docker-compose-amoy.yaml up -d
 
-| Component | Version | Role |
-|-----------|---------|------|
-| **OZ Relayer** | v1.3.0 | TX 중계, Nonce/Gas 관리, 재시도 로직 |
-| **OZ Monitor** | v1.1.0 | 블록체인 이벤트 모니터링, 잔액 알림 |
-| **NestJS API Gateway** | 10.x | 인증, 정책 엔진, 할당량 관리 |
-
-### Key Features
-
-- **Direct Transaction**: 자동화 트랜잭션 실행 (결제, 에어드랍, Oracle)
-- **Gasless Transaction**: End User 가스비 대납 (NFT, 게임 서비스)
-- **Monitor Service**: 블록체인 이벤트 및 잔액 모니터링
+# Health Check
+curl http://localhost:3000/api/v1/health
+```
 
 ## Documentation
 
 상세 문서는 [docs/](./docs/) 디렉토리를 참조하세요:
 
-- [Product](./docs/product.md) - 제품 요구사항 (WHAT/WHY)
-- [Structure](./docs/structure.md) - 시스템 아키텍처 (WHERE)
-- [Tech](./docs/tech.md) - 기술 스펙 (HOW)
+| 문서 | 역할 | 질문 유형 |
+|------|------|----------|
+| [product.md](./docs/product.md) | **WHAT/WHY** | "무엇을 만드나요?", "왜 필요한가요?" |
+| [structure.md](./docs/structure.md) | **WHERE** | "어디에 있나요?", "어떻게 구성되나요?" |
+| [tech.md](./docs/tech.md) | **HOW** | "어떻게 구현하나요?", "API 스펙은?" |
+
+## Project Structure
+
+```
+msq-relayer-service/
+├── docker/                     # Docker 파일 통합 디렉토리
+├── packages/
+│   ├── api-gateway/            # NestJS API Gateway
+│   ├── contracts/              # Smart Contracts (Hardhat)
+│   └── examples/               # 사용 예제
+├── docs/                       # 문서
+└── README.md
+```
 
 ## Status
 
-🚧 **Planning Phase** - 현재 설계 및 문서화 단계입니다.
+**Phase 1 구현 단계** (Direct + Gasless + Multi-Relayer Pool)
 
 ---
 
-**Version**: 0.1.0 (Planning)
+**Version**: 12.0
+**Last Updated**: 2025-12-15

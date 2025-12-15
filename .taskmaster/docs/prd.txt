@@ -1,20 +1,34 @@
-# Blockchain Transaction Relayer System PRD
+# MSQ Relayer Service - Product Requirements Document (PRD)
 
-## Product Requirements Document (OZ Open Source Edition - B2B Infrastructure)
+## 문서 정보
+
+- **버전**: 12.0
+- **최종 수정일**: 2025-12-15
+- **목적**: Task Master AI 파싱용 요구사항 문서
+
+## 관련 문서 (상세 구현은 아래 참조)
+
+- 기술 스택 및 API 상세: [docs/tech.md](../docs/tech.md)
+- 시스템 아키텍처: [docs/structure.md](../docs/structure.md)
+- 제품 개요: [docs/product.md](../docs/product.md)
 
 ---
 
-## 1. 프로젝트 개요
+## 1. Executive Summary
 
-### 1.1 목적
+### 1.1 배경
+
 OpenZeppelin Defender 서비스 종료(2026년 7월)에 대비하여, **OZ 오픈소스(Relayer + Monitor)**를 활용한 self-hosted Blockchain Transaction Relayer System 구축
 
 > **참고**: MSQ Relayer Service는 **B2B Infrastructure**입니다. End User가 직접 사용하는 것이 아니라, 내부 Client Services (결제 시스템, 에어드랍 시스템, NFT 서비스 등)가 Relayer API를 호출합니다.
 
 ### 1.2 핵심 전략
-- **OZ Relayer (v1.3.0)**: 트랜잭션 중계, Nonce 관리, Gas 추정, 재시도 로직 (Rust, Docker)
-- **OZ Monitor (v1.1.0)**: 블록체인 이벤트 모니터링, 잔액 알림 (Rust, Docker)
-- **NestJS API Gateway**: 인증, 정책 엔진, 할당량 관리, API 문서화 (Swagger/OpenAPI)
+
+| 컴포넌트 | 버전 | 역할 |
+|----------|------|------|
+| **OZ Relayer** | v1.3.0 (Rust, Docker) | 트랜잭션 중계, Nonce 관리, Gas 추정, 재시도 로직 |
+| **OZ Monitor** | v1.1.0 (Rust, Docker) | 블록체인 이벤트 모니터링, 잔액 알림 |
+| **NestJS API Gateway** | 10.x | 인증, 정책 엔진, API 문서화 (Swagger/OpenAPI) |
 
 ### 1.3 핵심 기능
 
@@ -27,64 +41,43 @@ OpenZeppelin Defender 서비스 종료(2026년 7월)에 대비하여, **OZ 오�
 **Phase 2+**:
 - Queue System: Redis(BullMQ) 또는 AWS SQS 기반 트랜잭션 큐 (QUEUE_PROVIDER 설정)
 - Policy Engine: Contract/Method Whitelist, Blacklist
-- Quota Manager: 사용량 제한 및 할당량 관리
 - Monitor Service: OZ Monitor를 통한 블록체인 이벤트 모니터링 및 알림
 
 ### 1.4 Phase 1 목표: 결제 시스템 연동
+
 - 첫 번째 Client Service로 **결제 시스템** 연동
 - Direct TX를 통한 토큰 전송/정산 처리
 - Gasless TX를 통한 사용자 가스비 대납 결제
 - ERC2771Forwarder 배포 및 EIP-712 서명 검증
 - 프로덕션 레벨 API Gateway 구현
 
-### 1.5 지원 네트워크
-- Polygon Mainnet (P0)
-- Polygon Amoy Testnet (P0)
-- Ethereum Mainnet (P1)
-- Ethereum Sepolia (P1)
-- BNB Chain (P2)
+---
+
+## 2. 대상 사용자
+
+> **참고**: MSQ Relayer Service는 **B2B Infrastructure**입니다.
+
+### 2.1 Client Services (Primary)
+
+| 클라이언트 서비스 | 주요 사용 패턴 |
+|------------------|---------------|
+| **결제 시스템** | Direct TX - 대량 토큰 전송, 정산 |
+| **에어드랍 시스템** | Direct TX - 배치 처리, 스케줄링 |
+| **NFT 서비스** | Gasless TX - End User 가스비 대납 |
+| **DeFi 서비스** | Direct TX - 자동화 트랜잭션 |
+| **게임 서비스** | Gasless TX - 원활한 UX 제공 |
+
+### 2.2 Internal Users (운영/개발)
+
+- DevOps 엔지니어: 시스템 모니터링 및 Relayer Pool 관리
+- 백엔드 개발자: API 연동 및 스마트 컨트랙트 배포
+- 보안 담당자: Policy 관리 및 감사
 
 ---
 
-## 2. 기술 스택
+## 3. Functional Requirements
 
-### 2.1 Core Services (OZ Open Source)
-- **OZ Relayer**: v1.3.0 (Rust, AGPL-3.0)
-  - 트랜잭션 중계 및 서명
-  - Nonce 자동 관리
-  - Gas 추정 및 조정
-  - 재시도 로직 내장
-  - Webhook 알림
-- **OZ Monitor**: v1.1.0 (Rust, AGPL-3.0)
-  - 블록체인 이벤트 감지
-  - 잔액 모니터링
-  - Slack/Discord/Telegram/Webhook 알림
-  - 커스텀 트리거 스크립트 (Python/JS/Bash)
-
-### 2.2 API Gateway (Custom Development)
-- Runtime: Node.js 20 LTS
-- Framework: NestJS 10.x
-- Blockchain: ethers.js 6.x (서명 검증용)
-- ORM: Prisma 5.x
-- Documentation: Swagger/OpenAPI 3.0
-
-### 2.3 Smart Contracts
-- OpenZeppelin Contracts 5.3.0
-- Hardhat 2.x
-- Solidity 0.8.20
-
-### 2.4 Infrastructure
-- Container: Docker / Kubernetes (EKS)
-- Database: MySQL (Policy/Quota 저장)
-- Cache/Queue: Redis (OZ Relayer 내장 큐)
-- Key Management: HashiCorp Vault
-- Monitoring: Prometheus + Grafana
-
----
-
-## 3. 주요 요구사항
-
-### 3.1 Phase 1: Direct TX + Gasless TX + Multi-Relayer Pool + 결제 시스템 연동
+### 3.1 Phase 1: Direct TX + Gasless TX + Multi-Relayer Pool
 
 **Infrastructure**:
 - [ ] Docker Compose (OZ Relayer Pool + Redis)
@@ -110,18 +103,20 @@ OpenZeppelin Defender 서비스 종료(2026년 7월)에 대비하여, **OZ 오�
 - [ ] Gasless TX 엔드포인트 (`/api/v1/relay/gasless`)
 - [ ] Nonce 조회 엔드포인트 (`/api/v1/relay/nonce/{address}`)
 - [ ] OZ Relayer 프록시 서비스
-- [ ] 트랜잭션 상태 조회 (`/api/v1/relay/status/{txId}`)
+- [ ] 트랜잭션 상태 조회 (`/api/v1/relay/status/{txId}`) - 폴링 방식
 - [ ] EIP-712 서명 검증 (Gasless TX 사전 검증)
-- [ ] Webhook 핸들러 (OZ Relayer 상태 알림)
 
 **결제 시스템 연동**:
 - [ ] Direct TX: 결제 시스템 API 연동 테스트
 - [ ] Gasless TX: End User 가스비 대납 결제 플로우 검증
-- [ ] End User EIP-712 서명 → 결제 시스템 → Relayer API 플로우
-
----
+- [ ] End User EIP-712 서명 -> 결제 시스템 -> Relayer API 플로우
 
 ### 3.2 Phase 2+: 추후 구현
+
+**TX History & Webhook (P1)**:
+- [ ] MySQL (Transaction History 저장)
+- [ ] Webhook 핸들러 (OZ Relayer 상태 알림 처리)
+- [ ] 상태 변경 Push 알림
 
 **Queue System (P1)**:
 - [ ] Queue Adapter 패턴 (QUEUE_PROVIDER 설정)
@@ -130,9 +125,9 @@ OpenZeppelin Defender 서비스 종료(2026년 7월)에 대비하여, **OZ 오�
 - [ ] Job 상태 추적 API (`/api/v1/relay/job/{jobId}`)
 - [ ] 202 Accepted 응답 + Job ID 반환
 
-**Policy & Quota (P1)**:
+**Policy Engine (P1)**:
 - [ ] Contract Whitelist 검증
-- [ ] Quota Manager
+- [ ] User Blacklist
 
 **Monitor Service (P2)**:
 - [ ] OZ Monitor 설정
@@ -145,62 +140,49 @@ OpenZeppelin Defender 서비스 종료(2026년 7월)에 대비하여, **OZ 오�
 - [ ] Relayer Pool 자동 확장/축소
 
 **Infrastructure 고도화 (P2)**:
-- [ ] HashiCorp Vault (키 관리)
 - [ ] Kubernetes 매니페스트
 - [ ] CI/CD 파이프라인
 - [ ] Grafana 대시보드
 
 ---
 
-## 4. API 엔드포인트
+## 4. API Requirements (Summary)
 
-### 4.1 Direct Transaction
-```
-POST /api/v1/relay/direct
-- to: 대상 컨트랙트 주소
-- data: Encoded function call
-- value: ETH 전송량
-- gasLimit: 가스 한도 (optional)
-- speed: safeLow|average|fast|fastest (optional)
+> 상세 API 스펙: [docs/tech.md Section 5](../docs/tech.md#5-api-사양)
 
-Response: OZ Defender SDK 호환 포맷
-```
+### 4.1 Phase 1 엔드포인트
 
-### 4.2 Gasless Transaction
-```
-POST /api/v1/relay/gasless
-- request: ForwardRequest 객체
-- signature: EIP-712 서명
-- metadata: 추적 메타데이터
+| Method | Endpoint | 설명 |
+|--------|----------|------|
+| POST | `/api/v1/relay/direct` | Direct Transaction 실행 |
+| POST | `/api/v1/relay/gasless` | Gasless Transaction 실행 |
+| GET | `/api/v1/relay/nonce/{address}` | Nonce 조회 |
+| GET | `/api/v1/relay/status/{txId}` | 트랜잭션 상태 조회 |
+| GET | `/api/v1/health` | Health Check |
 
-Response: OZ Defender SDK 호환 포맷
-```
+### 4.2 응답 포맷
 
-### 4.3 Nonce 조회
-```
-GET /api/v1/relay/nonce/{userAddress}
-- network: 네트워크 이름
-```
-
-### 4.4 Status 조회
-```
-GET /api/v1/relay/status/{txId}
-```
-
-### 4.5 Health Check
-```
-GET /api/v1/health
-- api-gateway: NestJS 상태
-- oz-relayer: OZ Relayer 연결 상태
-- oz-monitor: OZ Monitor 연결 상태
-- redis: Redis 연결 상태
-```
+- OZ Defender SDK 호환 포맷 유지
+- 트랜잭션 상태: `pending` -> `sent` -> `submitted` -> `inmempool` -> `mined` -> `confirmed`
 
 ---
 
-## 5. 마일스톤
+## 5. 지원 블록체인 네트워크
 
-### Phase 1: 결제 시스템 연동 (Direct + Gasless)
+| Network | Chain ID | Type | Forwarder 배포 | 우선순위 |
+|---------|----------|------|----------------|----------|
+| Hardhat Node | 31337 | Local Dev | 자동 배포 | P0 |
+| Polygon Amoy | 80002 | Testnet | 사전 배포 | P0 |
+| Polygon Mainnet | 137 | Mainnet | 사전 배포 | P0 |
+| Ethereum Sepolia | 11155111 | Testnet | 사전 배포 | P1 |
+| Ethereum Mainnet | 1 | Mainnet | 사전 배포 | P1 |
+| BNB Chain | 56 | Mainnet | 사전 배포 | P2 |
+
+---
+
+## 6. 마일스톤 & 수용 기준
+
+### 6.1 Phase 1 마일스톤 (5주)
 
 **Week 1: Infrastructure + API Gateway 기본**
 - Docker Compose 구성 (OZ Relayer + Redis)
@@ -212,8 +194,7 @@ GET /api/v1/health
 **Week 2: Direct TX API**
 - `/api/v1/relay/direct` 엔드포인트
 - OZ Relayer 프록시 서비스
-- 트랜잭션 상태 조회 API
-- Webhook 핸들러
+- 트랜잭션 상태 조회 API (폴링 방식)
 
 **Week 3: Smart Contracts + Gasless TX API**
 - ERC2771Forwarder 배포 (Polygon Amoy/Mainnet)
@@ -232,18 +213,29 @@ GET /api/v1/health
 - API 문서화
 - 운영 가이드
 
+### 6.2 수용 기준
+
+- [ ] Direct TX API가 정상 작동하고 결제 시스템에서 호출 가능
+- [ ] Gasless TX API가 End User 서명을 검증하고 트랜잭션 실행
+- [ ] Health Check가 모든 Relayer 상태를 정확히 반환
+- [ ] 트랜잭션 상태 조회가 실시간 폴링 가능
+- [ ] API 문서(Swagger)가 `/api/docs`에서 접근 가능
+
 ---
 
-### Phase 2+: 추후 확장 (미정)
+## 7. 리스크 & 완화 전략
 
-- Policy Engine (Contract/Method Whitelist)
-- Quota Manager
-- OZ Monitor 통합
-- Kubernetes / CI/CD
+| 리스크 | 영향 | 완화 전략 |
+|--------|------|----------|
+| OZ Relayer 버그 | 트랜잭션 실패 | 자체 재시도 로직 + 모니터링 |
+| Gas 가격 급등 | 비용 증가 | Gas cap 정책 + 알림 |
+| Private Key 노출 | 자금 손실 | AWS KMS (prod), 접근 제어 |
+| 네트워크 장애 | 서비스 중단 | Multi-Relayer Pool, 폴백 RPC |
+| Nonce 충돌 | 트랜잭션 실패 | OZ Relayer 내장 Nonce 관리 |
 
 ---
 
-## 6. 성공 지표
+## 8. 성공 지표 (KPIs)
 
 | 지표 | 목표값 |
 |------|--------|
@@ -255,172 +247,21 @@ GET /api/v1/health
 
 ---
 
-## 7. 프로젝트 구조
+## 9. References (상세 구현 문서)
 
-```
-msq-relayer-service/
-├── packages/
-│   ├── api-gateway/         # NestJS API Gateway (Custom)
-│   │   ├── src/
-│   │   │   ├── auth/        # API Key 인증
-│   │   │   ├── relay/       # Direct/Gasless TX 엔드포인트
-│   │   │   ├── queue/       # Queue Adapter (Redis/SQS)
-│   │   │   ├── policy/      # Policy Engine (Whitelist/Blacklist)
-│   │   │   ├── quota/       # Quota Manager
-│   │   │   ├── webhook/     # OZ Relayer Webhook 핸들러
-│   │   │   └── oz-relayer/  # OZ Relayer 클라이언트
-│   │   └── prisma/          # DB 스키마
-│   ├── contracts/           # Smart Contracts
-│   └── examples/            # 통합 예제
-├── config/
-│   ├── oz-relayer/          # OZ Relayer Pool 설정
-│   │   ├── relayer-1/       # Relayer #1 설정
-│   │   │   └── config.json
-│   │   ├── relayer-2/       # Relayer #2 설정 (scale profile)
-│   │   │   └── config.json
-│   │   └── relayer-n/       # Relayer #N 설정
-│   │       └── config.json
-│   ├── relayer-pool.yaml    # Pool 설정 (Load Balancing, Health Check)
-│   └── oz-monitor/          # OZ Monitor 설정
-│       ├── networks/
-│       ├── monitors/
-│       └── triggers/
-├── keys/                    # Signer 키스토어 (gitignore)
-│   ├── relayer-1/           # Relayer #1 키
-│   ├── relayer-2/           # Relayer #2 키
-│   └── relayer-n/           # Relayer #N 키
-├── k8s/                     # Kubernetes Manifests
-├── docker-compose.yml       # 로컬 개발 환경
-└── docs/                    # Documentation
-```
+상세 구현 사항은 아래 문서를 참조하세요:
 
-### 7.1 API 문서화
-- Swagger UI: `/api/docs` (API 테스트 인터페이스)
-- OpenAPI JSON: `/api/docs-json` (스펙 파일)
-- OpenAPI 3.0 스펙 준수
-- 트랜잭션 상태: pending -> sent -> submitted -> inmempool -> mined -> confirmed
-
----
-
-## 8. 보안 요구사항
-
-- Private Key: HashiCorp Vault (OZ Relayer 네이티브 지원)
-- API 인증: API Key + Rate Limiting (NestJS)
-- 네트워크: VPC Private Subnet
-- Contract/Method Whitelist: Policy Engine (NestJS)
-- Quota Management: 사용량 제한 (NestJS)
-- Webhook 서명: OZ Relayer WEBHOOK_SIGNING_KEY
-
----
-
-## 9. OZ 오픈소스 통합 가이드
-
-### 9.1 OZ Relayer 설정 예시
-```json
-{
-  "relayers": [{
-    "id": "polygon-mainnet-relayer",
-    "name": "Polygon Mainnet Relayer",
-    "network": "polygon",
-    "signer": {
-      "type": "local",
-      "keystore": "/app/config/keys/local-signer.json"
-    },
-    "policies": {
-      "gas_price_cap": "500000000000",
-      "min_balance": "100000000000000000"
-    },
-    "notifications": [{
-      "type": "webhook",
-      "url": "http://api-gateway:3000/api/v1/webhook/relayer"
-    }]
-  }]
-}
-```
-
-### 9.2 OZ Monitor 설정 예시
-```json
-{
-  "networks": [{
-    "id": "polygon-mainnet",
-    "rpc_url": "${POLYGON_RPC_URL}",
-    "chain_id": 137
-  }],
-  "monitors": [{
-    "name": "Relayer Balance Monitor",
-    "network": "polygon-mainnet",
-    "addresses": ["${RELAYER_ADDRESS}"],
-    "conditions": [{
-      "type": "balance_threshold",
-      "threshold": "100000000000000000"
-    }],
-    "triggers": ["slack-alert"]
-  }],
-  "triggers": [{
-    "id": "slack-alert",
-    "type": "slack",
-    "webhook_url": "${SLACK_WEBHOOK_URL}"
-  }]
-}
-```
-
-### 9.3 Docker Compose 구성
-```yaml
-version: '3.8'
-
-services:
-  api-gateway:
-    build: ./packages/api-gateway
-    ports: ["3000:3000"]
-    depends_on: [mysql, redis, oz-relayer]
-    environment:
-      - OZ_RELAYER_URL=http://oz-relayer:8080
-      - OZ_RELAYER_API_KEY=${OZ_RELAYER_API_KEY}
-
-  oz-relayer:
-    image: ghcr.io/openzeppelin/openzeppelin-relayer:v1.3.0
-    ports: ["8080:8080", "8081:8081"]
-    volumes:
-      - ./config/oz-relayer:/app/config
-      - ./keys:/app/config/keys
-    environment:
-      - RUST_LOG=info
-      - API_KEY=${OZ_RELAYER_API_KEY}
-      - KEYSTORE_PASSPHRASE=${KEYSTORE_PASSPHRASE}
-    depends_on: [redis, vault]
-
-  oz-monitor:
-    image: ghcr.io/openzeppelin/openzeppelin-monitor:v1.1.0
-    volumes:
-      - ./config/oz-monitor:/app/config
-    environment:
-      - RUST_LOG=info
-    depends_on: [oz-relayer]
-
-  redis:
-    image: redis:7-alpine
-    ports: ["6379:6379"]
-
-  mysql:
-    image: mysql:8.0
-    environment:
-      - MYSQL_ROOT_PASSWORD=${MYSQL_ROOT_PASSWORD}
-      - MYSQL_DATABASE=relayer
-
-  vault:
-    image: hashicorp/vault:1.15
-    ports: ["8200:8200"]
-    environment:
-      - VAULT_DEV_ROOT_TOKEN_ID=${VAULT_TOKEN}
-
-  prometheus:
-    image: prom/prometheus:v2.47.0
-    ports: ["9090:9090"]
-
-  grafana:
-    image: grafana/grafana:10.2.0
-    ports: ["3001:3000"]
-```
+| 항목 | 참조 문서 |
+|------|----------|
+| **디렉토리 구조** | [docs/structure.md Section 3](../docs/structure.md#3-디렉토리-구조-v50---spec-infra-001-기준) |
+| **Docker Compose 설정** | [docs/tech.md Section 13](../docs/tech.md#13-docker-compose-설정-v50---spec-infra-001) |
+| **API 상세 스펙** | [docs/tech.md Section 5](../docs/tech.md#5-api-사양) |
+| **인증 전략** | [docs/tech.md Section 9](../docs/tech.md#9-보안-요구사항) |
+| **Smart Contracts** | [docs/tech.md Section 3](../docs/tech.md#3-smart-contracts-기술-스택) |
+| **OZ Relayer 설정** | [docs/tech.md Section 11](../docs/tech.md#11-oz-relayer-설정) |
+| **OZ Monitor 설정** | [docs/tech.md Section 12](../docs/tech.md#12-oz-monitor-설정-phase-2) |
+| **시스템 아키텍처** | [docs/structure.md Section 1](../docs/structure.md#1-시스템-아키텍처) |
+| **데이터 플로우** | [docs/structure.md Section 5](../docs/structure.md#5-데이터-플로우) |
 
 ---
 
@@ -437,13 +278,22 @@ services:
 
 ---
 
-버전: 7.0
+버전: 12.0
 최종 수정일: 2025-12-15
 
 ## HISTORY
 
 | 버전 | 날짜 | 변경사항 |
 |------|------|----------|
+| 12.0 | 2025-12-15 | PRD 구조 대폭 간소화 - 요구사항 중심으로 재구성, 구현 상세(디렉토리 구조, Docker Compose YAML, 인증 전략 상세, OZ 설정 예시)를 docs/로 이동, 572줄에서 약 280줄로 축소 (51% 감소), Section 9 References 추가로 상세 문서 연결 |
+| 11.4 | 2025-12-15 | Section 9.3 Docker Compose YAML Anchors 구조 수정 - x-relayer-common을 services 블록 외부 최상위 레벨로 이동, healthcheck/networks 추가, 올바른 YAML Anchors 문법 적용 |
+| 11.3 | 2025-12-15 | Section 1.5 지원 블록체인 네트워크 테이블 형식으로 변경 - Hardhat Node (31337, Local Dev, P0) 추가, Chain ID 명시, product.md Section 5와 동기화 |
+| 11.2 | 2025-12-15 | Docker Compose YAML Anchors 패턴 적용 - Multi-Relayer Pool 설정 중복 최소화, deploy.replicas 미사용 이유 설명 (개별 Private Key 필요) |
+| 11.1 | 2025-12-15 | Section 8.1 API Key 인증 추가 - Phase 1 단일 환경변수 방식 (API_GATEWAY_API_KEY), Phase 2+ 확장 계획 명시 |
+| 11.0 | 2025-12-15 | SPEC-INFRA-001 기준 Docker 구조 동기화 - docker/ 디렉토리로 통합, 멀티스테이지 빌드, .env 제거, Hardhat Node 포함, Redis 8.0-alpine (AOF), Named Volume (msq-relayer-redis-data), OZ Relayer RPC_URL/REDIS_HOST/REDIS_PORT, Read-only 볼륨 마운트 |
+| 10.0 | 2025-12-15 | MySQL/Prisma를 Phase 2+로 이동 - Phase 1은 OZ Relayer + Redis만 사용, DB 없음, Docker Compose에서 mysql 제거 |
+| 9.0 | 2025-12-15 | TX History, Webhook Handler를 Phase 2+로 이동 - Phase 1은 상태 폴링 방식 사용, MySQL/Webhook은 Phase 2+에서 구현 |
+| 8.0 | 2025-12-15 | Rate Limiting, Quota Manager 완전 제거 - Phase 1은 Auth + Relay 기능만 유지, Policy & Quota -> Policy Engine으로 변경, 할당량 관리 제거 |
 | 7.0 | 2025-12-15 | Phase 2 재설계 - Rate Limiting 제거, Queue System 추가 (QUEUE_PROVIDER: Redis/SQS), SDK 제거 후 API 문서화로 대체 (Swagger/OpenAPI) |
 | 6.1 | 2025-12-15 | Multi-Relayer Pool 추가 - Phase 1에 Relayer Pool 구조 포함, 독립 Private Key 기반 병렬 처리, Load Balancing (Round Robin/Least Load), Manual Scaling Phase 1, Auto Scaling Phase 2+ |
 | 6.0 | 2025-12-15 | Phase 1에 Gasless TX 포함 - 결제 시스템 Gasless 결제 지원, ERC2771Forwarder/EIP-712 검증 Phase 1으로 이동, Policy/Quota는 Phase 2 유지, 5주 마일스톤 |
