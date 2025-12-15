@@ -1,11 +1,11 @@
 # MSQ Relayer Service - 기술 문서
 
 ## 문서 정보
-- **버전**: 6.2
+- **버전**: 7.0
 - **최종 수정일**: 2025-12-15
 - **상태**: Phase 1 구현 단계 (Direct + Gasless + Multi-Relayer Pool)
 
-> **참고**: MSQ Relayer Service는 **B2B Infrastructure**입니다. 이 문서의 모든 SDK 예제와 API 사용법은 Client Services (결제 시스템, 에어드랍 시스템, NFT 서비스 등)가 Relayer API를 호출하는 패턴을 기준으로 작성되었습니다.
+> **참고**: MSQ Relayer Service는 **B2B Infrastructure**입니다. 이 문서의 모든 API 사용법은 Client Services (결제 시스템, 에어드랍 시스템, NFT 서비스 등)가 Relayer API를 호출하는 패턴을 기준으로 작성되었습니다. API 문서는 Swagger UI (`/api/docs`)에서 확인할 수 있습니다.
 
 ### 관련 문서
 - [제품 요구사항](./product.md)
@@ -25,7 +25,7 @@ Blockchain Transaction Relayer System의 기술 스택 및 구현 사양을 정�
 | Phase | 기술 범위 | 상태 |
 |-------|----------|------|
 | **Phase 1** | OZ Relayer, Redis, NestJS (Auth, Direct TX, Gasless TX, EIP-712 검증, Health, Webhook), ERC2771Forwarder | 🔄 구현 중 |
-| **Phase 2+** | OZ Monitor, Policy Engine, Quota Manager, Vault | 📋 계획됨 |
+| **Phase 2+** | Queue System (Redis/SQS), OZ Monitor, Policy Engine, Quota Manager, Vault | 📋 계획됨 |
 
 ---
 
@@ -412,20 +412,6 @@ policies:
 }
 ```
 
-### 10.3 Client SDK
-
-```json
-{
-  "name": "@msq/relayer-sdk",
-  "dependencies": {
-    "ethers": "^6.0.0"
-  },
-  "peerDependencies": {
-    "ethers": "^6.0.0"
-  }
-}
-```
-
 ---
 
 ## 11. OZ Relayer 설정
@@ -777,190 +763,143 @@ export default config;
 
 ---
 
-## 15. Client SDK (OZ Defender 호환)
+## 15. Queue System (Phase 2+)
 
-> **OZ Defender SDK 호환성**: OpenZeppelin Defender SDK와 동일한 패턴을 사용하여 기존 OZ Defender 사용자의 마이그레이션을 용이하게 합니다.
+> **QUEUE_PROVIDER 패턴**: 환경에 따라 Redis+BullMQ 또는 AWS SQS를 선택적으로 사용할 수 있습니다.
 
-### 15.1 클라이언트 초기화 (OZ Defender 스타일)
+### 15.1 Queue 아키텍처
 
-```typescript
-import { RelayerClient } from "@msq/relayer-sdk";
-
-// 단일 진입점 (OZ Defender의 new Defender() 패턴과 동일)
-const client = new RelayerClient({
-  apiKey: "your-api-key",
-  apiSecret: "your-api-secret",
-  network: "polygon"
-});
-
-// 서브클라이언트 접근 (OZ Defender와 동일한 패턴)
-const relayer = client.relayer;        // Direct 트랜잭션용
-const relaySigner = client.relaySigner; // Gasless 트랜잭션용
+```
+┌─────────────────────────────────────────────────────────────┐
+│                    NestJS API Gateway                        │
+│  ┌───────────────────────────────────────────────────────┐  │
+│  │                   Queue Adapter                        │  │
+│  │  ┌─────────────────┐    ┌─────────────────────────┐   │  │
+│  │  │ QUEUE_PROVIDER  │────│ Redis+BullMQ (default)  │   │  │
+│  │  │ 환경변수         │    │ AWS SQS (production)    │   │  │
+│  │  └─────────────────┘    └─────────────────────────┘   │  │
+│  └───────────────────────────────────────────────────────┘  │
+└─────────────────────────────────────────────────────────────┘
 ```
 
-### 15.2 Direct Transaction (OZ Defender Relayer 호환)
+### 15.2 Provider 비교
 
-```typescript
-// Direct 트랜잭션 전송 (OZ Defender relayer.sendTransaction() 호환)
-const tx = await client.relayer.sendTransaction({
-  to: "0x...",
-  data: "0x...",
-  speed: "fast",          // safeLow | average | fast | fastest
-  gasLimit: "200000"
-});
+| 항목 | Redis + BullMQ | AWS SQS |
+|------|----------------|---------|
+| 사용 환경 | 로컬/개발/테스트 | 프로덕션 |
+| 설정 복잡도 | 낮음 | 중간 |
+| 비용 | 인프라 비용만 | 요청당 과금 |
+| 확장성 | 수평 확장 필요 | 자동 확장 |
+| 메시지 보존 | 휘발성 (설정 가능) | 4일 기본 보존 |
+| 지연 시간 | 매우 낮음 | 낮음 |
 
-console.log("Transaction ID:", tx.data.txId);
-console.log("Transaction Hash:", tx.data.txHash);
-console.log("Status:", tx.data.status);
+### 15.3 환경 설정
 
-// Relayer 정보 조회 (OZ Defender getRelayer() 호환)
-const info = await client.relayer.getRelayer();
-console.log("Relayer Address:", info.data.address);
-console.log("Balance:", info.data.balance);
+```bash
+# .env 파일
+# Redis (default)
+QUEUE_PROVIDER=redis
+REDIS_URL=redis://localhost:6379
 
-// 트랜잭션 취소 (OZ Defender 호환)
-await client.relayer.cancelTransactionById(tx.data.txId);
+# AWS SQS (production)
+QUEUE_PROVIDER=sqs
+AWS_REGION=ap-northeast-2
+AWS_SQS_QUEUE_URL=https://sqs.ap-northeast-2.amazonaws.com/123456789012/relayer-queue
 ```
 
-### 15.3 Gasless Transaction (OZ Defender AutoTask/RelaySigner 호환) - Phase 1
-
-> **B2B 통합 패턴**: Gasless Transaction에서 Client Service는 End User로부터 EIP-712 서명을 받아 Relayer API에 전달합니다. Client Service가 직접 서명하지 않습니다.
+### 15.4 Queue Adapter 인터페이스
 
 ```typescript
-import { ethers } from "ethers";
-import { RelayerClient } from "@msq/relayer-sdk";
-
-/**
- * Client Service 백엔드에서 Gasless TX 처리
- *
- * 흐름:
- * 1. End User가 프론트엔드에서 EIP-712 서명 생성
- * 2. 서명을 Client Service 백엔드로 전달
- * 3. Client Service가 Relayer API 호출
- */
-
-// Client Service 백엔드에서 Relayer 클라이언트 초기화
-const client = new RelayerClient({
-  apiKey: process.env.RELAYER_API_KEY,
-  apiSecret: process.env.RELAYER_API_SECRET,
-  network: "polygon"
-});
-
-// End User로부터 받은 서명과 요청 데이터로 Gasless TX 전송
-async function processGaslessRequest(
-  userAddress: string,
-  userSignature: string,  // End User가 생성한 EIP-712 서명
-  forwardRequest: ForwardRequest  // End User가 서명한 요청 데이터
-) {
-  const result = await client.relaySigner.sendTransaction({
-    request: forwardRequest,
-    signature: userSignature,
-    metadata: {
-      sponsorId: "nft-service",  // Client Service 식별자
-      userId: userAddress
-    }
-  });
-
-  return {
-    txHash: result.data.txHash,
-    status: result.data.status
-  };
+// packages/api-gateway/src/queue/queue-adapter.interface.ts
+interface QueueAdapter {
+  enqueue(job: RelayJob): Promise<string>;  // returns jobId
+  getJob(jobId: string): Promise<JobStatus>;
+  cancelJob(jobId: string): Promise<boolean>;
 }
 
-// ForwardRequest 인터페이스
-interface ForwardRequest {
-  from: string;      // End User 주소
-  to: string;        // 대상 컨트랙트
-  value: string;
-  gas: string;
-  nonce: string;
-  deadline: number;
-  data: string;      // Encoded function call
+interface RelayJob {
+  type: 'direct' | 'gasless';
+  payload: DirectTxRequest | GaslessTxRequest;
+  priority?: 'high' | 'normal' | 'low';
+  metadata?: Record<string, string>;
 }
-```
 
-**End User 프론트엔드 예시** (참고용):
-```typescript
-// End User 브라우저에서 서명 생성 (Client Service 프론트엔드 코드)
-const provider = new ethers.BrowserProvider(window.ethereum);
-const signer = await provider.getSigner();
-
-// EIP-712 서명 생성
-const signature = await signer.signTypedData(domain, types, forwardRequest);
-
-// Client Service 백엔드로 서명 전달
-await fetch("/api/gasless", {
-  method: "POST",
-  body: JSON.stringify({ request: forwardRequest, signature })
-});
-```
-
-### 15.4 ApiResponse 래퍼 포맷
-
-```typescript
-// 모든 API 응답은 ApiResponse<T> 래퍼로 감싸져 반환됨
-interface ApiResponse<T> {
-  data: T | null;
+interface JobStatus {
+  jobId: string;
+  status: 'queued' | 'processing' | 'completed' | 'failed';
+  txHash?: string;
   error?: string;
-  success: boolean;
-}
-
-// 트랜잭션 응답 타입
-interface TransactionResponse {
-  txId: string;
-  txHash: string;
-  status: 'pending' | 'sent' | 'submitted' | 'inmempool' | 'mined' | 'confirmed' | 'failed';
-  from: string;
-  nonce: number;
-  gasPrice: string;
+  createdAt: Date;
+  updatedAt: Date;
 }
 ```
 
-### 15.5 트랜잭션 상태 값
+### 15.5 API 변경 사항 (Queue 모드)
 
-OZ Defender와 호환되는 트랜잭션 상태 lifecycle:
+Queue 시스템 활성화 시 API 응답이 변경됩니다:
 
-| Status | 설명 |
-|--------|------|
-| `pending` | 요청 접수됨, 처리 대기 중 |
-| `sent` | 블록체인 네트워크로 전송됨 |
-| `submitted` | 노드에 제출됨 |
-| `inmempool` | 메모리풀에 포함됨 |
-| `mined` | 블록에 포함됨 |
-| `confirmed` | 충분한 확인 수 도달 |
-| `failed` | 트랜잭션 실패 |
+```yaml
+# Queue 비활성화 (Phase 1 - 즉시 처리)
+POST /api/v1/relay/direct
+Response (200 OK):
+{
+  "txId": "uuid",
+  "txHash": "0x...",
+  "status": "submitted"
+}
 
-### 15.6 OZ Defender에서 마이그레이션
+# Queue 활성화 (Phase 2+ - 비동기 처리)
+POST /api/v1/relay/direct
+Response (202 Accepted):
+{
+  "jobId": "uuid",
+  "status": "queued",
+  "estimatedWait": "5s"
+}
+
+# Job 상태 조회
+GET /api/v1/relay/job/{jobId}
+Response:
+{
+  "jobId": "uuid",
+  "status": "completed",
+  "txHash": "0x...",
+  "txId": "uuid"
+}
+```
+
+### 15.6 Redis + BullMQ 설정
 
 ```typescript
-// Before (OZ Defender)
-import { Defender } from "@openzeppelin/defender-sdk";
+// packages/api-gateway/src/queue/redis-queue.adapter.ts
+import { Queue, Worker } from 'bullmq';
 
-const client = new Defender({
-  apiKey: "oz-api-key",
-  apiSecret: "oz-api-secret"
+const relayQueue = new Queue('relay-jobs', {
+  connection: {
+    host: process.env.REDIS_HOST || 'localhost',
+    port: parseInt(process.env.REDIS_PORT || '6379')
+  },
+  defaultJobOptions: {
+    attempts: 3,
+    backoff: {
+      type: 'exponential',
+      delay: 1000
+    }
+  }
+});
+```
+
+### 15.7 AWS SQS 설정
+
+```typescript
+// packages/api-gateway/src/queue/sqs-queue.adapter.ts
+import { SQSClient, SendMessageCommand } from '@aws-sdk/client-sqs';
+
+const sqsClient = new SQSClient({
+  region: process.env.AWS_REGION || 'ap-northeast-2'
 });
 
-const tx = await client.relayer.sendTransaction({
-  to: "0x...",
-  data: "0x...",
-  speed: "fast"
-});
-
-// After (MSQ Relayer - 동일한 API 구조)
-import { RelayerClient } from "@msq/relayer-sdk";
-
-const client = new RelayerClient({
-  apiKey: "msq-api-key",
-  apiSecret: "msq-api-secret",
-  network: "polygon"
-});
-
-const tx = await client.relayer.sendTransaction({
-  to: "0x...",
-  data: "0x...",
-  speed: "fast"
-});
+const queueUrl = process.env.AWS_SQS_QUEUE_URL;
 ```
 
 ---
@@ -998,6 +937,7 @@ const tx = await client.relayer.sendTransaction({
 
 | 버전 | 날짜 | 변경사항 |
 |------|------|----------|
+| 7.0 | 2025-12-15 | Phase 2 재설계 - SDK 제거 (API 문서로 대체), Queue System 추가 (QUEUE_PROVIDER 패턴: Redis/BullMQ, AWS SQS) |
 | 6.2 | 2025-12-15 | Docker Build 전략 확정 - 패키지별 Dockerfile 방식 채택, Docker Compose build context/dockerfile 설정 명시 |
 | 6.1 | 2025-12-15 | Multi-Relayer Pool 설정 추가 - Section 11.3 (Pool 구성, Load Balancing, Scaling), Docker Compose v4.0 (Multi-Relayer Profile 지원) |
 | 6.0 | 2025-12-15 | Phase 1에 Gasless TX 포함 - Gasless API/SDK Phase 1으로 이동, EIP-712 검증 Phase 1, OZ Monitor/Policy/Quota는 Phase 2+ 유지 |

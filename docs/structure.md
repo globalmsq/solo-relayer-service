@@ -1,7 +1,7 @@
 # MSQ Relayer Service - 구조 문서
 
 ## 문서 정보
-- **버전**: 6.2
+- **버전**: 7.0
 - **최종 수정일**: 2025-12-15
 - **상태**: Phase 1 구현 단계 (Direct + Gasless + Multi-Relayer Pool)
 
@@ -23,7 +23,7 @@ MSQ Relayer Service는 **B2B Infrastructure**로, 내부 Client Services(결제,
 | Phase | 범위 | 상태 |
 |-------|------|------|
 | **Phase 1** | OZ Relayer + Redis, Auth, Health, Direct TX, Gasless TX, ERC2771Forwarder, EIP-712 검증, 결제 시스템 연동 | 🔄 구현 중 |
-| **Phase 2+** | OZ Monitor, Policy Engine, Quota Manager, Vault, Kubernetes | 📋 계획됨 |
+| **Phase 2+** | Queue System (Redis/SQS), OZ Monitor, Policy Engine, Quota Manager, Vault, Kubernetes | 📋 계획됨 |
 
 ---
 
@@ -44,12 +44,12 @@ MSQ Relayer Service는 **B2B Infrastructure**로, 내부 Client Services(결제,
 ┌─────────────────────────────────────────────────────────────────┐
 │                   NestJS API Gateway (개발 필요)                 │
 │  ┌───────────┐ ┌───────────┐ ┌───────────┐ ┌───────────────┐   │
-│  │ Auth      │ │ Rate      │ │ Policy    │ │ Quota         │   │
-│  │ (API Key) │ │ Limiter   │ │ Engine    │ │ Manager       │   │
+│  │ Auth      │ │ Queue     │ │ Policy    │ │ Quota         │   │
+│  │ (API Key) │ │ Adapter   │ │ Engine    │ │ Manager       │   │
 │  └───────────┘ └───────────┘ └───────────┘ └───────────────┘   │
 │  ┌───────────┐ ┌───────────┐ ┌───────────────────────────────┐ │
-│  │ Gasless   │ │ Webhook   │ │ OZ Defender SDK 호환 Response │ │
-│  │Coordinator│ │ Handler   │ │ (마이그레이션 용이성)         │ │
+│  │ Gasless   │ │ Webhook   │ │ API Documentation             │ │
+│  │Coordinator│ │ Handler   │ │ (Swagger/OpenAPI)             │ │
 │  └───────────┘ └───────────┘ └───────────────────────────────┘ │
 └─────────────────────────────────┬───────────────────────────────┘
                                   │
@@ -101,11 +101,12 @@ flowchart TB
 
     subgraph Gateway["NestJS API Gateway"]
         Auth["Auth\n(API Key)"]
-        RateLimit["Rate\nLimiter"]
+        QueueAdapter["Queue\nAdapter"]
         Policy["Policy\nEngine"]
         Quota["Quota\nManager"]
         GaslessCoord["Gasless\nCoordinator"]
         Webhook["Webhook\nHandler"]
+        APIDocs["API Docs\n(Swagger)"]
     end
 
     subgraph OZServices["OZ Open Source Services"]
@@ -331,21 +332,6 @@ msq-relayer-service/
 │   │   │
 │   │   └── package.json
 │   │
-│   ├── sdk/                        # Client SDK (OZ Defender 호환)
-│   │   ├── src/
-│   │   │   ├── index.ts            # Main entry: RelayerClient
-│   │   │   ├── clients/
-│   │   │   │   ├── relay-signer.ts # Gasless transaction client
-│   │   │   │   ├── relayer.ts      # Direct transaction client
-│   │   │   │   └── monitor.ts      # Monitor client (optional)
-│   │   │   ├── models/
-│   │   │   │   ├── transactions.ts # Transaction types
-│   │   │   │   ├── relayer.ts      # Relayer info types
-│   │   │   │   └── common.ts       # ApiResponse<T>
-│   │   │   └── types.ts
-│   │   ├── tests/
-│   │   │   └── client.test.ts
-│   │   └── package.json
 │   │
 │   ├── contracts/                  # Smart Contracts (OZ 활용)
 │   │   ├── contracts/
@@ -441,29 +427,9 @@ msq-relayer-service/
 | `SampleNFT.sol` | ERC721 + ERC2771Context (Gasless 지원 예시) |
 | `deploy-forwarder.ts` | OZ ERC2771Forwarder 배포 스크립트 |
 
-### 4.5 packages/sdk
+### 4.5 packages/examples
 
-**Client SDK** - OpenZeppelin Defender SDK 호환 클라이언트 SDK
-
-| 모듈 | 책임 |
-|------|------|
-| `index.ts` | `RelayerClient` 진입점, 서브클라이언트 초기화 |
-| `clients/relayer.ts` | Direct 트랜잭션 (`sendTransaction`, `getRelayer`) |
-| `clients/relay-signer.ts` | Gasless 트랜잭션 (`sendTransaction`, `signTypedData`) |
-| `models/transactions.ts` | `TransactionRequest`, `TransactionResponse` 타입 |
-| `models/common.ts` | `ApiResponse<T>` 래퍼 |
-
-**OZ Defender 마이그레이션 매핑**:
-
-| OZ Defender SDK | MSQ Relayer SDK |
-|-----------------|-----------------|
-| `new Defender(credentials)` | `new RelayerClient(credentials)` |
-| `client.relayer` | `client.relayer` |
-| `client.relaySigner` | `client.relaySigner` |
-
-### 4.6 packages/examples
-
-**Examples Package** - SDK 사용 예제, 스마트 컨트랙트 배포 예제
+**Examples Package** - API 사용 예제, 스마트 컨트랙트 배포 예제
 
 | 모듈 | 책임 |
 |------|------|
@@ -697,7 +663,7 @@ sequenceDiagram
 |------|------|------|
 | 프로젝트 README | 문서 인덱스, 개발 워크플로우 | `../README.md` |
 | 제품 요구사항 (WHAT/WHY) | 비즈니스 요구사항, 리스크, 성공 지표 | `./product.md` |
-| 기술 스펙 (HOW) | 기술 스택, API, Docker, SDK | `./tech.md` |
+| 기술 스펙 (HOW) | 기술 스택, API, Docker, Queue System | `./tech.md` |
 | Task Master PRD | 태스크 관리용 PRD (마일스톤, 요구사항 상세) | `.taskmaster/docs/prd.txt` |
 
 ---
@@ -706,6 +672,7 @@ sequenceDiagram
 
 | 버전 | 날짜 | 변경사항 |
 |------|------|----------|
+| 7.0 | 2025-12-15 | Phase 2 재설계 - SDK 제거 (API 문서로 대체), Rate Limiting 제거, Queue System 추가 (QUEUE_PROVIDER 패턴) |
 | 6.2 | 2025-12-15 | Docker 구조 확정 - 패키지별 Dockerfile 방식 채택 (packages/api-gateway/Dockerfile), .dockerignore 추가 |
 | 6.1 | 2025-12-15 | Multi-Relayer Pool 아키텍처 추가 - 독립 Private Key 기반 병렬 처리, Load Balancing (Round Robin/Least Load), Manual Scaling (Phase 1), Auto Scaling (Phase 2+) |
 | 6.0 | 2025-12-15 | Phase 1에 Gasless TX 포함 - relay/gasless 모듈 Phase 1으로 이동, ERC2771Forwarder 추가, OZ Monitor/Policy/Quota는 Phase 2+ 유지 |

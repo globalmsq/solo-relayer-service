@@ -6,7 +6,7 @@
 **Blockchain Transaction Relayer System (MSQ Relayer Service)**
 
 ### 문서 버전
-- **버전**: 6.0
+- **버전**: 7.0
 - **최종 수정일**: 2025-12-15
 - **상태**: Phase 1 구현 단계 (Direct + Gasless)
 
@@ -29,7 +29,7 @@ OpenZeppelin Defender 서비스가 2026년 7월에 종료됨에 따라, **OZ 오
 |----------|------|------|
 | **OZ Relayer** | v1.3.0 (Rust, Docker) | 트랜잭션 중계, Nonce 관리, Gas 추정, 재시도 로직 |
 | **OZ Monitor** | v1.1.0 (Rust, Docker) | 블록체인 이벤트 모니터링, 잔액 알림 |
-| **NestJS API Gateway** | 10.x | 인증, 정책 엔진, 할당량 관리, SDK 호환 레이어 |
+| **NestJS API Gateway** | 10.x | 인증, 정책 엔진, 할당량 관리, API 문서화 (Swagger/OpenAPI) |
 
 ### 1.3 핵심 기능
 
@@ -42,6 +42,7 @@ OpenZeppelin Defender 서비스가 2026년 7월에 종료됨에 따라, **OZ 오
 **Phase 2+**:
 | 기능 | 설명 | 구현 방식 |
 |------|------|----------|
+| **Queue System** | 트랜잭션 큐잉 및 순차 처리 | Redis(BullMQ) / AWS SQS (QUEUE_PROVIDER) |
 | **Policy Engine** | Contract/Method Whitelist, Blacklist | NestJS Policy Module |
 | **Quota Manager** | 사용량 제한 및 할당량 관리 | NestJS Quota Module |
 | **Monitor Service** | 블록체인 이벤트 모니터링 | OZ Monitor 활용 |
@@ -125,9 +126,14 @@ OpenZeppelin Defender 서비스가 2026년 7월에 종료됨에 따라, **OZ 오
 
 ### 3.2 Phase 2+: 추후 구현
 
+**Queue System (P1)**:
+- Queue Adapter 패턴 (QUEUE_PROVIDER 설정)
+- Redis + BullMQ 구현 (기본)
+- AWS SQS 구현 (옵션)
+- Job 상태 추적 API
+
 **Policy & Quota (P1)**:
 - Contract Whitelist 검증
-- Rate Limiting
 - Quota Manager
 
 **Monitor Service (P2)**:
@@ -184,6 +190,7 @@ OpenZeppelin Defender 서비스가 2026년 7월에 종료됨에 따라, **OZ 오
 
 ### Phase 2+: 추후 확장 (미정)
 
+- Queue System (Redis/BullMQ 또는 AWS SQS)
 - Policy Engine (Contract/Method Whitelist)
 - Quota Manager
 - OZ Monitor 통합
@@ -232,6 +239,7 @@ OpenZeppelin Defender 서비스가 2026년 7월에 종료됨에 따라, **OZ 오
 
 | 버전 | 날짜 | 변경사항 |
 |------|------|----------|
+| 7.0 | 2025-12-15 | Phase 2 재설계 - Queue System 추가, Rate Limiting 제거, SDK 제거 후 API 문서화로 대체 |
 | 6.0 | 2025-12-15 | Phase 1에 Gasless TX 포함 - 결제 시스템 Gasless 결제 지원, ERC2771Forwarder/EIP-712 검증 Phase 1으로 이동, Policy/Quota는 Phase 2 유지 |
 | 5.0 | 2025-12-14 | Phase 1 중심으로 재정리 - MVP 용어를 Phase 1로 변경, 결제 시스템 연동 목표 |
 | 5.0 | 2025-12-13 | Phase 1 중심으로 간소화 - 결제 시스템 연동 목표, Gasless/Monitor를 Phase 2+로 분리 |

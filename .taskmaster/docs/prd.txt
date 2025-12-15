@@ -14,7 +14,7 @@ OpenZeppelin Defender 서비스 종료(2026년 7월)에 대비하여, **OZ 오�
 ### 1.2 핵심 전략
 - **OZ Relayer (v1.3.0)**: 트랜잭션 중계, Nonce 관리, Gas 추정, 재시도 로직 (Rust, Docker)
 - **OZ Monitor (v1.1.0)**: 블록체인 이벤트 모니터링, 잔액 알림 (Rust, Docker)
-- **NestJS API Gateway**: 인증, 정책 엔진, 할당량 관리, SDK 호환 레이어
+- **NestJS API Gateway**: 인증, 정책 엔진, 할당량 관리, API 문서화 (Swagger/OpenAPI)
 
 ### 1.3 핵심 기능
 
@@ -25,6 +25,7 @@ OpenZeppelin Defender 서비스 종료(2026년 7월)에 대비하여, **OZ 오�
 - Multi-Relayer Pool: 독립 Private Key 기반 병렬 처리 (Scale In/Out 지원)
 
 **Phase 2+**:
+- Queue System: Redis(BullMQ) 또는 AWS SQS 기반 트랜잭션 큐 (QUEUE_PROVIDER 설정)
 - Policy Engine: Contract/Method Whitelist, Blacklist
 - Quota Manager: 사용량 제한 및 할당량 관리
 - Monitor Service: OZ Monitor를 통한 블록체인 이벤트 모니터링 및 알림
@@ -65,7 +66,7 @@ OpenZeppelin Defender 서비스 종료(2026년 7월)에 대비하여, **OZ 오�
 - Framework: NestJS 10.x
 - Blockchain: ethers.js 6.x (서명 검증용)
 - ORM: Prisma 5.x
-- SDK: @openzeppelin/relayer-sdk (호환 인터페이스)
+- Documentation: Swagger/OpenAPI 3.0
 
 ### 2.3 Smart Contracts
 - OpenZeppelin Contracts 5.3.0
@@ -122,9 +123,15 @@ OpenZeppelin Defender 서비스 종료(2026년 7월)에 대비하여, **OZ 오�
 
 ### 3.2 Phase 2+: 추후 구현
 
+**Queue System (P1)**:
+- [ ] Queue Adapter 패턴 (QUEUE_PROVIDER 설정)
+- [ ] Redis + BullMQ 구현 (기본)
+- [ ] AWS SQS 구현 (옵션)
+- [ ] Job 상태 추적 API (`/api/v1/relay/job/{jobId}`)
+- [ ] 202 Accepted 응답 + Job ID 반환
+
 **Policy & Quota (P1)**:
 - [ ] Contract Whitelist 검증
-- [ ] Rate Limiting 미들웨어
 - [ ] Quota Manager
 
 **Monitor Service (P2)**:
@@ -257,12 +264,12 @@ msq-relayer-service/
 │   │   ├── src/
 │   │   │   ├── auth/        # API Key 인증
 │   │   │   ├── relay/       # Direct/Gasless TX 엔드포인트
+│   │   │   ├── queue/       # Queue Adapter (Redis/SQS)
 │   │   │   ├── policy/      # Policy Engine (Whitelist/Blacklist)
 │   │   │   ├── quota/       # Quota Manager
 │   │   │   ├── webhook/     # OZ Relayer Webhook 핸들러
-│   │   │   └── oz-relayer/  # OZ Relayer SDK 래퍼
+│   │   │   └── oz-relayer/  # OZ Relayer 클라이언트
 │   │   └── prisma/          # DB 스키마
-│   ├── sdk/                 # Client SDK (OZ Defender 호환)
 │   ├── contracts/           # Smart Contracts
 │   └── examples/            # 통합 예제
 ├── config/
@@ -287,11 +294,10 @@ msq-relayer-service/
 └── docs/                    # Documentation
 ```
 
-### 7.1 Client SDK (OZ Defender 호환)
-- OZ Defender SDK 호환 API 설계 (마이그레이션 용이성)
-- 단일 진입점 패턴: `new RelayerClient(credentials)`
-- 서브클라이언트 구조: `client.relayer`, `client.relaySigner`
-- ApiResponse<T> 래퍼 응답 포맷
+### 7.1 API 문서화
+- Swagger UI: `/api/docs` (API 테스트 인터페이스)
+- OpenAPI JSON: `/api/docs-json` (스펙 파일)
+- OpenAPI 3.0 스펙 준수
 - 트랜잭션 상태: pending -> sent -> submitted -> inmempool -> mined -> confirmed
 
 ---
@@ -431,13 +437,14 @@ services:
 
 ---
 
-버전: 6.1
+버전: 7.0
 최종 수정일: 2025-12-15
 
 ## HISTORY
 
 | 버전 | 날짜 | 변경사항 |
 |------|------|----------|
+| 7.0 | 2025-12-15 | Phase 2 재설계 - Rate Limiting 제거, Queue System 추가 (QUEUE_PROVIDER: Redis/SQS), SDK 제거 후 API 문서화로 대체 (Swagger/OpenAPI) |
 | 6.1 | 2025-12-15 | Multi-Relayer Pool 추가 - Phase 1에 Relayer Pool 구조 포함, 독립 Private Key 기반 병렬 처리, Load Balancing (Round Robin/Least Load), Manual Scaling Phase 1, Auto Scaling Phase 2+ |
 | 6.0 | 2025-12-15 | Phase 1에 Gasless TX 포함 - 결제 시스템 Gasless 결제 지원, ERC2771Forwarder/EIP-712 검증 Phase 1으로 이동, Policy/Quota는 Phase 2 유지, 5주 마일스톤 |
 | 5.0 | 2025-12-14 | Phase 1 중심으로 재정리 - MVP 용어를 Phase 1로 변경, 결제 시스템 연동 목표, Gasless/Monitor를 Phase 2+로 분리 |
