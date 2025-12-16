@@ -171,4 +171,14 @@ htmlcov/
 
 # Task files
 # tasks.json
-# tasks/ 
+# tasks/
+
+# Cursor IDE
+.cursor/
+
+# Taskmaster local state
+.taskmaster/state.json
+.taskmaster/reports/
+
+# Serena MCP cache
+.serena/cache/
