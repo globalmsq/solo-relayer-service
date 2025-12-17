@@ -1,9 +1,9 @@
 # MSQ Relayer Service - Technical Document
 
 ## Document Information
-- **Version**: 12.3
-- **Last Updated**: 2025-12-16
-- **Status**: Phase 1 Complete (Direct + Gasless + Multi-Relayer Pool)
+- **Version**: 12.4
+- **Last Updated**: 2025-12-17
+- **Status**: Phase 1 Complete (Direct + Gasless + Multi-Relayer Pool + API Key Authentication)
 
 > **Note**: This document covers technical implementation details (HOW).
 > - Business requirements (WHAT/WHY): [product.md](./product.md)
@@ -83,7 +83,114 @@ Defines the technical stack and implementation specifications for the Blockchain
 
 ---
 
-## 3. Smart Contracts Technical Stack
+## 3. Authentication & Security (SPEC-AUTH-001)
+
+### 3.1 API Key Authentication Guard
+
+**Overview**: All API requests to protected endpoints require authentication via the `x-api-key` header. The authentication is enforced by a NestJS Global Guard with fail-fast startup validation.
+
+**Implementation**:
+- File: `packages/relay-api/src/auth/guards/api-key.guard.ts`
+- Type: NestJS `CanActivate` Guard registered as `APP_GUARD`
+- Scope: Global (applies to all routes except those decorated with `@Public()`)
+
+### 3.2 Authentication Mechanism
+
+**Header-based API Key Validation**:
+
+```
+x-api-key: {RELAY_API_KEY}
+```
+
+| Requirement | Specification |
+|-------------|----------------|
+| **Header Name** | `x-api-key` (case-insensitive header name, case-sensitive value) |
+| **Header Value** | Must exactly match `RELAY_API_KEY` environment variable |
+| **Validation** | Strict equality (`===`) - whitespace and case-sensitive |
+| **Source** | Only from HTTP headers (not query parameters or body) |
+| **Failure Response** | HTTP 401 Unauthorized: `{ "message": "Invalid API key", "statusCode": 401 }` |
+
+### 3.3 Public Endpoints (Bypass Authentication)
+
+Certain endpoints bypass API Key authentication via the `@Public()` decorator:
+
+```typescript
+@Public()
+@Get('health')
+getHealth() { ... }
+```
+
+**Current Public Endpoints**:
+- `GET /api/v1/health` - Health check endpoint
+- `GET /relay/pool-status` - OZ Relayer pool status
+
+### 3.4 Constructor Validation (Fail-Fast at Startup)
+
+The API Key Guard validates the `RELAY_API_KEY` environment variable during constructor execution (NestJS DI initialization):
+
+**Validation Rule**:
+- If `RELAY_API_KEY` is not configured or empty, the Guard constructor throws an Error
+- Error message: `"RELAY_API_KEY environment variable is required"`
+- Result: Application fails to start, no downtime in production
+
+```typescript
+constructor(
+  private reflector: Reflector,
+  private configService: ConfigService,
+) {
+  const apiKey = this.configService.get<string>("apiKey");
+  if (!apiKey) {
+    throw new Error("RELAY_API_KEY environment variable is required");
+  }
+}
+```
+
+### 3.5 Security Constraints
+
+| Constraint | Implementation | Rationale |
+|------------|----------------|-----------|
+| **Strict Equality** | Uses `===` operator for comparison | Prevents type coercion vulnerabilities |
+| **Case Sensitivity** | API key values are case-sensitive | Ensures full entropy of the secret |
+| **No Key Logging** | API key values never logged to console or logs | Prevents accidental key exposure in logs |
+| **Generic Error Messages** | Returns "Invalid API key" for all failures | Prevents leaking whether key exists |
+| **No Query Parameter Support** | API key only via x-api-key header | Reduces log exposure (query params often logged) |
+
+### 3.6 Testing
+
+**Test Coverage**: 6 comprehensive unit test scenarios covering all authentication paths:
+
+- ✅ `@Public()` decorated endpoints bypass authentication without API key
+- ✅ Valid API key allows access to protected endpoints
+- ✅ Invalid API key returns 401 Unauthorized
+- ✅ Missing API key header returns 401 Unauthorized
+- ✅ Constructor throws error when RELAY_API_KEY not configured
+- ✅ API key validation is case-sensitive
+
+**Test File**: `packages/relay-api/src/auth/guards/api-key.guard.spec.ts`
+**Coverage Target**: ≥90%
+**Framework**: Jest
+
+### 3.7 Environment Configuration
+
+**Required Environment Variable**:
+
+```bash
+# .env
+RELAY_API_KEY=your-secure-api-key-here
+```
+
+**Configuration Source**: `@nestjs/config` via `configService.get("apiKey")`
+
+### 3.8 Related Specifications
+
+For detailed requirements and acceptance criteria, see:
+- **SPEC Document**: `.moai/specs/SPEC-AUTH-001/spec.md`
+- **Acceptance Criteria**: `.moai/specs/SPEC-AUTH-001/acceptance.md`
+- **Implementation Plan**: `.moai/specs/SPEC-AUTH-001/plan.md`
+
+---
+
+## 4. Smart Contracts Technical Stack
 
 | Category | Technology | Version | Rationale |
 |----------|------------|---------|-----------|
@@ -131,7 +238,7 @@ struct ForwardRequestData {
 
 ---
 
-## 4. Infrastructure Technical Stack
+## 5. Infrastructure Technical Stack
 
 | Category | Local | Production |
 |----------|-------|------------|
@@ -147,9 +254,9 @@ struct ForwardRequestData {
 
 ---
 
-## 5. API Specifications
+## 6. API Specifications
 
-> **API Response Format Standard**: All success responses follow the standard format below. For error response format, refer to Section 5.6.
+> **API Response Format Standard**: All success responses follow the standard format below. For error response format, refer to Section 6.6.
 >
 > ```json
 > {
@@ -689,7 +796,7 @@ GET /api/v1/relay/history?page=1&limit=20&sort=createdAt&order=desc
 
 ---
 
-## 6. EIP-712 TypedData Structure
+## 7. EIP-712 TypedData Structure
 
 ```typescript
 // OZ ERC2771Forwarder EIP-712 Domain and Types
@@ -715,7 +822,7 @@ const FORWARD_REQUEST_TYPES = {
 
 ---
 
-## 7. Policy Configuration (Phase 2+)
+## 8. Policy Configuration (Phase 2+)
 
 ### 7.1 Policy Configuration File Structure (NestJS API Gateway)
 
@@ -754,7 +861,7 @@ policies:
 
 ---
 
-## 8. Smart Contract vs Backend vs OZ Role Distribution
+## 9. Smart Contract vs Backend vs OZ Role Distribution
 
 | Security Feature | OZ Forwarder (On-chain) | NestJS API Gateway | OZ Relayer |
 |------------------|-------------------------|-------------------|------------|
@@ -771,7 +878,7 @@ policies:
 
 ---
 
-## 9. Security Requirements
+## 10. Security Requirements
 
 | Item | Requirement | Implementation Location |
 |------|-------------|------------------------|
@@ -822,7 +929,7 @@ packages/relay-api/src/auth/
 
 ---
 
-## 10. Package Dependencies
+## 11. Package Dependencies
 
 ### 10.1 API Gateway (NestJS)
 
@@ -867,7 +974,7 @@ packages/relay-api/src/auth/
 
 ---
 
-## 11. OZ Relayer Configuration
+## 12. OZ Relayer Configuration
 
 ### 11.1 config.json Example
 
@@ -995,7 +1102,7 @@ relayer_pool:
 
 ---
 
-## 12. OZ Monitor Configuration (Phase 2+)
+## 13. OZ Monitor Configuration (Phase 2+)
 
 ### 12.1 Network Configuration Example
 
@@ -1040,7 +1147,7 @@ relayer_pool:
 
 ---
 
-## 13. Docker Compose Configuration (v5.0 - SPEC-INFRA-001)
+## 14. Docker Compose Configuration (v5.0 - SPEC-INFRA-001)
 
 > **Docker Build Strategy**: Multi-stage build approach (docker/ directory consolidation)
 > - Location: `docker/docker-compose.yaml` (local development, includes Hardhat Node)
@@ -1222,7 +1329,7 @@ volumes:
 
 ---
 
-## 14. Hardhat Configuration
+## 15. Hardhat Configuration
 
 ```typescript
 // hardhat.config.ts
@@ -1282,7 +1389,7 @@ export default config;
 
 ---
 
-## 15. Queue System (Phase 2+)
+## 16. Queue System (Phase 2+)
 
 > **QUEUE_PROVIDER Pattern**: Selectively use Redis+BullMQ or AWS SQS depending on environment.
 
@@ -1423,7 +1530,7 @@ const queueUrl = process.env.AWS_SQS_QUEUE_URL;
 
 ---
 
-## 16. License Considerations
+## 17. License Considerations
 
 ### 16.1 OZ Relayer / OZ Monitor: AGPL-3.0
 
