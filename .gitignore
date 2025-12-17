@@ -150,6 +150,11 @@ coverage.json
 *_secret=*
 *_token=*
 
+# Allow source code files with 'key' in name
+!**/*-key.guard.ts
+!**/*-key.guard.spec.ts
+!**/api-key*.ts
+
 # ===========================================
 # MoAI Directory Management
 # ===========================================
