@@ -1,5 +1,5 @@
 # Multi-stage Dockerfile for MSQ Relayer Service
-# Builds api-gateway and hardhat-node targets
+# Builds relay-api and hardhat-node targets
 
 # ============================================================================
 # BASE STAGE: Common dependencies and setup
@@ -24,15 +24,15 @@ COPY pnpm-lock.yaml* ./
 RUN pnpm install --frozen-lockfile || pnpm install
 
 # ============================================================================
-# API-GATEWAY TARGET: NestJS application
+# RELAY-API TARGET: NestJS application
 # ============================================================================
-FROM base AS api-gateway
+FROM base AS relay-api
 
-# Copy API Gateway source
-COPY packages/api-gateway ./packages/api-gateway
+# Copy Relay API source
+COPY packages/relay-api ./packages/relay-api
 
 # Set working directory
-WORKDIR /app/packages/api-gateway
+WORKDIR /app/packages/relay-api
 
 # Install package-specific dependencies if needed
 RUN pnpm install

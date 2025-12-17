@@ -21,7 +21,7 @@ docker compose -f docker/docker-compose.yaml up -d
 curl http://localhost:3000/api/v1/health
 
 # View logs
-docker compose -f docker/docker-compose.yaml logs -f api-gateway
+docker compose -f docker/docker-compose.yaml logs -f relay-api
 
 # Stop all services
 docker compose -f docker/docker-compose.yaml down
@@ -108,7 +108,7 @@ For detailed documentation, see the [docs/](./docs/) directory:
 msq-relayer-service/
 ├── docker/                     # Docker files consolidated directory
 ├── packages/
-│   ├── api-gateway/            # NestJS API Gateway
+│   ├── relay-api/              # NestJS Relay API Gateway
 │   ├── contracts/              # Smart Contracts (Hardhat)
 │   └── examples/               # Usage examples
 ├── docs/                       # Documentation

@@ -88,7 +88,7 @@ NestJS 10.x 기반 API Gateway에 5개 핵심 모듈(auth, relay, oz-relayer, co
 ### 디렉토리 구조
 
 ```
-packages/api-gateway/src/
+packages/relay-api/src/
 ├── app.module.ts               # 루트 모듈 (모든 모듈 임포트)
 ├── main.ts                     # 엔트리 포인트
 ├── auth/                       # 인증 모듈
@@ -205,7 +205,7 @@ export class AppConfigModule {}
 export default () => ({
   port: parseInt(process.env.PORT, 10) || 3000,
   nodeEnv: process.env.NODE_ENV || 'development',
-  apiKey: process.env.API_GATEWAY_API_KEY,
+  apiKey: process.env.RELAY_API_KEY,
   redis: {
     url: process.env.REDIS_URL || 'redis://localhost:6379',
   },
@@ -295,11 +295,11 @@ export class AppModule {}
 - **Phase 1**: Prisma, MySQL, Webhook, Queue, Policy Engine 제외
 
 ### 보안 제약사항
-- **API Key**: 환경변수 `API_GATEWAY_API_KEY` 단일 키 방식
+- **API Key**: 환경변수 `RELAY_API_KEY` 단일 키 방식
 - **Public 엔드포인트**: Health Check만 `@Public()` 데코레이터 적용
 
 ### 파일 위치 제약사항
-- **모듈 위치**: `packages/api-gateway/src/` 하위
+- **모듈 위치**: `packages/relay-api/src/` 하위
 - **설정 파일**: `config/` 모듈에 집중
 
 ---
@@ -315,7 +315,7 @@ export class AppModule {}
 ### 환경 의존성
 - **Docker Compose**: SPEC-INFRA-001 완료 상태
 - **환경변수**:
-  - `API_GATEWAY_API_KEY`: API Key 인증
+  - `RELAY_API_KEY`: API Key 인증
   - `REDIS_URL`: Redis 연결 URL
   - `RPC_URL`: Blockchain RPC 엔드포인트
 
@@ -374,7 +374,7 @@ export class AppModule {}
 **When**: `curl http://localhost:3000/api/v1/health` 요청
 **Then**:
 1. HTTP 200 OK 응답
-2. JSON 형식 응답 (`{ "api-gateway": "healthy", ... }`)
+2. JSON 형식 응답 (`{ "relay-api": "healthy", ... }`)
 3. 인증 없이 접근 가능 (`@Public()` 적용)
 
 ### Given/When/Then 시나리오 3: Lint 및 Build

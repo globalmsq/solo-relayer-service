@@ -24,7 +24,7 @@ Build Docker Compose-based Multi-Relayer Pool, Redis, and Hardhat Node infrastru
 
 **Deliverables**:
 - Create `docker/` directory
-- `docker/Dockerfile.packages` (multi-stage build - api-gateway tsx execution, sdk target)
+- `docker/Dockerfile.packages` (multi-stage build - relay-api tsx execution, sdk target)
 - `docker/docker-compose.yaml` (main configuration, includes Hardhat Node, Named Volume settings)
 - `docker/docker-compose-amoy.yaml` (Polygon Amoy Testnet configuration)
 - Docker Compose volume declaration (`msq-relayer-redis-data` Named Volume)
@@ -64,7 +64,7 @@ Build Docker Compose-based Multi-Relayer Pool, Redis, and Hardhat Node infrastru
 - **Apply YAML Anchors pattern** (reuse repetitive environment variables)
 - Environment variables directly specified in docker-compose.yaml
   - RUST_LOG=info
-  - **API_GATEWAY_API_KEY**=local-dev-api-key (single environment variable)
+  - **RELAY_API_KEY**=local-dev-api-key (single environment variable)
   - KEYSTORE_PASSPHRASE=hardhat-test-passphrase
   - RPC_URL=http://hardhat-node:8545
 - Relayer healthcheck configuration (**standardized path**: `/api/v1/health`)
@@ -74,7 +74,7 @@ Build Docker Compose-based Multi-Relayer Pool, Redis, and Hardhat Node infrastru
 ```yaml
 x-common-env: &common-env
   RUST_LOG: info
-  API_GATEWAY_API_KEY: local-dev-api-key
+  RELAY_API_KEY: local-dev-api-key
   KEYSTORE_PASSPHRASE: hardhat-test-passphrase
   REDIS_HOST: redis
   REDIS_PORT: 6379
@@ -149,7 +149,7 @@ services:
 ```
 msq-relayer-service/
 ├── docker/                          # Docker-related files only directory
-│   ├── Dockerfile.packages          # Multi-stage build (api-gateway tsx, sdk targets)
+│   ├── Dockerfile.packages          # Multi-stage build (relay-api tsx, sdk targets)
 │   ├── docker-compose.yaml          # Main configuration (includes Hardhat Node)
 │   ├── docker-compose-amoy.yaml     # Polygon Amoy Testnet configuration
 │   ├── config/
@@ -168,7 +168,7 @@ msq-relayer-service/
 ├── scripts/
 │   └── create-keystore.js           # Keystore generation script (ethers.js)
 └── packages/
-    ├── api-gateway/                 # NestJS API Gateway
+    ├── relay-api/                 # NestJS API Gateway
     └── sdk/                         # Client SDK
 ```
 
@@ -186,9 +186,9 @@ COPY package*.json ./
 RUN npm ci
 
 # API Gateway target (tsx execution)
-FROM base AS api-gateway
-COPY packages/api-gateway ./packages/api-gateway
-WORKDIR /app/packages/api-gateway
+FROM base AS relay-api
+COPY packages/relay-api ./packages/relay-api
+WORKDIR /app/packages/relay-api
 RUN npm install tsx
 EXPOSE 3000
 CMD ["npx", "tsx", "src/main.ts"]
@@ -202,11 +202,11 @@ CMD ["npx", "tsx", "src/main.ts"]
 **Target Specification in Docker Compose**:
 ```yaml
 services:
-  api-gateway:
+  relay-api:
     build:
       context: ..                      # Project root
       dockerfile: docker/Dockerfile.packages
-      target: api-gateway              # Target specification
+      target: relay-api              # Target specification
     ports:
       - "3000:3000"
 ```
@@ -253,7 +253,7 @@ Each Relayer has an independent configuration file:
     },
     "notifications": [{
       "type": "webhook",
-      "url": "http://api-gateway:3000/api/v1/webhook/relayer"
+      "url": "http://relay-api:3000/api/v1/webhook/relayer"
     }]
   }]
 }
@@ -405,7 +405,7 @@ docker/keys/
 │         ┌──────┴───────┐                                        │
 │         │              │                                        │
 │  ┌──────▼─────┐  ┌────▼─────────┐                              │
-│  │ api-gateway │  │     sdk      │                              │
+│  │ relay-api │  │     sdk      │                              │
 │  │   Target    │  │   Target     │                              │
 │  │             │  │              │                              │
 │  │ - Build     │  │ - Build      │                              │
@@ -417,11 +417,11 @@ docker/keys/
 └─────────────────────────────────────────────────────────────────┘
 
 Docker Compose usage example:
-  api-gateway:
+  relay-api:
     build:
       context: ..
       dockerfile: docker/Dockerfile.packages
-      target: api-gateway  <- Target specification
+      target: relay-api  <- Target specification
 ```
 
 ### Data Flow
@@ -547,7 +547,7 @@ services:
   oz-relayer-1:
     environment:
       - RUST_LOG=info
-      - API_GATEWAY_API_KEY=local-dev-api-key
+      - RELAY_API_KEY=local-dev-api-key
       - KEYSTORE_PASSPHRASE=hardhat-test-passphrase
       - RPC_URL=http://hardhat-node:8545
       - REDIS_HOST=redis
@@ -556,7 +556,7 @@ services:
   oz-relayer-2:
     environment:
       - RUST_LOG=info
-      - API_GATEWAY_API_KEY=local-dev-api-key
+      - RELAY_API_KEY=local-dev-api-key
       - KEYSTORE_PASSPHRASE=hardhat-test-passphrase
       - RPC_URL=http://hardhat-node:8545
       - REDIS_HOST=redis
@@ -565,7 +565,7 @@ services:
   oz-relayer-3:
     environment:
       - RUST_LOG=info
-      - API_GATEWAY_API_KEY=local-dev-api-key
+      - RELAY_API_KEY=local-dev-api-key
       - KEYSTORE_PASSPHRASE=hardhat-test-passphrase
       - RPC_URL=http://hardhat-node:8545
       - REDIS_HOST=redis
@@ -579,7 +579,7 @@ services:
   oz-relayer-1:
     environment:
       - RUST_LOG=info
-      - API_GATEWAY_API_KEY=local-dev-api-key
+      - RELAY_API_KEY=local-dev-api-key
       - KEYSTORE_PASSPHRASE=amoy-test-passphrase
       - RPC_URL=https://polygon-amoy.g.alchemy.com/v2/YOUR_API_KEY
       - REDIS_HOST=redis
@@ -592,7 +592,7 @@ services:
 
 ### Configuration Files
 - [ ] Create `docker/` directory
-- [ ] `docker/Dockerfile.packages` (multi-stage build - api-gateway tsx, sdk targets)
+- [ ] `docker/Dockerfile.packages` (multi-stage build - relay-api tsx, sdk targets)
 - [ ] `docker/docker-compose.yaml` (main configuration, includes Hardhat Node, Named Volume settings)
 - [ ] `docker/docker-compose-amoy.yaml` (Polygon Amoy Testnet)
 - [ ] Docker Compose volume declaration (`msq-relayer-redis-data`)
@@ -675,12 +675,12 @@ services:
 
 | Version | Date | Changes | Author |
 |---------|------|---------|--------|
-| 1.8.0 | 2025-12-15 | Unify environment variable naming - API_KEY to API_GATEWAY_API_KEY (consistency with tech.md, spec.md), update PRD reference version (v6.1 to v12.0) | manager-spec |
+| 1.8.0 | 2025-12-15 | Unify environment variable naming - API_KEY to RELAY_API_KEY (consistency with tech.md, spec.md), update PRD reference version (v6.1 to v12.0) | manager-spec |
 | 1.7.0 | 2025-12-15 | Document version sync - align with prd.txt v12.0, docs v12.0 | manager-spec |
 | 1.0.0 | 2025-12-15 | Initial draft | manager-spec |
 | 1.1.0 | 2025-12-15 | Remove .env, add Hardhat Node, separate Amoy configuration, add sample keys | manager-spec |
 | 1.2.0 | 2025-12-15 | Add Docker directory structure, add multi-stage Dockerfile.packages, update architecture diagram | manager-spec |
-| 1.3.0 | 2025-12-15 | Change volume strategy (remove volumes/, use Named Volume), apply api-gateway tsx execution method, update architecture diagram | manager-spec |
+| 1.3.0 | 2025-12-15 | Change volume strategy (remove volumes/, use Named Volume), apply relay-api tsx execution method, update architecture diagram | manager-spec |
 | 1.4.0 | 2025-12-15 | Move keys directory under docker/, add OZ Relayer local/aws_kms signer configuration, add create-keystore.js script, add environment-specific Key Management strategy table | manager-spec |
 | 1.5.0 | 2025-12-15 | Remove SDK target, add API documentation requirements (Swagger/OpenAPI) | manager-spec |
-| 1.6.0 | 2025-12-15 | **Reflect Phase separation strategy**: Emphasize Redis Phase 1 priority in Milestone 2, add YAML Anchors pattern and API_GATEWAY_API_KEY single environment variable in Milestone 3, standardize Health Check path (/api/v1/health), add Phase 2+ Milestone (MySQL/Monitoring profile activation) | manager-spec |
+| 1.6.0 | 2025-12-15 | **Reflect Phase separation strategy**: Emphasize Redis Phase 1 priority in Milestone 2, add YAML Anchors pattern and RELAY_API_KEY single environment variable in Milestone 3, standardize Health Check path (/api/v1/health), add Phase 2+ Milestone (MySQL/Monitoring profile activation) | manager-spec |

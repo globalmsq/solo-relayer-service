@@ -146,7 +146,7 @@ describe("HealthService", () => {
       const result = await service.getSystemHealth();
 
       expect(result.status).toBe("healthy");
-      expect(result.services["api-gateway"]).toBe("healthy");
+      expect(result.services["relay-api"]).toBe("healthy");
       expect(result.services.redis).toBe("healthy");
       expect(result.timestamp).toBeDefined();
     });
@@ -167,7 +167,7 @@ describe("HealthService", () => {
       expect(result).toHaveProperty("status");
       expect(result).toHaveProperty("timestamp");
       expect(result).toHaveProperty("services");
-      expect(result.services).toHaveProperty("api-gateway");
+      expect(result.services).toHaveProperty("relay-api");
       expect(result.services).toHaveProperty("oz-relayer-pool");
       expect(result.services).toHaveProperty("redis");
     });

@@ -36,7 +36,7 @@ Build Docker Compose-based infrastructure for MSQ Relayer Service's local develo
 
 **U-INFRA-001**: The system shall manage all services through Docker Compose.
 
-**U-INFRA-002**: The system shall manage network configuration by explicitly specifying environment variables in the docker-compose.yaml file (.env file usage prohibited). A single environment variable API_GATEWAY_API_KEY shall be used for API Gateway access.
+**U-INFRA-002**: The system shall manage network configuration by explicitly specifying environment variables in the docker-compose.yaml file (.env file usage prohibited). A single environment variable RELAY_API_KEY shall be used for API Gateway access.
 
 **U-INFRA-003**: The system shall provide Hardhat Node as the default local blockchain.
 
@@ -93,7 +93,7 @@ Build Docker Compose-based infrastructure for MSQ Relayer Service's local develo
 **Directory Structure**:
 ```
 docker/
-├── Dockerfile.packages          # Multi-stage build (api-gateway, sdk targets)
+├── Dockerfile.packages          # Multi-stage build (relay-api, sdk targets)
 ├── docker-compose.yaml          # Main configuration (includes Hardhat Node)
 ├── docker-compose-amoy.yaml     # Polygon Amoy Testnet configuration
 ├── config/
@@ -134,9 +134,9 @@ RUN npm ci
 
 **API Gateway Target**:
 ```dockerfile
-FROM base AS api-gateway
-COPY packages/api-gateway ./packages/api-gateway
-WORKDIR /app/packages/api-gateway
+FROM base AS relay-api
+COPY packages/relay-api ./packages/relay-api
+WORKDIR /app/packages/relay-api
 RUN npm install tsx
 EXPOSE 3000
 CMD ["npx", "tsx", "src/main.ts"]
@@ -145,11 +145,11 @@ CMD ["npx", "tsx", "src/main.ts"]
 **Docker Compose Build Target Usage**:
 ```yaml
 services:
-  api-gateway:
+  relay-api:
     build:
       context: ..
       dockerfile: docker/Dockerfile.packages
-      target: api-gateway
+      target: relay-api
     ports:
       - "3000:3000"
 ```
@@ -172,7 +172,7 @@ services:
 
 **Phase 1 Service Configuration** (Default execution):
 1. **hardhat-node**: Hardhat Node (local blockchain)
-2. **api-gateway**: API Gateway (NestJS, includes Swagger documentation)
+2. **relay-api**: API Gateway (NestJS, includes Swagger documentation)
 3. **oz-relayer-1**: OZ Relayer v1.3.0 (Primary)
 4. **oz-relayer-2**: OZ Relayer v1.3.0 (Secondary)
 5. **oz-relayer-3**: OZ Relayer v1.3.0 (Tertiary)
@@ -226,7 +226,7 @@ healthcheck:
 
 **Environment Variables** (directly specified in docker-compose.yaml):
 - `RUST_LOG`: info
-- `API_GATEWAY_API_KEY`: local-dev-api-key (single key for API Gateway access)
+- `RELAY_API_KEY`: local-dev-api-key (single key for API Gateway access)
 - `KEYSTORE_PASSPHRASE`: hardhat-test-passphrase
 - `RPC_URL`: http://hardhat-node:8545 (local) or Polygon Amoy RPC (Amoy config file)
 
@@ -234,7 +234,7 @@ healthcheck:
 ```yaml
 x-common-env: &common-env
   RUST_LOG: info
-  API_GATEWAY_API_KEY: local-dev-api-key
+  RELAY_API_KEY: local-dev-api-key
   KEYSTORE_PASSPHRASE: hardhat-test-passphrase
   REDIS_HOST: redis
   REDIS_PORT: 6379
@@ -614,7 +614,7 @@ docker/keys/
 ## Completion Checklist
 
 - [x] Docker Compose configuration files implemented (docker-compose.yaml, docker-compose-amoy.yaml)
-- [x] Multi-stage Dockerfile.packages for api-gateway target
+- [x] Multi-stage Dockerfile.packages for relay-api target
 - [x] OZ Relayer v1.3.0 pool configuration (3 relayers with independent keys)
 - [x] Redis 8.0-alpine with persistence (AOF) and healthcheck
 - [x] Hardhat Node local blockchain integration
@@ -647,10 +647,10 @@ docker/keys/
 | 1.0.0 | 2025-12-15 | Initial draft (Docker Compose, OZ Relayer Pool, Redis) | manager-spec |
 | 1.1.0 | 2025-12-15 | Remove .env, add Hardhat Node, Amoy testnet support, add sample keys | manager-spec |
 | 1.2.0 | 2025-12-15 | Add Docker directory structure, add multi-stage Dockerfile.packages, specify file location constraints | manager-spec |
-| 1.3.0 | 2025-12-15 | Change volume strategy (remove volumes/ directory, use Named Volume, add prefix), apply api-gateway tsx execution method | manager-spec |
+| 1.3.0 | 2025-12-15 | Change volume strategy (remove volumes/ directory, use Named Volume, add prefix), apply relay-api tsx execution method | manager-spec |
 | 1.4.0 | 2025-12-15 | Move keys directory under docker/ (keys-example/, keys/), add OZ Relayer local/aws_kms signer configuration, add create-keystore.js script, add environment-specific Key Management strategy table | manager-spec |
 | 1.5.0 | 2025-12-15 | Remove SDK target (unnecessary), add API documentation requirements (Swagger/OpenAPI) | manager-spec |
 | 1.6.0 | 2025-12-15 | Remove Vault reference (Key Management: local keystore to AWS KMS), add MySQL (for Transaction History) | user |
-| 1.7.0 | 2025-12-15 | **Apply Phase separation strategy**: Move MySQL to Phase 2+ (profile activation), apply API_GATEWAY_API_KEY single environment variable, add YAML Anchors pattern, standardize Health Check path (/api/v1/health), change Redis version to 8.0-alpine, specify Phase 1 services (hardhat-node, api-gateway, oz-relayer 1~3, redis) | manager-spec |
+| 1.7.0 | 2025-12-15 | **Apply Phase separation strategy**: Move MySQL to Phase 2+ (profile activation), apply RELAY_API_KEY single environment variable, add YAML Anchors pattern, standardize Health Check path (/api/v1/health), change Redis version to 8.0-alpine, specify Phase 1 services (hardhat-node, relay-api, oz-relayer 1~3, redis) | manager-spec |
 | 1.8.0 | 2025-12-15 | Update related document PRD version reference (v6.1 -> v12.0) | user |
 | 1.9.0 | 2025-12-16 | **Mark SPEC as completed** - Phase 1 infrastructure implementation complete with all EARS requirements satisfied, add completion checklist | manager-docs |

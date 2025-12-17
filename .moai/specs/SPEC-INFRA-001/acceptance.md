@@ -77,7 +77,7 @@ test ! -d docker/volumes && echo "✓ volumes/ directory does not exist (using N
 
 ### Scenario 0B: Dockerfile Target Verification
 
-**Purpose**: Verify that Dockerfile.packages is written with api-gateway target
+**Purpose**: Verify that Dockerfile.packages is written with relay-api target
 
 #### Given-When-Then
 
@@ -86,12 +86,12 @@ test ! -d docker/volumes && echo "✓ volumes/ directory does not exist (using N
 
 **When**:
 ```bash
-grep -E "^FROM .* AS (base|api-gateway)" docker/Dockerfile.packages
+grep -E "^FROM .* AS (base|relay-api)" docker/Dockerfile.packages
 ```
 
 **Then**:
 - `FROM node:20-alpine AS base` stage must exist
-- `FROM base AS api-gateway` target must exist
+- `FROM base AS relay-api` target must exist
 
 **Verification Method**:
 ```bash
@@ -100,46 +100,46 @@ grep "FROM node:20-alpine AS base" docker/Dockerfile.packages
 # Expected output: FROM node:20-alpine AS base
 
 # Check API Gateway target
-grep "FROM base AS api-gateway" docker/Dockerfile.packages
-# Expected output: FROM base AS api-gateway
+grep "FROM base AS relay-api" docker/Dockerfile.packages
+# Expected output: FROM base AS relay-api
 ```
 
 ---
 
-### Scenario 0C: api-gateway Target Build Success (tsx execution)
+### Scenario 0C: relay-api Target Build Success (tsx execution)
 
-**Purpose**: Verify that api-gateway target builds successfully with tsx
+**Purpose**: Verify that relay-api target builds successfully with tsx
 
 #### Given-When-Then
 
 **Given**:
 - `docker/Dockerfile.packages` file exists
-- `packages/api-gateway/` directory exists
+- `packages/relay-api/` directory exists
 
 **When**:
 ```bash
 cd docker
-docker build -f Dockerfile.packages --target api-gateway -t msq-api-gateway:test ..
+docker build -f Dockerfile.packages --target relay-api -t msq-relay-api:test ..
 ```
 
 **Then**:
 - Build must succeed without errors
-- `msq-api-gateway:test` image must be created
+- `msq-relay-api:test` image must be created
 - Port 3000 must be EXPOSEd in the image
 - CMD must be set to `["npx", "tsx", "src/main.ts"]`
 
 **Verification Method**:
 ```bash
 # Check image creation
-docker images | grep "msq-api-gateway"
-# Expected output: msq-api-gateway  test  <IMAGE_ID>  <CREATED>  <SIZE>
+docker images | grep "msq-relay-api"
+# Expected output: msq-relay-api  test  <IMAGE_ID>  <CREATED>  <SIZE>
 
 # Check port exposure
-docker inspect msq-api-gateway:test | grep -i "exposedports" -A 3
+docker inspect msq-relay-api:test | grep -i "exposedports" -A 3
 # Expected output: "ExposedPorts": { "3000/tcp": {} }
 
 # Check CMD
-docker inspect msq-api-gateway:test | grep -i "cmd" -A 5
+docker inspect msq-relay-api:test | grep -i "cmd" -A 5
 # Expected output: "Cmd": ["npx", "tsx", "src/main.ts"]
 ```
 
@@ -205,7 +205,7 @@ docker-compose up -d
 ```
 
 **Then**:
-- **Only Phase 1 core services run**: hardhat-node, api-gateway, oz-relayer-1, oz-relayer-2, oz-relayer-3, redis
+- **Only Phase 1 core services run**: hardhat-node, relay-api, oz-relayer-1, oz-relayer-2, oz-relayer-3, redis
 - **MySQL/Monitoring services not running**: mysql, oz-monitor, prometheus, grafana must not be running
 - All Phase 1 containers must be running within 30 seconds
 - Hardhat Node must run with Chain ID 31337
@@ -214,7 +214,7 @@ docker-compose up -d
 **Verification Method**:
 ```bash
 docker-compose ps
-# Verify Phase 1 services (hardhat-node, api-gateway, oz-relayer-1~3, redis) are "Up"
+# Verify Phase 1 services (hardhat-node, relay-api, oz-relayer-1~3, redis) are "Up"
 # MySQL/Monitoring services should not be in the list
 
 docker-compose logs hardhat-node
@@ -225,7 +225,7 @@ docker-compose logs
 
 # Check Phase 1 service count (6)
 docker-compose ps | grep "Up" | wc -l
-# Expected output: 6 (hardhat-node, api-gateway, oz-relayer-1, oz-relayer-2, oz-relayer-3, redis)
+# Expected output: 6 (hardhat-node, relay-api, oz-relayer-1, oz-relayer-2, oz-relayer-3, redis)
 ```
 
 ---
@@ -667,7 +667,7 @@ grep -A 10 "x-common-env:" docker/docker-compose.yaml
 
 **Then**:
 - `x-common-env: &common-env` anchor must be defined
-- `RUST_LOG`, `API_GATEWAY_API_KEY`, `KEYSTORE_PASSPHRASE`, `REDIS_HOST`, `REDIS_PORT` environment variables must be included
+- `RUST_LOG`, `RELAY_API_KEY`, `KEYSTORE_PASSPHRASE`, `REDIS_HOST`, `REDIS_PORT` environment variables must be included
 - oz-relayer services must reuse common environment variables with `<<: *common-env` pattern
 
 **Verification Method**:
@@ -680,9 +680,9 @@ grep "x-common-env: &common-env" docker/docker-compose.yaml
 grep "<<: \*common-env" docker/docker-compose.yaml
 # Expected output: Referenced from oz-relayer-1, oz-relayer-2, oz-relayer-3 services
 
-# Check API_GATEWAY_API_KEY environment variable
-grep "API_GATEWAY_API_KEY" docker/docker-compose.yaml
-# Expected output: API_GATEWAY_API_KEY: local-dev-api-key (single environment variable)
+# Check RELAY_API_KEY environment variable
+grep "RELAY_API_KEY" docker/docker-compose.yaml
+# Expected output: RELAY_API_KEY: local-dev-api-key (single environment variable)
 ```
 
 ---
@@ -710,7 +710,7 @@ grep -A 5 "profiles:" docker/docker-compose.yaml
 ```bash
 # Default execution (exclude profile services)
 docker-compose config --services
-# Expected output: hardhat-node, api-gateway, oz-relayer-1, oz-relayer-2, oz-relayer-3, redis (mysql/monitoring excluded)
+# Expected output: hardhat-node, relay-api, oz-relayer-1, oz-relayer-2, oz-relayer-3, redis (mysql/monitoring excluded)
 
 # MySQL profile execution
 docker-compose --profile=mysql config --services
@@ -899,7 +899,7 @@ git status --ignored | grep "keystore-prod.json"
 | 1.0.0 | 2025-12-15 | Initial draft | manager-spec |
 | 1.1.0 | 2025-12-15 | Add Hardhat Node scenario, Amoy testnet scenario, sample key verification | manager-spec |
 | 1.2.0 | 2025-12-15 | Add Docker directory structure scenario, multi-stage build verification, reflect docker/ path | manager-spec |
-| 1.3.0 | 2025-12-15 | Remove volumes/ directory, add Named Volume verification, add api-gateway tsx execution verification, add volume prefix verification scenario | manager-spec |
+| 1.3.0 | 2025-12-15 | Remove volumes/ directory, add Named Volume verification, add relay-api tsx execution verification, add volume prefix verification scenario | manager-spec |
 | 1.4.0 | 2025-12-15 | Move keys directory under docker/ (keys-example/, keys/), OZ Relayer local signer configuration verification, add create-keystore.js script scenario | manager-spec |
 | 1.5.0 | 2025-12-15 | Remove SDK target verification, API documentation verification will be conducted in separate SPEC | manager-spec |
 | 1.6.0 | 2025-12-15 | **Reflect Phase separation strategy**: Add Phase 1 services only execution verification in Scenario 1, standardize Health Check path (/api/v1/health) in Scenario 3, add YAML Anchors pattern verification in Scenario 11C, add Phase 2+ profile verification in Scenario 11D, modify Scenario 12 integration test to Phase 1 focused, add Phase separation checklist in Quality Gates | manager-spec |

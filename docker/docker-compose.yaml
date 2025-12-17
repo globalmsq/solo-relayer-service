@@ -21,7 +21,7 @@ x-relayer-common: &relayer-common
 
 x-relayer-env: &relayer-env
   RUST_LOG: info
-  API_GATEWAY_API_KEY: local-dev-api-key
+  RELAY_API_KEY: local-dev-api-key
   KEYSTORE_PASSPHRASE: hardhat-test-passphrase
   WEBHOOK_SIGNING_KEY: local-dev-webhook-signing-key-32ch
   RPC_URL: http://hardhat-node:8545
@@ -70,12 +70,12 @@ services:
       - msq-relayer-network
     restart: unless-stopped
 
-  # === API Gateway (NestJS) ===
-  api-gateway:
+  # === Relay API (NestJS) ===
+  relay-api:
     build:
       context: ..
       dockerfile: docker/Dockerfile.packages
-      target: api-gateway
+      target: relay-api
     command: ["pnpm", "run", "start"]
     ports:
       - "3000:3000"
@@ -88,7 +88,7 @@ services:
       NODE_ENV: development
       REDIS_URL: redis://redis:6379
       RPC_URL: http://hardhat-node:8545
-      API_GATEWAY_API_KEY: local-dev-api-key
+      RELAY_API_KEY: local-dev-api-key
     networks:
       - msq-relayer-network
     restart: unless-stopped

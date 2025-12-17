@@ -42,7 +42,7 @@ NestJS 10.x 기반 API Gateway에 5개 핵심 모듈(auth, relay, oz-relayer, co
 
 **의존성 이유**:
 - `config`가 먼저 로드되어야 다른 모듈이 환경변수 접근 가능
-- `auth`는 `config`의 `API_GATEWAY_API_KEY` 환경변수 필요
+- `auth`는 `config`의 `RELAY_API_KEY` 환경변수 필요
 - `relay`는 `oz-relayer` 서비스와 `auth` Guard 필요
 
 ---
@@ -102,7 +102,7 @@ NestJS 10.x 기반 API Gateway에 5개 핵심 모듈(auth, relay, oz-relayer, co
 1. `auth/` 디렉토리 생성
 2. `guards/` 디렉토리 및 `api-key.guard.ts` 스텁 생성
    - `ConfigService` 의존성 주입
-   - `API_GATEWAY_API_KEY` 환경변수 검증 로직 (스텁)
+   - `RELAY_API_KEY` 환경변수 검증 로직 (스텁)
 3. `decorators/` 디렉토리 및 `public.decorator.ts` 생성
    - `@Public()` 데코레이터 정의
 4. `auth.module.ts` 작성
@@ -319,7 +319,7 @@ NestJS 10.x 기반 API Gateway에 5개 핵심 모듈(auth, relay, oz-relayer, co
 ### 생성될 파일
 
 ```
-packages/api-gateway/src/
+packages/relay-api/src/
 ├── app.module.ts               (수정)
 ├── auth/
 │   ├── auth.module.ts          (신규)

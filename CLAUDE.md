@@ -703,7 +703,7 @@ pnpm add -D typescript
 pnpm run build
 
 # Run workspace script
-pnpm --filter @msq-relayer/api-gateway run dev
+pnpm --filter @msq-relayer/relay-api run dev
 ```
 
 ---

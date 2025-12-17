@@ -33,7 +33,7 @@ export class HealthController {
         status: "healthy",
         timestamp: "2025-12-16T10:30:00.000Z",
         services: {
-          "api-gateway": "healthy",
+          "relay-api": "healthy",
           "oz-relayer-pool": {
             status: "healthy",
             healthyCount: 3,

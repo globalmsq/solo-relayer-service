@@ -152,7 +152,7 @@ Environment variables are specified directly in `docker/docker-compose.yaml`. No
 | `RPC_URL` | `http://hardhat-node:8545` | OZ Relayer | Blockchain RPC endpoint |
 | `REDIS_HOST` | `redis` | OZ Relayer | Redis host |
 | `REDIS_PORT` | `6379` | OZ Relayer | Redis port |
-| `API_GATEWAY_API_KEY` | `local-dev-api-key` | API Gateway | API authentication key |
+| `RELAY_API_KEY` | `local-dev-api-key` | API Gateway | API authentication key |
 | `NODE_ENV` | `development` | API Gateway | Environment mode |
 
 ### Customizing Environment Variables
@@ -187,7 +187,7 @@ networks:
 **Internal DNS Resolution**:
 - `hardhat-node:8545` - Hardhat blockchain RPC
 - `redis:6379` - Redis cache
-- `api-gateway:3000` - API Gateway
+- `relay-api:3000` - API Gateway
 - `oz-relayer-1:8080` - Relayer 1
 - `oz-relayer-2:8080` - Relayer 2
 - `oz-relayer-3:8080` - Relayer 3
@@ -210,7 +210,7 @@ volumes:
 
 ```yaml
 volumes:
-  - ../packages/api-gateway/config:/app/config  # Config files
+  - ../packages/relay-api/config:/app/config  # Config files
   - ./config/oz-relayer/relayer-1.json:/app/config/config.json:ro  # Read-only relayer config
   - ./keys/relayer-1:/app/config/keys:ro  # Read-only keystores
 ```
@@ -232,7 +232,7 @@ docker compose -f docker/docker-compose.yaml logs
 docker compose -f docker/docker-compose.yaml logs -f
 
 # View specific service logs
-docker compose -f docker/docker-compose.yaml logs api-gateway
+docker compose -f docker/docker-compose.yaml logs relay-api
 docker compose -f docker/docker-compose.yaml logs oz-relayer-1
 docker compose -f docker/docker-compose.yaml logs redis
 docker compose -f docker/docker-compose.yaml logs hardhat-node
@@ -286,7 +286,7 @@ curl http://localhost:3000/api/v1/health
 #   "status": "healthy",
 #   "timestamp": "2025-12-16T00:00:00.000Z",
 #   "services": {
-#     "api-gateway": "healthy",
+#     "relay-api": "healthy",
 #     "oz-relayer-pool": "healthy",
 #     "redis": "healthy"
 #   }
@@ -387,7 +387,7 @@ sudo systemctl restart docker
 docker compose -f docker/docker-compose.yaml logs
 
 # Check specific service
-docker compose -f docker/docker-compose.yaml logs api-gateway
+docker compose -f docker/docker-compose.yaml logs relay-api
 
 # Rebuild images
 docker compose -f docker/docker-compose.yaml down -v
@@ -512,13 +512,13 @@ curl -X POST http://localhost:3000/api/v1/relay/direct \
 ```bash
 # 1. Make code changes
 # 2. Rebuild affected services
-docker compose -f docker/docker-compose.yaml build api-gateway
+docker compose -f docker/docker-compose.yaml build relay-api
 
 # 3. Restart services
-docker compose -f docker/docker-compose.yaml up -d api-gateway
+docker compose -f docker/docker-compose.yaml up -d relay-api
 
 # 4. Check logs
-docker compose -f docker/docker-compose.yaml logs -f api-gateway
+docker compose -f docker/docker-compose.yaml logs -f relay-api
 ```
 
 ### Testing with Different Networks
@@ -539,11 +539,11 @@ docker compose -f docker/docker-compose-amoy.yaml up -d
 
 ```bash
 # Access container shell
-docker compose -f docker/docker-compose.yaml exec api-gateway /bin/sh
+docker compose -f docker/docker-compose.yaml exec relay-api /bin/sh
 docker compose -f docker/docker-compose.yaml exec redis redis-cli
 
 # Check container IP and DNS
-docker compose -f docker/docker-compose.yaml exec api-gateway nslookup hardhat-node
+docker compose -f docker/docker-compose.yaml exec relay-api nslookup hardhat-node
 
 # Monitor resource usage
 docker stats

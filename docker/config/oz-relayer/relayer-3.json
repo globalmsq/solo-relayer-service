@@ -37,7 +37,7 @@
     {
       "id": "relayer-3-webhook",
       "type": "webhook",
-      "url": "http://api-gateway:3000/api/v1/webhook/relayer",
+      "url": "http://relay-api:3000/api/v1/webhook/relayer",
       "signing_key": {
         "type": "env",
         "value": "WEBHOOK_SIGNING_KEY"

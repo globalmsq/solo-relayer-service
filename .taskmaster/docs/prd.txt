@@ -289,7 +289,7 @@ Last Updated: 2025-12-15
 | 11.4 | 2025-12-15 | Section 9.3 Docker Compose YAML Anchors structure fix - moved x-relayer-common to top level outside services block, added healthcheck/networks, applied correct YAML Anchors syntax |
 | 11.3 | 2025-12-15 | Section 1.5 Supported blockchain networks changed to table format - added Hardhat Node (31337, Local Dev, P0), specified Chain ID, synchronized with product.md Section 5 |
 | 11.2 | 2025-12-15 | Applied Docker Compose YAML Anchors pattern - minimized Multi-Relayer Pool config duplication, explained why deploy.replicas not used (individual Private Keys required) |
-| 11.1 | 2025-12-15 | Section 8.1 API Key authentication added - Phase 1 single environment variable method (API_GATEWAY_API_KEY), Phase 2+ expansion plan specified |
+| 11.1 | 2025-12-15 | Section 8.1 API Key authentication added - Phase 1 single environment variable method (RELAY_API_KEY), Phase 2+ expansion plan specified |
 | 11.0 | 2025-12-15 | SPEC-INFRA-001 based Docker structure sync - consolidated to docker/ directory, multi-stage build, .env removal, Hardhat Node included, Redis 8.0-alpine (AOF), Named Volume (msq-relayer-redis-data), OZ Relayer RPC_URL/REDIS_HOST/REDIS_PORT, Read-only volume mounts |
 | 10.0 | 2025-12-15 | MySQL/Prisma moved to Phase 2+ - Phase 1 uses only OZ Relayer + Redis, no DB, removed mysql from Docker Compose |
 | 9.0 | 2025-12-15 | TX History, Webhook Handler moved to Phase 2+ - Phase 1 uses status polling method, MySQL/Webhook implemented in Phase 2+ |

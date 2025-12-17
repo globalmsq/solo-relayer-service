@@ -250,7 +250,7 @@ Request → [API Key Auth] → [Contract Whitelist] → [Method Whitelist]
 ```
 msq-relayer-service/
 ├── docker/                          # Docker files directory
-│   ├── Dockerfile.packages          # Multi-stage build (api-gateway tsx execution)
+│   ├── Dockerfile.packages          # Multi-stage build (relay-api tsx execution)
 │   ├── docker-compose.yaml          # Main config (includes Hardhat Node)
 │   ├── docker-compose-amoy.yaml     # Polygon Amoy Testnet config
 │   ├── config/
@@ -273,7 +273,7 @@ msq-relayer-service/
 │   └── create-keystore.js           # Keystore creation script (ethers.js)
 │
 ├── packages/
-│   ├── api-gateway/                 # NestJS API Gateway (Custom development)
+│   ├── relay-api/                 # NestJS API Gateway (Custom development)
 │   │   ├── src/
 │   │   │   ├── auth/                # API Key authentication module
 │   │   │   │   ├── auth.module.ts
@@ -399,7 +399,7 @@ cd docker && docker-compose -f docker-compose-amoy.yaml up
 
 **Config files**: `config/oz-monitor/networks/`, `monitors/`, `triggers/`
 
-### 4.3 packages/api-gateway (Custom Development)
+### 4.3 packages/relay-api (Custom Development)
 
 **NestJS API Gateway** - Authentication, Policy, Quota, OZ Relayer proxy
 
@@ -416,12 +416,12 @@ cd docker && docker-compose -f docker-compose-amoy.yaml up
 #### 4.3.1 Auth Module Details (Phase 1)
 
 **Authentication Method**:
-- Single environment variable `API_GATEWAY_API_KEY` for API Key management
+- Single environment variable `RELAY_API_KEY` for API Key management
 - Header: `X-API-Key: {api_key}`
 - Verification by matching with environment variable value
 
 ```
-packages/api-gateway/src/auth/
+packages/relay-api/src/auth/
 ├── auth.module.ts              # Global Guard registration
 ├── guards/
 │   └── api-key.guard.ts        # X-API-Key verification
@@ -431,9 +431,9 @@ packages/api-gateway/src/auth/
 
 **Docker Compose Environment Variables**:
 ```yaml
-api-gateway:
+relay-api:
   environment:
-    API_GATEWAY_API_KEY: "msq-dev-api-key-12345"
+    RELAY_API_KEY: "msq-dev-api-key-12345"
 ```
 
 **Phase 2+ Extension**: Multiple clients, DB-based storage, Key rotation
@@ -679,14 +679,14 @@ sequenceDiagram
 | Service | Image | Port | Role |
 |---------|-------|------|------|
 | hardhat-node | Custom Build | 8545 | Local blockchain (Chain ID: 31337) |
-| api-gateway | docker/Dockerfile.packages | 3000 | NestJS API Gateway |
+| relay-api | docker/Dockerfile.packages | 3000 | NestJS API Gateway |
 | oz-relayer-1~3 | openzeppelin-relayer:v1.3.0 | 8081-8083, 8091-8093 | TX relay (Multi-Relayer Pool) |
 | oz-monitor | openzeppelin-monitor:v1.1.0 | - | Event monitoring (Phase 2+) |
 | redis | redis:8.0-alpine | 6379 | OZ Relayer internal Queue (AOF persistence) |
 | prometheus | prom/prometheus:v2.47.0 | 9090 | Metrics (Phase 2+) |
 | grafana | grafana:10.2.0 | 3001 | Dashboard (Phase 2+) |
 
-**Phase 1 Core Services**: hardhat-node, api-gateway, oz-relayer-1~3, redis
+**Phase 1 Core Services**: hardhat-node, relay-api, oz-relayer-1~3, redis
 
 **Multi-Relayer Pool Configuration Approach**:
 - `deploy.replicas` not used: Each Relayer needs unique Private Key (Nonce collision prevention)
@@ -710,13 +710,13 @@ sequenceDiagram
 | 11.4 | 2025-12-15 | Document role clarification - Add related documents section (cross-references) |
 | 11.3 | 2025-12-15 | Fix section number duplication - Change 1.3 Unified Request Flow to 1.4 (Resolve conflict with 1.3 Multi-Relayer Pool Architecture) |
 | 11.2 | 2025-12-15 | Add Multi-Relayer Pool configuration approach explanation - YAML Anchors pattern usage reason, deploy.replicas not used reason (Individual Private Key required) |
-| 11.1 | 2025-12-15 | Add Section 4.3.1 Auth Module Details - Phase 1 single environment variable method (API_GATEWAY_API_KEY), Module structure, Phase 2+ extension plan |
+| 11.1 | 2025-12-15 | Add Section 4.3.1 Auth Module Details - Phase 1 single environment variable method (RELAY_API_KEY), Module structure, Phase 2+ extension plan |
 | 11.0 | 2025-12-15 | SPEC-INFRA-001 Docker structure sync - Consolidate to docker/ directory, Multi-stage build, Remove .env, Include Hardhat Node, Redis 8.0-alpine (AOF persistence), Named Volume (msq-relayer-redis-data), OZ Relayer RPC_URL environment variable, Read-only volumes |
 | 10.0 | 2025-12-15 | Move MySQL/Prisma to Phase 2+ - Phase 1 uses OZ Relayer + Redis only, No DB |
 | 9.0 | 2025-12-15 | Move TX History, Webhook Handler to Phase 2+ - Phase 1 uses status polling method, MySQL/Webhook in Phase 2+ |
 | 8.0 | 2025-12-15 | Remove Rate Limiting, Quota Manager completely - Phase 1 keeps Auth + Relay features only, Policy/Quota Phase 2+ TBD |
 | 7.0 | 2025-12-15 | Phase 2 redesign - Remove SDK (Replace with API docs), Add Queue System (QUEUE_PROVIDER pattern) |
-| 6.2 | 2025-12-15 | Docker structure finalized - Package-specific Dockerfile approach adopted (packages/api-gateway/Dockerfile), Add .dockerignore |
+| 6.2 | 2025-12-15 | Docker structure finalized - Package-specific Dockerfile approach adopted (packages/relay-api/Dockerfile), Add .dockerignore |
 | 6.1 | 2025-12-15 | Add Multi-Relayer Pool architecture - Independent Private Key based parallel processing, Load Balancing (Round Robin/Least Load), Manual Scaling (Phase 1), Auto Scaling (Phase 2+) |
 | 6.0 | 2025-12-15 | Include Gasless TX in Phase 1 - Move relay/gasless module to Phase 1, Add ERC2771Forwarder, Keep OZ Monitor/Policy/Quota in Phase 2+ |
 | 5.0 | 2025-12-14 | Reorganize around Phase 1 - Add implementation scope table, Specify Phase per module, Mark OZ Monitor/Gasless as Phase 2+ |

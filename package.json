@@ -5,7 +5,7 @@
   "description": "MSQ Relayer Service - Meta Transaction Relay Infrastructure",
   "packageManager": "pnpm@9.15.1",
   "scripts": {
-    "dev": "pnpm --filter @msq-relayer/api-gateway run dev",
+    "dev": "pnpm --filter @msq-relayer/relay-api run dev",
     "build": "pnpm -r run build",
     "test": "pnpm -r run test",
     "lint": "pnpm -r run lint",

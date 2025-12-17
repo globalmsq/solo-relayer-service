@@ -1,7 +1,7 @@
 export default () => ({
   port: parseInt(process.env.PORT || "3000", 10),
   nodeEnv: process.env.NODE_ENV || "development",
-  apiKey: process.env.API_GATEWAY_API_KEY,
+  apiKey: process.env.RELAY_API_KEY,
   redis: {
     url: process.env.REDIS_URL || "redis://localhost:6379",
   },

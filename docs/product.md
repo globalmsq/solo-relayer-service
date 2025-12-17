@@ -107,7 +107,7 @@ As OpenZeppelin Defender service will be discontinued in July 2026, we are build
 | Feature | Description |
 |---------|-------------|
 | NestJS Project | Production scaffold |
-| API Key Authentication | Single environment variable (`API_GATEWAY_API_KEY`), Header: `X-API-Key` |
+| API Key Authentication | Single environment variable (`RELAY_API_KEY`), Header: `X-API-Key` |
 | Health Check | `/api/v1/health` |
 | Direct TX Endpoint | `/api/v1/relay/direct` |
 | Gasless TX Endpoint | `/api/v1/relay/gasless` |
@@ -242,7 +242,7 @@ As OpenZeppelin Defender service will be discontinued in July 2026, we are build
 | 12.0 | 2025-12-15 | Document version sync - Complete document structure cleanup, Remove duplicates, Establish cross-reference system |
 | 11.3 | 2025-12-15 | Document role clarification - Add related documents section (cross-references) |
 | 11.2 | 2025-12-15 | Document version sync - Apply Docker Compose YAML Anchors pattern (see tech.md, prd.txt) |
-| 11.1 | 2025-12-15 | Add API Key authentication spec - Phase 1 single environment variable method (API_GATEWAY_API_KEY) |
+| 11.1 | 2025-12-15 | Add API Key authentication spec - Phase 1 single environment variable method (RELAY_API_KEY) |
 | 11.0 | 2025-12-15 | SPEC-INFRA-001 Docker structure sync - Consolidate to docker/ directory, Update related docs (structure.md, tech.md) |
 | 10.0 | 2025-12-15 | Move MySQL/Prisma to Phase 2+ - Phase 1 uses OZ Relayer + Redis only, No DB |
 | 9.0 | 2025-12-15 | Move TX History, Webhook Handler to Phase 2+ - Phase 1 uses status polling method |

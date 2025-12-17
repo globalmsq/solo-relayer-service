@@ -1,8 +1,8 @@
 {
-  "name": "@msq-relayer/api-gateway",
+  "name": "@msq-relayer/relay-api",
   "version": "1.0.0",
   "private": true,
-  "description": "API Gateway for MSQ Relayer Service",
+  "description": "Relay API for MSQ Relayer Service",
   "main": "dist/main.js",
   "scripts": {
     "build": "nest build",

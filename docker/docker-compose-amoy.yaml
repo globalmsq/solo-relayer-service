@@ -21,7 +21,7 @@ x-relayer-common: &relayer-common
 
 x-relayer-env: &relayer-env
   RUST_LOG: info
-  API_GATEWAY_API_KEY: amoy-dev-api-key
+  RELAY_API_KEY: amoy-dev-api-key
   KEYSTORE_PASSPHRASE: amoy-test-passphrase
   RPC_URL: https://rpc-amoy.polygon.technology
   REDIS_URL: redis://redis:6379
@@ -46,12 +46,12 @@ services:
       - msq-relayer-network
     restart: unless-stopped
 
-  # === API Gateway (NestJS) ===
-  api-gateway:
+  # === Relay API (NestJS) ===
+  relay-api:
     build:
       context: ..
       dockerfile: docker/Dockerfile.packages
-      target: api-gateway
+      target: relay-api
     ports:
       - "3000:3000"
     depends_on:
@@ -61,7 +61,7 @@ services:
       NODE_ENV: staging
       REDIS_URL: redis://redis:6379
       RPC_URL: https://rpc-amoy.polygon.technology
-      API_GATEWAY_API_KEY: amoy-dev-api-key
+      RELAY_API_KEY: amoy-dev-api-key
       NETWORK: amoy
     networks:
       - msq-relayer-network

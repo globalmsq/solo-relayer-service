@@ -73,7 +73,7 @@ curl http://localhost:3000/api/v1/health
 2. ✅ JSON 형식 응답:
    ```json
    {
-     "api-gateway": "healthy",
+     "relay-api": "healthy",
      "oz-relayer": "healthy",
      "redis": "healthy"
    }
@@ -90,7 +90,7 @@ curl -i http://localhost:3000/api/v1/health
 HTTP/1.1 200 OK
 Content-Type: application/json
 ...
-{"api-gateway":"healthy","oz-relayer":"healthy","redis":"healthy"}
+{"relay-api":"healthy","oz-relayer":"healthy","redis":"healthy"}
 ```
 
 **실패 조건**:
@@ -223,7 +223,7 @@ npm list mysql2
 
 **When**:
 ```bash
-tree packages/api-gateway/src/ -L 2
+tree packages/relay-api/src/ -L 2
 ```
 
 **Then**:
@@ -348,7 +348,7 @@ npm run start:dev
 
 # 5. Health Check
 curl http://localhost:3000/api/v1/health
-# 예상: {"api-gateway":"healthy",...}
+# 예상: {"relay-api":"healthy",...}
 
 # 6. Prisma 의존성 확인
 npm list @prisma/client

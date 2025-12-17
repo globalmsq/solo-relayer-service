@@ -21,7 +21,7 @@ export interface HealthCheckResponse {
   status: "healthy" | "degraded" | "unhealthy";
   timestamp: string;
   services: {
-    "api-gateway": string;
+    "relay-api": string;
     "oz-relayer-pool": PoolHealthStatus | string;
     redis: string;
   };
@@ -167,7 +167,7 @@ export class HealthService {
       status: overallStatus,
       timestamp: new Date().toISOString(),
       services: {
-        "api-gateway": "healthy",
+        "relay-api": "healthy",
         "oz-relayer-pool": relayerPool,
         redis: redis,
       },

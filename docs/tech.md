@@ -280,7 +280,7 @@ Response (Phase 1):
   "status": "healthy",
   "timestamp": "2025-12-15T00:00:00.000Z",
   "services": {
-    "api-gateway": "healthy",
+    "relay-api": "healthy",
     "oz-relayer-pool": "healthy",   # Aggregated status of 3 Relayers
     "redis": "healthy"
   }
@@ -295,7 +295,7 @@ Response (Phase 1):
 #### Relayer Pool Status Aggregation (NestJS Implementation)
 
 ```typescript
-// packages/api-gateway/src/health/health.service.ts
+// packages/relay-api/src/health/health.service.ts
 
 import { Injectable } from '@nestjs/common';
 import { HttpService } from '@nestjs/axios';
@@ -393,7 +393,7 @@ export class HealthService {
     "status": "degraded",
     "timestamp": "2025-12-15T00:00:00.000Z",
     "services": {
-      "api-gateway": "healthy",
+      "relay-api": "healthy",
       "oz-relayer-pool": {
         "status": "degraded",
         "healthyCount": 2,
@@ -421,7 +421,7 @@ Response (Phase 2+):
   "status": "healthy",
   "timestamp": "2025-12-15T00:00:00.000Z",
   "services": {
-    "api-gateway": "healthy",
+    "relay-api": "healthy",
     "oz-relayer-pool": "healthy",
     "oz-monitor": "healthy",        # Phase 2+
     "redis": "healthy",
@@ -789,7 +789,7 @@ policies:
 ### 9.1 API Key Authentication (Phase 1)
 
 **Authentication Method**:
-- API Key management via single environment variable `API_GATEWAY_API_KEY`
+- API Key management via single environment variable `RELAY_API_KEY`
 - Header: `X-API-Key: {api_key}`
 - Verification by matching with environment variable value
 
@@ -799,14 +799,14 @@ Client Service → [X-API-Key header] → API Gateway → [Environment variable 
 
 **Docker Compose Environment Variable**:
 ```yaml
-api-gateway:
+relay-api:
   environment:
-    API_GATEWAY_API_KEY: "msq-dev-api-key-12345"  # Development
+    RELAY_API_KEY: "msq-dev-api-key-12345"  # Development
 ```
 
 **NestJS Module Structure**:
 ```
-packages/api-gateway/src/auth/
+packages/relay-api/src/auth/
 ├── auth.module.ts              # Global Guard registration
 ├── guards/
 │   └── api-key.guard.ts        # X-API-Key verification
@@ -828,7 +828,7 @@ packages/api-gateway/src/auth/
 
 ```json
 {
-  "name": "@msq/api-gateway",
+  "name": "@msq/relay-api",
   "dependencies": {
     "@nestjs/common": "^10.0.0",
     "@nestjs/core": "^10.0.0",
@@ -892,7 +892,7 @@ packages/api-gateway/src/auth/
     },
     "notifications": [{
       "type": "webhook",
-      "url": "http://api-gateway:3000/api/v1/webhook/relayer",
+      "url": "http://relay-api:3000/api/v1/webhook/relayer",
       "signing_key": "${WEBHOOK_SIGNING_KEY}"
     }]
   }]
@@ -947,7 +947,7 @@ docker/config/oz-relayer/
     },
     "notifications": [{
       "type": "webhook",
-      "url": "http://api-gateway:3000/api/v1/webhook/relayer",
+      "url": "http://relay-api:3000/api/v1/webhook/relayer",
       "signing_key": "${WEBHOOK_SIGNING_KEY}"
     }]
   }]
@@ -1134,11 +1134,11 @@ services:
       - msq-relayer-network
 
   # === API Gateway ===
-  api-gateway:
+  relay-api:
     build:
       context: ..
       dockerfile: docker/Dockerfile.packages
-      target: api-gateway
+      target: relay-api
     ports: ["3000:3000"]
     depends_on:
       hardhat-node:
@@ -1151,7 +1151,7 @@ services:
       REDIS_URL: redis://redis:6379
       RPC_URL: http://hardhat-node:8545
     volumes:
-      - ../packages/api-gateway/config:/app/config
+      - ../packages/relay-api/config:/app/config
     networks:
       - msq-relayer-network
 
@@ -1329,7 +1329,7 @@ AWS_SQS_QUEUE_URL=https://sqs.ap-northeast-2.amazonaws.com/123456789012/relayer-
 ### 15.4 Queue Adapter Interface
 
 ```typescript
-// packages/api-gateway/src/queue/queue-adapter.interface.ts
+// packages/relay-api/src/queue/queue-adapter.interface.ts
 interface QueueAdapter {
   enqueue(job: RelayJob): Promise<string>;  // returns jobId
   getJob(jobId: string): Promise<JobStatus>;
@@ -1390,7 +1390,7 @@ Response:
 ### 15.6 Redis + BullMQ Configuration
 
 ```typescript
-// packages/api-gateway/src/queue/redis-queue.adapter.ts
+// packages/relay-api/src/queue/redis-queue.adapter.ts
 import { Queue, Worker } from 'bullmq';
 
 const relayQueue = new Queue('relay-jobs', {
@@ -1411,7 +1411,7 @@ const relayQueue = new Queue('relay-jobs', {
 ### 15.7 AWS SQS Configuration
 
 ```typescript
-// packages/api-gateway/src/queue/sqs-queue.adapter.ts
+// packages/relay-api/src/queue/sqs-queue.adapter.ts
 import { SQSClient, SendMessageCommand } from '@aws-sdk/client-sqs';
 
 const sqsClient = new SQSClient({
@@ -1463,10 +1463,10 @@ const queueUrl = process.env.AWS_SQS_QUEUE_URL;
 | 11.7 | 2025-12-15 | Document role clarification - Added document role (HOW) and cross-references to header |
 | 11.6 | 2025-12-15 | Section 5 API spec expansion - 5.6 Error Response Format (standard error response, HTTP Status Code Mapping, error examples), 5.7 Rate Limiting (Phase 2+ Reserved, header spec), 5.8 Request/Response Examples (Direct TX, Gasless TX, Status Query JSON examples), 5.9 Pagination (Phase 2+ Reserved, Query Parameters, paging response format) |
 | 11.5 | 2025-12-15 | Section 13 Docker Compose YAML Anchors structure fix - Moved x-relayer-common to top-level outside services block, added healthcheck/networks, applied correct YAML Anchors syntax |
-| 11.4 | 2025-12-15 | Section 5.5 Health Check API response schema fix - Phase 1 services only (api-gateway, oz-relayer-pool, redis), Phase 2+ extended schema separation (oz-monitor, mysql added), oz-relayer-pool status aggregation logic description added |
+| 11.4 | 2025-12-15 | Section 5.5 Health Check API response schema fix - Phase 1 services only (relay-api, oz-relayer-pool, redis), Phase 2+ extended schema separation (oz-monitor, mysql added), oz-relayer-pool status aggregation logic description added |
 | 11.3 | 2025-12-15 | Section 11.3 OZ Relayer config file path fix - Changed nested directory structure to flat file structure (prd.txt, Docker Compose consistency), added Docker volume mount note |
 | 11.2 | 2025-12-15 | Docker Compose YAML Anchors pattern applied - Multi-Relayer Pool config duplication minimized, deploy.replicas non-usage reason explained (individual Private Key required) |
-| 11.1 | 2025-12-15 | Section 9.1 API Key authentication added - Phase 1 single environment variable method (API_GATEWAY_API_KEY), Phase 2+ extension plan specified |
+| 11.1 | 2025-12-15 | Section 9.1 API Key authentication added - Phase 1 single environment variable method (RELAY_API_KEY), Phase 2+ extension plan specified |
 | 11.0 | 2025-12-15 | SPEC-INFRA-001 Docker structure sync - Consolidated to docker/ directory, multi-stage build (Dockerfile.packages), .env removed, Hardhat Node included, Redis 8.0-alpine (AOF), Named Volume (msq-relayer-redis-data), OZ Relayer RPC_URL/REDIS_HOST/REDIS_PORT env vars, Read-only volume mount (:ro), Section 13 v5.0 |
 | 10.0 | 2025-12-15 | MySQL/Prisma moved to Phase 2+ - Phase 1 uses OZ Relayer + Redis only, no DB, mysql removed from Docker Compose |
 | 9.0 | 2025-12-15 | TX History, Webhook Handler moved to Phase 2+ - Phase 1 uses status polling method, MySQL/Webhook implemented in Phase 2+ |
