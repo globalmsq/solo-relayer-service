@@ -215,7 +215,7 @@ packages/contracts/.env
 # Project-Specific: Serena MCP
 # ===========================================
 
-.serena/cache/
+.serena/
 
 # ===========================================
 # CI/CD Backups
