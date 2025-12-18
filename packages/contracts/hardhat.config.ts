@@ -9,6 +9,7 @@ dotenv.config();
 
 const PRIVATE_KEY = process.env.PRIVATE_KEY || "0x0000000000000000000000000000000000000000000000000000000000000001";
 const AMOY_RPC_URL = process.env.AMOY_RPC_URL || "https://rpc-amoy.polygon.technology";
+const LOCALHOST_RPC_URL = process.env.LOCALHOST_RPC_URL || "http://localhost:8545";
 const POLYGONSCAN_API_KEY = process.env.POLYGONSCAN_API_KEY || "";
 
 const config: HardhatUserConfig = {
@@ -32,8 +33,9 @@ const config: HardhatUserConfig = {
       },
     },
     // Local Hardhat Node (for Docker container)
+    // Use LOCALHOST_RPC_URL env var for Docker: http://hardhat-node:8545
     localhost: {
-      url: "http://localhost:8545",
+      url: LOCALHOST_RPC_URL,
       chainId: 31337,
     },
     // Polygon Amoy Testnet

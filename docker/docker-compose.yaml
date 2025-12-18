@@ -51,6 +51,22 @@ services:
       - msq-relayer-network
     restart: unless-stopped
 
+  # === Contracts Deployment (Init Service) ===
+  # Runs once after hardhat-node is healthy, deploys contracts, then exits
+  contracts-init:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile.packages
+      target: contracts-deploy
+    depends_on:
+      hardhat-node:
+        condition: service_healthy
+    environment:
+      LOCALHOST_RPC_URL: http://hardhat-node:8545
+    networks:
+      - msq-relayer-network
+    restart: "no"
+
   # === Redis Cache & Queue ===
   redis:
     image: redis/redis-stack:latest
@@ -83,6 +99,14 @@ services:
       hardhat-node:
         condition: service_healthy
       redis:
+        condition: service_healthy
+      contracts-init:
+        condition: service_completed_successfully
+      oz-relayer-1:
+        condition: service_healthy
+      oz-relayer-2:
+        condition: service_healthy
+      oz-relayer-3:
         condition: service_healthy
     environment:
       NODE_ENV: development

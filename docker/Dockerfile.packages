@@ -75,3 +75,23 @@ HEALTHCHECK --interval=10s --timeout=5s --retries=5 --start-period=10s \
 
 # Start Hardhat Node
 CMD ["pnpm", "run", "node"]
+
+# ============================================================================
+# CONTRACTS-DEPLOY TARGET: Deploy contracts to Hardhat Node
+# ============================================================================
+FROM base AS contracts-deploy
+
+# Copy contracts package
+COPY packages/contracts ./packages/contracts
+
+# Set working directory
+WORKDIR /app/packages/contracts
+
+# Install package-specific dependencies and compile contracts
+RUN pnpm install && pnpm run compile
+
+# Environment variables for deployment
+ENV LOCALHOST_RPC_URL=http://hardhat-node:8545
+
+# Deploy contracts to localhost
+CMD ["pnpm", "run", "deploy:local"]
