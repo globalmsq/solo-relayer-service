@@ -8,17 +8,26 @@
     "test": "hardhat test",
     "test:coverage": "hardhat coverage",
     "node": "hardhat node --hostname 0.0.0.0",
-    "deploy:local": "hardhat run scripts/deploy.ts --network localhost",
-    "deploy:amoy": "hardhat run scripts/deploy.ts --network amoy",
+    "deploy:local": "hardhat run scripts/deploy-samples.ts --network localhost",
+    "deploy:amoy": "hardhat run scripts/deploy-forwarder.ts --network amoy",
+    "deploy:all": "hardhat run scripts/deploy-forwarder.ts --network amoy && hardhat run scripts/deploy-samples.ts --network localhost",
     "verify": "hardhat verify --network amoy",
     "clean": "hardhat clean",
     "typechain": "hardhat typechain"
   },
+  "dependencies": {
+    "@openzeppelin/contracts": "5.3.0"
+  },
   "devDependencies": {
     "@nomicfoundation/hardhat-toolbox": "^5.0.0",
     "@nomicfoundation/hardhat-verify": "^2.0.0",
+    "@nomicfoundation/hardhat-chai-matchers": "^2.0.0",
+    "@types/chai": "^4.3.0",
+    "@types/mocha": "^10.0.0",
     "@types/node": "^20.0.0",
+    "chai": "^4.3.0",
     "dotenv": "^16.4.0",
+    "ethers": "^6.13.0",
     "hardhat": "^2.22.0",
     "hardhat-gas-reporter": "^2.0.0",
     "solidity-coverage": "^0.8.0",

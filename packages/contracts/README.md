@@ -1,30 +1,128 @@
-# MSQ Relayer Contracts
+# Smart Contracts - MSQ Relayer Service
 
-Smart contracts for MSQ Relayer Service.
+This package contains the smart contracts for the MSQ Relayer Service, including ERC20 token (SampleToken) and ERC721 NFT (SampleNFT) with ERC2771 meta-transaction support.
 
-## Setup
+## Quick Start
+
+### Installation
 
 ```bash
 # Install dependencies
-npm install
+pnpm install
 
-# Copy environment variables
-cp .env.example .env
-# Edit .env with your private key and API keys
+# Compile contracts
+pnpm compile
+
+# Run tests
+pnpm test
+
+# Run tests with coverage
+pnpm test:coverage
+```
+
+### Local Development
+
+```bash
+# Start local Hardhat node
+pnpm node
+
+# In another terminal, deploy to localhost
+pnpm deploy:local
+```
+
+### Deployment
+
+```bash
+# Deploy to Polygon Amoy testnet
+pnpm deploy:amoy
+
+# Verify contracts on Polygonscan
+pnpm verify --network amoy <CONTRACT_ADDRESS> "<CONSTRUCTOR_ARGS>"
+```
+
+## Contract Architecture
+
+### SampleToken (ERC20 + ERC2771Context)
+
+An ERC20 token with meta-transaction support, pausable functionality, and owner-based access control.
+
+**Features:**
+- ERC20 standard token (SMPL)
+- Initial supply: 1,000,000 tokens
+- Pausable: Owner can pause/unpause all transfers
+- Burnable: Token holders can burn their tokens
+- Mintable: Owner can mint additional tokens
+- ERC2771Context: Support for gasless transactions through meta-transaction forwarder
+
+**Key Functions:**
+- `transfer(to, amount)` - Transfer tokens
+- `approve(spender, amount)` - Approve spending
+- `transferFrom(from, to, amount)` - Transfer on behalf
+- `mint(to, amount)` - Mint tokens (owner only)
+- `burn(amount)` - Burn tokens
+- `pause()` / `unpause()` - Control transfers (owner only)
+
+### SampleNFT (ERC721 + ERC2771Context)
+
+An ERC721 NFT contract with enumeration and meta-transaction support.
+
+**Features:**
+- ERC721 standard NFT (SNFT)
+- ERC721Enumerable: Support for enumerating all tokens
+- Burnable: NFT owners can burn their NFTs
+- ERC2771Context: Support for gasless transactions through meta-transaction forwarder
+- Auto-incrementing token IDs starting from 1
+
+**Key Functions:**
+- `mint(to)` - Mint NFT (owner only)
+- `transferFrom(from, to, tokenId)` - Transfer NFT
+- `approve(to, tokenId)` - Approve NFT transfer
+- `setApprovalForAll(operator, approved)` - Approve all NFTs
+- `burn(tokenId)` - Burn NFT
+
+### IERC2771Forwarder
+
+Interface for ERC2771 meta-transaction forwarder. Defines the contract that relays transactions on behalf of users.
+
+## Testing
+
+The package includes comprehensive test coverage across multiple test files:
+
+### Test Files
+
+- **Contracts.test.ts** - Comprehensive unified tests (27 passing tests)
+  - ERC20 functionality (transfers, approvals, minting, burning)
+  - ERC721 functionality (minting, transfers, approvals)
+  - ERC2771 meta-transaction support
+  - Ownership and access control
+  - Error handling and event emission
+
+### Running Tests
+
+```bash
+# Run all tests
+pnpm test
+
+# Run specific test file
+pnpm test test/Contracts.test.ts
+
+# Run with coverage report
+pnpm test:coverage
 ```
 
 ## Commands
 
 | Command | Description |
 |---------|-------------|
-| `npm run compile` | Compile contracts |
-| `npm test` | Run tests |
-| `npm run test:coverage` | Run tests with coverage |
-| `npm run node` | Start local Hardhat node |
-| `npm run deploy:local` | Deploy to localhost |
-| `npm run deploy:amoy` | Deploy to Polygon Amoy |
-| `npm run verify` | Verify contract on Polygonscan |
-| `npm run clean` | Clean artifacts |
+| `pnpm compile` | Compile contracts |
+| `pnpm test` | Run tests (27 passing tests covering all functionality) |
+| `pnpm test:coverage` | Run tests with coverage report |
+| `pnpm node` | Start local Hardhat node |
+| `pnpm deploy:local` | Deploy to localhost (SampleToken + SampleNFT) |
+| `pnpm deploy:amoy` | Deploy forwarder to Polygon Amoy |
+| `pnpm verify` | Verify contract on Polygonscan |
+| `pnpm clean` | Clean artifacts |
+| `pnpm typechain` | Generate TypeChain types |
 
 ## Networks
 
@@ -37,21 +135,75 @@ cp .env.example .env
 ## Project Structure
 
 ```
-contracts/     # Solidity source files
-scripts/       # Deployment scripts
-test/          # Test files
-artifacts/     # Compiled contracts (generated)
-typechain-types/ # TypeScript types (generated)
+contracts/              # Solidity source files
+├── interfaces/         # Interface definitions
+│   └── IERC2771Forwarder.sol
+├── samples/            # Sample contracts
+│   ├── SampleToken.sol
+│   └── SampleNFT.sol
+scripts/                # Deployment scripts
+├── deploy-forwarder.ts
+├── deploy-samples.ts
+└── utils/
+test/                   # Test files
+artifacts/              # Compiled contracts (generated)
+typechain-types/        # TypeScript types (generated)
 ```
 
 ## Development Workflow
 
 1. Write contracts in `contracts/`
 2. Write tests in `test/`
-3. Run tests: `npm test`
-4. Deploy locally: `npm run node` + `npm run deploy:local`
-5. Deploy to testnet: `npm run deploy:amoy`
-6. Verify: `npm run verify <contract-address>`
+3. Run tests: `pnpm test`
+4. Deploy locally: `pnpm node` + `pnpm deploy:local`
+5. Deploy to testnet: `pnpm deploy:amoy`
+6. Verify: `pnpm verify --network amoy <contract-address> "<args>"`
+
+## Configuration
+
+### Hardhat Config
+
+Networks configured in `hardhat.config.ts`:
+
+- **hardhat**: In-memory test network (ChainID: 31337)
+- **localhost**: Local Hardhat node (ChainID: 31337)
+- **amoy**: Polygon Amoy testnet (ChainID: 80002)
+
+### Environment Variables
+
+Create `.env` file with:
+
+```
+PRIVATE_KEY=<your_private_key>
+AMOY_RPC_URL=<amoy_rpc_url>
+POLYGONSCAN_API_KEY=<your_api_key>
+```
+
+## Key Safety Considerations
+
+### Ownership Model
+
+Both contracts use OpenZeppelin's Ownable pattern:
+- Owner controls minting, pausing, and administrative functions
+- Owner is set to the deployer at deployment time
+- Consider using multi-sig wallet for production
+
+### ERC2771 Forwarder
+
+Contracts initialize with a trusted forwarder address:
+- Only set a verified forwarder implementation
+- Ensure the forwarder is properly audited
+
+### Pausable Tokens
+
+The pause mechanism allows the owner to freeze all transfers:
+- Useful for emergency situations
+- Use with caution as it impacts users
+
+## OpenZeppelin Version
+
+- **@openzeppelin/contracts**: 5.3.0
+- Uses latest V5 patterns with Solidity 0.8.27
 
 ## Docker Integration
 
@@ -64,3 +216,7 @@ hardhat-node:
     dockerfile: docker/Dockerfile.packages
     target: hardhat-node
 ```
+
+## License
+
+SPDX-License-Identifier: MIT
