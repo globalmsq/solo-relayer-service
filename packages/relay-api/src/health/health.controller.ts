@@ -20,7 +20,7 @@ export class HealthController {
    *
    * @returns Health check result with status and service details
    */
-  @Get("api/v1/health")
+  @Get("health")
   @Public()
   @HealthCheck()
   @HttpCode(HttpStatus.OK)
