@@ -108,6 +108,23 @@ As OpenZeppelin Defender service will be discontinued in July 2026, we are build
 | Deployment Scripts | Hardhat TypeScript-based deployment | ✅ Ready |
 | Test Suite | Comprehensive unit tests | ✅ Complete |
 
+**Meta-Transaction Use Cases**:
+
+| Use Case | Description | Implementation | Benefit |
+|----------|-------------|-----------------|---------|
+| **NFT Minting (Gasless)** | Users mint NFTs without ETH | ERC2771Context + ERC721 | Seamless UX, User acquisition driver |
+| **Token Transfer (Gasless)** | Sponsored token transfers | ERC2771Context + ERC20 | Airdrop distribution, Onboarding |
+| **In-Game Rewards (Gasless)** | Game token rewards without gas cost | ERC2771Context + Custom ERC20 | Retention, Engagement |
+| **Payment Settlement (Direct)** | Merchant settlement via token transfer | Direct TX, Relayer-signed | High throughput, Native wallet support |
+| **Subscription Payment (Gasless)** | Recurring token payment via meta-TX | ERC2771Context + Scheduled execute | UX-first payments, User control |
+
+**Technical Flow**:
+1. End User signs EIP-712 message with their private key (no gas cost)
+2. Frontend/Backend submits signature to Relayer API
+3. Relayer verifies EIP-712 signature and executes via ERC2771Forwarder
+4. ERC2771Forwarder extracts original user address and calls target contract
+5. Target contract receives `_msgSender() = End User address` (not relayer)
+
 **API Gateway (Production Level)**:
 | Feature | Description |
 |---------|-------------|

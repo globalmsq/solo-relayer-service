@@ -102,6 +102,47 @@ For detailed documentation, see the [docs/](./docs/) directory:
 | [structure.md](./docs/structure.md) | **WHERE** | "Where is it located?", "How is it organized?" |
 | [tech.md](./docs/tech.md) | **HOW** | "How do we implement it?", "What are the API specs?" |
 
+## Smart Contracts
+
+The `packages/contracts/` directory contains Hardhat-based smart contracts for ERC2771 meta-transaction support and sample token/NFT contracts demonstrating gasless transaction patterns.
+
+### Contract Components
+
+| Component | Purpose | Status |
+|-----------|---------|--------|
+| **ERC2771Forwarder** | OpenZeppelin meta-transaction forwarder | ✅ Deployed |
+| **SampleToken.sol** | ERC20 token with ERC2771Context integration | ✅ Implemented |
+| **SampleNFT.sol** | ERC721 NFT with ERC2771Context integration | ✅ Implemented |
+
+### Key Features
+
+- **EIP-712 Signature Support**: Gasless transactions using user signatures
+- **Nonce Management**: Replay attack prevention with per-user nonce tracking
+- **Deadline Verification**: Transaction validity period enforcement
+- **Flexible Recipient**: Support for any ERC20/ERC721 contract with ERC2771Context
+
+### Deployment
+
+**Local Development (Hardhat Node)**:
+```bash
+npx hardhat run scripts/deploy-forwarder.ts --network localhost
+npx hardhat run scripts/deploy-samples.ts --network localhost
+```
+
+**Polygon Amoy Testnet**:
+```bash
+npx hardhat run scripts/deploy-forwarder.ts --network amoy
+```
+
+### Contract Details
+
+For comprehensive technical specifications, see:
+- **[tech.md - Section 4: Smart Contracts Technical Stack](./docs/tech.md#4-smart-contracts-technical-stack)** - Full technical specification
+- **[SPEC-CONTRACTS-001](./moai/specs/SPEC-CONTRACTS-001/spec.md)** - Smart Contracts Specification with acceptance criteria
+- **[CONTRACTS_GUIDE.md](./docs/CONTRACTS_GUIDE.md)** - Integration guide and usage patterns
+
+---
+
 ## Project Structure
 
 ```
@@ -117,9 +158,9 @@ msq-relayer-service/
 
 ## Status
 
-**Phase 1 Complete** (Direct + Gasless + Multi-Relayer Pool)
+**Phase 1 Complete** (Direct + Gasless + Multi-Relayer Pool + Smart Contracts)
 
 ---
 
-**Version**: 12.1
-**Last Updated**: 2025-12-16
+**Version**: 12.2
+**Last Updated**: 2025-12-19
