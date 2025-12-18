@@ -379,36 +379,132 @@ Response (200 OK):
 
 ### 5.5 Health Check API
 
+Health check endpoints follow the **@nestjs/terminus standard pattern** with custom HealthIndicator implementations for OZ Relayer Pool and Redis.
+
+#### Endpoint: GET /api/v1/health
+
 ```yaml
 GET /api/v1/health
 
-Response (Phase 1):
+Response (200 OK - @nestjs/terminus Standard Format):
 {
-  "status": "healthy",
-  "timestamp": "2025-12-15T00:00:00.000Z",
-  "services": {
-    "relay-api": "healthy",
-    "oz-relayer-pool": "healthy",   # Aggregated status of 3 Relayers
-    "redis": "healthy"
+  "status": "ok",
+  "info": {
+    "oz-relayer-pool": {
+      "status": "up",
+      "healthyCount": 3,
+      "totalCount": 3,
+      "relayers": [
+        {
+          "id": "oz-relayer-1",
+          "url": "http://oz-relayer-1:8080/api/v1/health",
+          "status": "healthy",
+          "responseTime": 45
+        },
+        {
+          "id": "oz-relayer-2",
+          "url": "http://oz-relayer-2:8080/api/v1/health",
+          "status": "healthy",
+          "responseTime": 52
+        },
+        {
+          "id": "oz-relayer-3",
+          "url": "http://oz-relayer-3:8080/api/v1/health",
+          "status": "healthy",
+          "responseTime": 48
+        }
+      ]
+    },
+    "redis": {
+      "status": "up",
+      "message": "Phase 1: Redis connectivity not implemented"
+    }
+  },
+  "error": {},
+  "details": {
+    "oz-relayer-pool": {
+      "status": "up",
+      "healthyCount": 3,
+      "totalCount": 3,
+      "relayers": [...]
+    },
+    "redis": {
+      "status": "up",
+      "message": "Phase 1: Redis connectivity not implemented"
+    }
   }
 }
-
-# oz-relayer-pool status determination:
-# - "healthy": All Relayers are healthy
-# - "degraded": Some Relayers are unhealthy (at least 1 healthy)
-# - "unhealthy": All Relayers are unhealthy
 ```
 
-#### Relayer Pool Status Aggregation (NestJS Implementation)
+#### Endpoint: GET /api/v1/relay/pool-status
+
+Detailed relayer pool status endpoint for debugging:
+
+```yaml
+GET /api/v1/relay/pool-status
+
+Response (200 OK):
+{
+  "success": true,
+  "data": {
+    "status": "healthy",
+    "healthyCount": 3,
+    "totalCount": 3,
+    "relayers": [
+      {
+        "id": "oz-relayer-1",
+        "url": "http://oz-relayer-1:8080/api/v1/health",
+        "status": "healthy",
+        "responseTime": 45
+      },
+      {
+        "id": "oz-relayer-2",
+        "url": "http://oz-relayer-2:8080/api/v1/health",
+        "status": "healthy",
+        "responseTime": 52
+      },
+      {
+        "id": "oz-relayer-3",
+        "url": "http://oz-relayer-3:8080/api/v1/health",
+        "status": "healthy",
+        "responseTime": 48
+      }
+    ]
+  },
+  "timestamp": "2025-12-17T00:00:00.000Z"
+}
+```
+
+#### Implementation: @nestjs/terminus HealthIndicators (Phase 1)
+
+The health check system uses **@nestjs/terminus** with custom HealthIndicator implementations:
+
+**Architecture**:
+```
+packages/relay-api/src/health/
+├── health.controller.ts          # @HealthCheck() endpoint, @Public() bypass
+├── health.module.ts              # TerminusModule + HealthIndicators DI
+└── indicators/
+    ├── oz-relayer.health.ts      # OzRelayerHealthIndicator extends HealthIndicator
+    ├── redis.health.ts           # RedisHealthIndicator extends HealthIndicator
+    └── index.ts                  # Barrel export
+```
+
+**OzRelayerHealthIndicator Implementation**:
 
 ```typescript
-// packages/relay-api/src/health/health.service.ts
+// packages/relay-api/src/health/indicators/oz-relayer.health.ts
 
 import { Injectable } from '@nestjs/common';
 import { HttpService } from '@nestjs/axios';
+import {
+  HealthIndicator,
+  HealthIndicatorResult,
+  HealthCheckError,
+} from '@nestjs/terminus';
 import { firstValueFrom, timeout, catchError } from 'rxjs';
 
-interface RelayerHealth {
+export interface RelayerHealth {
   id: string;
   url: string;
   status: 'healthy' | 'unhealthy';
@@ -416,7 +512,7 @@ interface RelayerHealth {
   error?: string;
 }
 
-interface PoolHealthStatus {
+export interface PoolHealthDetail {
   status: 'healthy' | 'degraded' | 'unhealthy';
   healthyCount: number;
   totalCount: number;
@@ -424,42 +520,87 @@ interface PoolHealthStatus {
 }
 
 @Injectable()
-export class HealthService {
+export class OzRelayerHealthIndicator extends HealthIndicator {
   private readonly relayerEndpoints = [
-    { id: 'oz-relayer-1', url: 'http://oz-relayer-1:8080/api/v1/health' },
-    { id: 'oz-relayer-2', url: 'http://oz-relayer-2:8080/api/v1/health' },
-    { id: 'oz-relayer-3', url: 'http://oz-relayer-3:8080/api/v1/health' },
+    {
+      id: 'oz-relayer-1',
+      url: 'http://oz-relayer-1:8080/api/v1/health',
+      apiKey: process.env.OZ_RELAYER_1_API_KEY || 'test-api-key-relayer-1-local-dev-32ch',
+    },
+    {
+      id: 'oz-relayer-2',
+      url: 'http://oz-relayer-2:8080/api/v1/health',
+      apiKey: process.env.OZ_RELAYER_2_API_KEY || 'test-api-key-relayer-2-local-dev-32ch',
+    },
+    {
+      id: 'oz-relayer-3',
+      url: 'http://oz-relayer-3:8080/api/v1/health',
+      apiKey: process.env.OZ_RELAYER_3_API_KEY || 'test-api-key-relayer-3-local-dev-32ch',
+    },
   ];
 
-  constructor(private readonly httpService: HttpService) {}
+  constructor(private readonly httpService: HttpService) {
+    super();
+  }
 
-  async checkRelayerPoolHealth(): Promise<PoolHealthStatus> {
+  /**
+   * Check OZ Relayer Pool health
+   * Returns aggregated status of all 3 relayer instances
+   * Parallel checking with 5-second timeout per relayer
+   */
+  async isHealthy(key: string): Promise<HealthIndicatorResult> {
     const results = await Promise.all(
-      this.relayerEndpoints.map(endpoint => this.checkSingleRelayer(endpoint))
+      this.relayerEndpoints.map((endpoint) =>
+        this.checkSingleRelayer(endpoint),
+      ),
     );
 
-    const healthyCount = results.filter(r => r.status === 'healthy').length;
+    const healthyCount = results.filter((r) => r.status === 'healthy').length;
     const totalCount = results.length;
+    const status = this.aggregateStatus(healthyCount, totalCount);
+    const isHealthy = status === 'healthy';
 
-    return {
-      status: this.aggregateStatus(healthyCount, totalCount),
+    const poolDetail: PoolHealthDetail = {
+      status,
       healthyCount,
       totalCount,
       relayers: results,
     };
+
+    const result = this.getStatus(key, isHealthy, poolDetail);
+
+    if (!isHealthy) {
+      throw new HealthCheckError('OZ Relayer Pool health check failed', result);
+    }
+
+    return result;
   }
 
-  private async checkSingleRelayer(
-    endpoint: { id: string; url: string }
-  ): Promise<RelayerHealth> {
+  /**
+   * Check single relayer instance health
+   * 5-second timeout per relayer with response time measurement
+   */
+  private async checkSingleRelayer(endpoint: {
+    id: string;
+    url: string;
+    apiKey: string;
+  }): Promise<RelayerHealth> {
     const startTime = Date.now();
 
     try {
       await firstValueFrom(
-        this.httpService.get(endpoint.url).pipe(
-          timeout(5000), // 5 second timeout
-          catchError(err => { throw err; })
-        )
+        this.httpService
+          .get(endpoint.url, {
+            headers: {
+              Authorization: `Bearer ${endpoint.apiKey}`,
+            },
+          })
+          .pipe(
+            timeout(5000), // 5-second timeout per relayer
+            catchError((err) => {
+              throw err;
+            }),
+          ),
       );
 
       return {
@@ -474,14 +615,20 @@ export class HealthService {
         url: endpoint.url,
         status: 'unhealthy',
         responseTime: Date.now() - startTime,
-        error: error.message,
+        error: error instanceof Error ? error.message : 'Unknown error',
       };
     }
   }
 
+  /**
+   * Aggregate pool status based on healthy count
+   * - healthy: all relayers responding
+   * - degraded: some relayers responding (at least 1 healthy)
+   * - unhealthy: all relayers unavailable
+   */
   private aggregateStatus(
     healthyCount: number,
-    totalCount: number
+    totalCount: number,
   ): 'healthy' | 'degraded' | 'unhealthy' {
     if (healthyCount === totalCount) return 'healthy';
     if (healthyCount > 0) return 'degraded';
@@ -490,49 +637,203 @@ export class HealthService {
 }
 ```
 
-#### Detailed Health Response Example
+**RedisHealthIndicator Implementation**:
 
-```json
-// GET /api/v1/health - Detailed Response (degraded status example)
-{
-  "success": true,
-  "data": {
-    "status": "degraded",
-    "timestamp": "2025-12-15T00:00:00.000Z",
-    "services": {
-      "relay-api": "healthy",
-      "oz-relayer-pool": {
-        "status": "degraded",
-        "healthyCount": 2,
-        "totalCount": 3,
-        "relayers": [
-          { "id": "oz-relayer-1", "status": "healthy", "responseTime": 45 },
-          { "id": "oz-relayer-2", "status": "healthy", "responseTime": 52 },
-          { "id": "oz-relayer-3", "status": "unhealthy", "error": "Connection refused" }
-        ]
-      },
-      "redis": "healthy"
-    }
-  },
-  "timestamp": "2025-12-15T00:00:00.000Z"
+```typescript
+// packages/relay-api/src/health/indicators/redis.health.ts
+
+import { Injectable } from '@nestjs/common';
+import {
+  HealthIndicator,
+  HealthIndicatorResult,
+} from '@nestjs/terminus';
+
+@Injectable()
+export class RedisHealthIndicator extends HealthIndicator {
+  async isHealthy(key: string): Promise<HealthIndicatorResult> {
+    // Phase 1: Placeholder - always returns healthy
+    // Phase 2+: Implement actual Redis connectivity check using ioredis
+    const isHealthy = true;
+
+    return this.getStatus(key, isHealthy, {
+      status: 'healthy',
+      message: 'Phase 1: Redis connectivity not implemented',
+    });
+  }
 }
 ```
 
-**Phase 2+ Extended Health Check**:
+**HealthController Implementation**:
 
-```yaml
-GET /api/v1/health
+```typescript
+// packages/relay-api/src/health/health.controller.ts
 
-Response (Phase 2+):
+import { Controller, Get, HttpCode, HttpStatus } from '@nestjs/common';
+import {
+  HealthCheck,
+  HealthCheckService,
+} from '@nestjs/terminus';
+import { Public } from '../auth/decorators/public.decorator';
+import {
+  OzRelayerHealthIndicator,
+  RedisHealthIndicator,
+} from './indicators';
+
+@Controller()
+export class HealthController {
+  constructor(
+    private health: HealthCheckService,
+    private ozRelayerHealth: OzRelayerHealthIndicator,
+    private redisHealth: RedisHealthIndicator,
+  ) {}
+
+  @Get('health')
+  @Public()
+  @HealthCheck()
+  @HttpCode(HttpStatus.OK)
+  async check() {
+    return this.health.check([
+      () => this.ozRelayerHealth.isHealthy('oz-relayer-pool'),
+      () => this.redisHealth.isHealthy('redis'),
+    ]);
+  }
+
+  @Get('relay/pool-status')
+  @Public()
+  @HttpCode(HttpStatus.OK)
+  async getRelayerPoolStatus() {
+    // Detailed relayer pool status for debugging
+    const result = await this.ozRelayerHealth
+      .isHealthy('oz-relayer-pool')
+      .catch((error) => {
+        return error.causes;
+      });
+
+    const poolData = result['oz-relayer-pool'] || result;
+
+    return {
+      success: true,
+      data: poolData,
+      timestamp: new Date().toISOString(),
+    };
+  }
+}
+```
+
+**HealthModule Configuration**:
+
+```typescript
+// packages/relay-api/src/health/health.module.ts
+
+import { Module } from '@nestjs/common';
+import { TerminusModule } from '@nestjs/terminus';
+import { HttpModule } from '@nestjs/axios';
+import { HealthController } from './health.controller';
+import {
+  OzRelayerHealthIndicator,
+  RedisHealthIndicator,
+} from './indicators';
+
+@Module({
+  imports: [TerminusModule, HttpModule],
+  controllers: [HealthController],
+  providers: [OzRelayerHealthIndicator, RedisHealthIndicator],
+})
+export class HealthModule {}
+```
+
+#### Degraded Status Example
+
+When some relayers are unhealthy:
+
+```json
 {
-  "status": "healthy",
-  "timestamp": "2025-12-15T00:00:00.000Z",
-  "services": {
-    "relay-api": "healthy",
-    "oz-relayer-pool": "healthy",
-    "oz-monitor": "healthy",        # Phase 2+
-    "redis": "healthy",
-    "mysql": "healthy"              # Phase 2+
+  "status": "ok",
+  "info": {
+    "oz-relayer-pool": {
+      "status": "degraded",
+      "healthyCount": 2,
+      "totalCount": 3,
+      "relayers": [
+        {
+          "id": "oz-relayer-1",
+          "url": "http://oz-relayer-1:8080/api/v1/health",
+          "status": "healthy",
+          "responseTime": 45
+        },
+        {
+          "id": "oz-relayer-2",
+          "url": "http://oz-relayer-2:8080/api/v1/health",
+          "status": "healthy",
+          "responseTime": 52
+        },
+        {
+          "id": "oz-relayer-3",
+          "url": "http://oz-relayer-3:8080/api/v1/health",
+          "status": "unhealthy",
+          "error": "Connection timeout"
+        }
+      ]
+    },
+    "redis": {
+      "status": "up",
+      "message": "Phase 1: Redis connectivity not implemented"
+    }
+  },
+  "error": {
+    "oz-relayer-pool": {
+      "message": "OZ Relayer Pool health check failed",
+      "status": "degraded",
+      "healthyCount": 2,
+      "totalCount": 3
+    }
+  },
+  "details": {
+    "oz-relayer-pool": {
+      "status": "degraded",
+      "healthyCount": 2,
+      "totalCount": 3,
+      "relayers": [...]
+    },
+    "redis": {
+      "status": "up",
+      "message": "Phase 1: Redis connectivity not implemented"
+    }
+  }
+}
+```
+
+#### Status Determination Logic
+
+| Condition | Status | Notes |
+|-----------|--------|-------|
+| 3/3 relayers healthy | `healthy` | All relayers responding normally |
+| 1-2/3 relayers healthy | `degraded` | Pool operating but with reduced capacity |
+| 0/3 relayers healthy | `unhealthy` | Complete service outage |
+
+**Phase 2+ Extension**:
+
+When Phase 2+ is implemented with actual Redis connectivity:
+
+```typescript
+// Future RedisHealthIndicator implementation
+async isHealthy(key: string): Promise<HealthIndicatorResult> {
+  const redis = new Redis({
+    host: process.env.REDIS_HOST || 'localhost',
+    port: parseInt(process.env.REDIS_PORT || '6379'),
+  });
+
+  try {
+    const ping = await redis.ping();
+    return this.getStatus(key, ping === 'PONG', {
+      status: 'healthy',
+      responseTime: Date.now() - startTime,
+    });
+  } catch (error) {
+    return this.getStatus(key, false, {
+      status: 'unhealthy',
+      error: error.message,
+    });
   }
 }
 ```
