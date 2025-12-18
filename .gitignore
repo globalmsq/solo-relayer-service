@@ -209,6 +209,9 @@ packages/contracts/typechain-types/
 packages/contracts/coverage/
 packages/contracts/.env
 
+# relay-api test coverage
+packages/relay-api/coverage/
+
 # ===========================================
 # Project-Specific: TaskMaster
 # ===========================================

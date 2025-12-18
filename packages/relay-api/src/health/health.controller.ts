@@ -1,39 +1,41 @@
 import { Controller, Get, HttpCode, HttpStatus } from "@nestjs/common";
 import { ApiOperation, ApiResponse, ApiTags } from "@nestjs/swagger";
+import { HealthCheck, HealthCheckService } from "@nestjs/terminus";
 import { Public } from "../auth/decorators/public.decorator";
-import { HealthService } from "./health.service";
+import { OzRelayerHealthIndicator, RedisHealthIndicator } from "./indicators";
 
 @Controller()
 @ApiTags("Health")
 export class HealthController {
-  constructor(private readonly healthService: HealthService) {}
+  constructor(
+    private readonly health: HealthCheckService,
+    private readonly ozRelayerHealth: OzRelayerHealthIndicator,
+    private readonly redisHealth: RedisHealthIndicator,
+  ) {}
 
   /**
    * Get system health status
-   * Returns health of API Gateway, OZ Relayer Pool, and Redis
+   * Returns health status using @nestjs/terminus standard pattern
+   * Checks OZ Relayer Pool (3 instances) and Redis
    *
-   * @returns Health status object with service details
+   * @returns Health check result with status and service details
    */
   @Get("health")
   @Public()
+  @HealthCheck()
   @HttpCode(HttpStatus.OK)
   @ApiOperation({
     summary: "Get system health status",
     description:
-      "Returns the health status of API Gateway, OZ Relayer Pool (3 instances), and Redis. " +
-      "Overall status is: healthy (all services healthy), " +
-      "degraded (some services unhealthy), or " +
-      "unhealthy (critical services down).",
+      "Returns the health status of OZ Relayer Pool (3 instances) and Redis using @nestjs/terminus standard pattern.",
   })
   @ApiResponse({
     status: 200,
-    description: "Health status retrieved successfully",
+    description: "Health check successful - all services healthy",
     schema: {
       example: {
-        status: "healthy",
-        timestamp: "2025-12-16T10:30:00.000Z",
-        services: {
-          "relay-api": "healthy",
+        status: "ok",
+        info: {
           "oz-relayer-pool": {
             status: "healthy",
             healthyCount: 3,
@@ -59,7 +61,42 @@ export class HealthController {
               },
             ],
           },
-          redis: "healthy",
+          redis: {
+            status: "healthy",
+            message: "Phase 1: Redis connectivity not implemented",
+          },
+        },
+        error: {},
+        details: {
+          "oz-relayer-pool": {
+            status: "healthy",
+            healthyCount: 3,
+            totalCount: 3,
+            relayers: [
+              {
+                id: "oz-relayer-1",
+                url: "http://oz-relayer-1:8080/api/v1/health",
+                status: "healthy",
+                responseTime: 45,
+              },
+              {
+                id: "oz-relayer-2",
+                url: "http://oz-relayer-2:8080/api/v1/health",
+                status: "healthy",
+                responseTime: 52,
+              },
+              {
+                id: "oz-relayer-3",
+                url: "http://oz-relayer-3:8080/api/v1/health",
+                status: "healthy",
+                responseTime: 48,
+              },
+            ],
+          },
+          redis: {
+            status: "healthy",
+            message: "Phase 1: Redis connectivity not implemented",
+          },
         },
       },
     },
@@ -68,26 +105,19 @@ export class HealthController {
     status: 503,
     description: "Service unavailable - critical services down",
   })
-  async getHealth() {
-    const health = await this.healthService.getSystemHealth();
-
-    // Return appropriate status code based on health status
-    if (health.status === "unhealthy") {
-      // Return 503 for unhealthy status
-      return {
-        statusCode: HttpStatus.SERVICE_UNAVAILABLE,
-        ...health,
-      };
-    }
-
-    return health;
+  async check() {
+    return this.health.check([
+      () => this.ozRelayerHealth.isHealthy("oz-relayer-pool"),
+      () => this.redisHealth.isHealthy("redis"),
+    ]);
   }
 
   /**
-   * Get Relayer Pool status
-   * Returns detailed status of each relayer in the pool
+   * Get Relayer Pool status (Optional detailed endpoint)
+   * Returns detailed health and status of OZ Relayer Pool (3 instances)
+   * Provides granular debugging information beyond standard health check
    *
-   * @returns Relayer pool health status
+   * @returns Relayer pool health status with detailed information
    */
   @Get("relay/pool-status")
   @Public()
@@ -95,17 +125,25 @@ export class HealthController {
   @ApiOperation({
     summary: "Get Relayer Pool status",
     description:
-      "Returns detailed health and status of OZ Relayer Pool (3 instances)",
+      "Returns detailed health and status of OZ Relayer Pool (3 instances). Provides granular debugging information.",
   })
   @ApiResponse({
     status: 200,
     description: "Relayer pool status retrieved successfully",
   })
   async getRelayerPoolStatus() {
-    const poolStatus = await this.healthService.checkRelayerPoolHealth();
+    const result = await this.ozRelayerHealth
+      .isHealthy("oz-relayer-pool")
+      .catch((error) => {
+        return error.causes;
+      });
+
+    // Handle both successful and error results
+    const poolData = result["oz-relayer-pool"] || result;
+
     return {
       success: true,
-      data: poolStatus,
+      data: poolData,
       timestamp: new Date().toISOString(),
     };
   }
