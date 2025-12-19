@@ -132,7 +132,7 @@ services:
       - ./keys/relayer-1:/app/config/keys:ro
     environment:
       <<: *relayer-env
-      API_KEY: test-api-key-relayer-1-local-dev-32ch
+      API_KEY: oz-relayer-shared-api-key-local-dev
 
   oz-relayer-2:
     <<: *relayer-common
@@ -145,7 +145,7 @@ services:
       - ./keys/relayer-2:/app/config/keys:ro
     environment:
       <<: *relayer-env
-      API_KEY: test-api-key-relayer-2-local-dev-32ch
+      API_KEY: oz-relayer-shared-api-key-local-dev
 
   oz-relayer-3:
     <<: *relayer-common
@@ -158,7 +158,7 @@ services:
       - ./keys/relayer-3:/app/config/keys:ro
     environment:
       <<: *relayer-env
-      API_KEY: test-api-key-relayer-3-local-dev-32ch
+      API_KEY: oz-relayer-shared-api-key-local-dev
 
   # === Nginx Load Balancer (SPEC-PROXY-001) ===
   oz-relayer-lb:

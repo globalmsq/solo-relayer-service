@@ -21,9 +21,30 @@ export interface DirectTxRequest {
  */
 export interface DirectTxResponse {
   transactionId: string;
-  hash: string;
+  hash: string | null;
   status: string;
   createdAt: string;
+}
+
+/**
+ * OZ Relayer API Response wrapper
+ */
+interface OzRelayerApiResponse<T> {
+  success: boolean;
+  data: T;
+  error: string | null;
+}
+
+/**
+ * OZ Relayer Transaction Data
+ */
+interface OzRelayerTxData {
+  id: string;
+  hash: string | null;
+  status: string;
+  created_at: string;
+  from: string;
+  to: string;
 }
 
 /**
@@ -34,11 +55,14 @@ export interface DirectTxResponse {
  * - Removed: Custom pool management logic (~50 LOC)
  * - Removed: Relayer endpoints array (3 instances)
  * - Added: Single relayerUrl from environment variable
+ * - Added: Dynamic relayer ID discovery with caching
  * - Result: 60% code reduction
  */
 @Injectable()
 export class OzRelayerService {
   private readonly relayerUrl: string;
+  private readonly relayerApiKey: string;
+  private relayerId: string | null = null;
 
   constructor(
     private readonly httpService: HttpService,
@@ -49,6 +73,44 @@ export class OzRelayerService {
       "OZ_RELAYER_URL",
       "http://oz-relayer-lb:8080",
     );
+    // OZ Relayer API Key for authentication (Bearer token)
+    this.relayerApiKey = this.configService.get<string>(
+      "OZ_RELAYER_API_KEY",
+      "oz-relayer-shared-api-key-local-dev",
+    );
+  }
+
+  /**
+   * Fetch and cache the relayer ID from OZ Relayer
+   * Uses ip_hash in Nginx to ensure consistent routing
+   */
+  private async getRelayerId(): Promise<string> {
+    if (this.relayerId) {
+      return this.relayerId;
+    }
+
+    try {
+      const response = await firstValueFrom(
+        this.httpService.get<{ data: Array<{ id: string }> }>(
+          `${this.relayerUrl}/api/v1/relayers`,
+          {
+            headers: {
+              Authorization: `Bearer ${this.relayerApiKey}`,
+            },
+            timeout: 10000,
+          },
+        ),
+      );
+
+      if (response.data?.data?.[0]?.id) {
+        this.relayerId = response.data.data[0].id;
+        return this.relayerId;
+      }
+
+      throw new Error("No relayer found");
+    } catch (error) {
+      throw new ServiceUnavailableException("Failed to discover OZ Relayer ID");
+    }
   }
 
   /**
@@ -61,19 +123,35 @@ export class OzRelayerService {
    */
   async sendTransaction(request: DirectTxRequest): Promise<DirectTxResponse> {
     try {
+      const relayerId = await this.getRelayerId();
       const response = await firstValueFrom(
-        this.httpService.post<DirectTxResponse>(
-          `${this.relayerUrl}/api/v1/transactions`,
-          request,
+        this.httpService.post<OzRelayerApiResponse<OzRelayerTxData>>(
+          `${this.relayerUrl}/api/v1/relayers/${relayerId}/transactions`,
+          {
+            to: request.to,
+            data: request.data,
+            value: request.value ? parseInt(request.value, 10) : 0,
+            gas_limit: request.gasLimit ? parseInt(request.gasLimit, 10) : 21000,
+            speed: request.speed || "average",
+          },
           {
             headers: {
               "Content-Type": "application/json",
+              Authorization: `Bearer ${this.relayerApiKey}`,
             },
             timeout: 30000, // 30 seconds
           },
         ),
       );
-      return response.data;
+
+      // Transform OZ Relayer response to DirectTxResponse
+      const txData = response.data.data;
+      return {
+        transactionId: txData.id,
+        hash: txData.hash,
+        status: txData.status,
+        createdAt: txData.created_at,
+      };
     } catch (error) {
       throw new ServiceUnavailableException("OZ Relayer service unavailable");
     }
@@ -88,10 +166,17 @@ export class OzRelayerService {
    */
   async getTransactionStatus(txId: string): Promise<any> {
     try {
+      const relayerId = await this.getRelayerId();
       const response = await firstValueFrom(
-        this.httpService.get(`${this.relayerUrl}/api/v1/transactions/${txId}`, {
-          timeout: 10000,
-        }),
+        this.httpService.get(
+          `${this.relayerUrl}/api/v1/relayers/${relayerId}/transactions/${txId}`,
+          {
+            headers: {
+              Authorization: `Bearer ${this.relayerApiKey}`,
+            },
+            timeout: 10000,
+          },
+        ),
       );
       return response.data;
     } catch (error) {

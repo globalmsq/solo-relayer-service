@@ -19,15 +19,16 @@ export class DirectTxResponseDto {
   transactionId: string;
 
   /**
-   * Transaction hash on blockchain
+   * Transaction hash on blockchain (null when pending)
    * Example: 0xabc123def456789...
    */
   @ApiProperty({
-    description: "Transaction hash on blockchain",
+    description: "Transaction hash on blockchain (null when pending)",
     example:
       "0xabc123def456789abc123def456789abc123def456789abc123def456789abc1",
+    nullable: true,
   })
-  hash: string;
+  hash: string | null;
 
   /**
    * Current transaction status
