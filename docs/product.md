@@ -6,9 +6,9 @@
 **Blockchain Transaction Relayer System (MSQ Relayer Service)**
 
 ### Document Version
-- **Version**: 12.0
-- **Last Updated**: 2025-12-15
-- **Status**: Phase 1 Implementation (Direct + Gasless)
+- **Version**: 12.1
+- **Last Updated**: 2025-12-19
+- **Status**: Phase 1 Complete (Direct + Gasless + Multi-Relayer Proxy)
 
 ### Related Documents
 - [Technical Stack and API Spec](./tech.md)
@@ -17,6 +17,7 @@
   - [Section 4.4: packages/contracts](./structure.md#44-packagescontracts) - Contracts directory structure
 - [Task Master PRD](../.taskmaster/docs/prd.txt)
 - [SPEC-CONTRACTS-001](../.moai/specs/SPEC-CONTRACTS-001/spec.md) - Smart Contracts Specification (ERC2771Forwarder, Sample Contracts)
+- [SPEC-PROXY-001](../.moai/specs/SPEC-PROXY-001/spec.md) - Nginx Load Balancer and Direct Transaction API
 
 ---
 

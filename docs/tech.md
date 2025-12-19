@@ -1,9 +1,9 @@
 # MSQ Relayer Service - Technical Document
 
 ## Document Information
-- **Version**: 12.4
-- **Last Updated**: 2025-12-17
-- **Status**: Phase 1 Complete (Direct + Gasless + Multi-Relayer Pool + API Key Authentication)
+- **Version**: 12.5
+- **Last Updated**: 2025-12-19
+- **Status**: Phase 1 Complete (Direct + Gasless + Multi-Relayer Proxy + Nginx LB + API Key Authentication)
 
 > **Note**: This document covers technical implementation details (HOW).
 > - Business requirements (WHAT/WHY): [product.md](./product.md)
@@ -23,6 +23,8 @@
 - **[SPEC-CONTRACTS-001](../.moai/specs/SPEC-CONTRACTS-001/spec.md)** - Smart Contracts Specification
   - [Acceptance Criteria](../.moai/specs/SPEC-CONTRACTS-001/acceptance.md)
   - [Implementation Plan](../.moai/specs/SPEC-CONTRACTS-001/plan.md)
+- **[SPEC-PROXY-001](../.moai/specs/SPEC-PROXY-001/spec.md)** - Nginx Load Balancer Architecture
+  - [Direct Transaction API](../.moai/specs/SPEC-PROXY-001/spec.md#4-direct-transaction-controller) - HTTP 202 endpoint
 
 ---
 
@@ -36,7 +38,7 @@ Defines the technical stack and implementation specifications for the Blockchain
 
 | Phase | Technical Scope | Status |
 |-------|-----------------|--------|
-| **Phase 1** | OZ Relayer, Redis, NestJS (Auth, Direct TX, Gasless TX, EIP-712 Verification, Health, Status Polling), ERC2771Forwarder | In Progress |
+| **Phase 1** | OZ Relayer (3x instances), Redis, Nginx Load Balancer, NestJS (Auth, Direct TX API, Gasless TX, EIP-712 Verification, Health, Status Polling), ERC2771Forwarder | **Complete** ✅ |
 | **Phase 2+** | TX History (MySQL), Webhook Handler, Queue System (Redis/SQS), OZ Monitor, Policy Engine | Planned |
 
 ---
@@ -73,6 +75,30 @@ Defines the technical stack and implementation specifications for the Blockchain
 - Balance monitoring
 - Slack/Discord/Telegram/Webhook notifications
 - Custom trigger scripts (Python/JS/Bash)
+
+### 1.3 Nginx Load Balancer
+
+| Category | Technology | Version | Rationale |
+|----------|------------|---------|-----------|
+| Load Balancer | Nginx | alpine | Lightweight, high-performance, container-ready |
+| Strategy | ip_hash | - | Session persistence based on client IP |
+| Health Checks | Built-in | - | Automatic failover (max_fails=3, fail_timeout=30s) |
+| Logging | Access + Error logs | - | Debugging and monitoring |
+| Proxy Mode | HTTP Reverse Proxy | - | Transparent proxying with header preservation |
+
+**Architecture**:
+- **Upstream**: 3 OZ Relayer instances (oz-relayer-1:8081, oz-relayer-2:8082, oz-relayer-3:8083)
+- **Load Balancing**: ip_hash strategy for session persistence
+- **Health Endpoint**: `/health` (returns 200 if Nginx is running)
+- **Proxy Pass**: All requests to healthy relayers via round-robin
+- **Headers**: Maintains X-Real-IP and X-Forwarded-For for client identification
+
+**Features**:
+- Automatic failover when relayer becomes unhealthy
+- Session persistence per client IP
+- Access logging for request tracking
+- Error logging for troubleshooting
+- Configurable timeout and retry settings
 
 ---
 

@@ -1,14 +1,15 @@
 # MSQ Relayer Service - Structure Document
 
 ## Document Information
-- **Version**: 12.0
-- **Last Updated**: 2025-12-15
-- **Status**: Phase 1 Implementation (Direct + Gasless + Multi-Relayer Pool)
+- **Version**: 12.1
+- **Last Updated**: 2025-12-19
+- **Status**: Phase 1 Complete (Direct + Gasless + Nginx Load Balancer + Multi-Relayer Pool)
 
 ### Related Documents
 - [Product Requirements](./product.md)
 - [Technical Stack and API Spec](./tech.md)
 - [Task Master PRD](../.taskmaster/docs/prd.txt)
+- [SPEC-PROXY-001](../.moai/specs/SPEC-PROXY-001/spec.md) - Nginx Load Balancer Architecture
 
 ---
 
@@ -22,7 +23,7 @@ It utilizes **OZ open-source (Relayer + Monitor)** as its core, with NestJS API 
 
 | Phase | Scope | Status |
 |-------|-------|--------|
-| **Phase 1** | OZ Relayer + Redis, Auth, Health, Direct TX, Gasless TX, ERC2771Forwarder, EIP-712 verification, Payment system integration | In Progress |
+| **Phase 1** | OZ Relayer + Redis, Auth, Health, Direct TX, Gasless TX, ERC2771Forwarder, EIP-712 verification, Nginx LB Proxy, Multi-Relayer Pool | **Complete** ✅ |
 | **Phase 2+** | TX History (MySQL), Webhook Handler, Queue System (Redis/SQS), OZ Monitor, Policy Engine, Kubernetes | Planned |
 
 ---
@@ -56,17 +57,29 @@ It utilizes **OZ open-source (Relayer + Monitor)** as its core, with NestJS API 
           ┌───────────────────────┼───────────────────────┐
           │                       │                       │
           ▼                       ▼                       ▼
-┌─────────────────┐   ┌─────────────────┐   ┌─────────────────┐
-│  OZ Relayer     │   │  OZ Monitor     │   │ Smart Contracts │
-│  v1.3.0 (Rust)  │   │  v1.1.0 (Rust)  │   │ (Solidity)      │
-│  ─────────────  │   │  ─────────────  │   │ ─────────────   │
-│  • EVM TX Relay │   │  • Block Watch  │   │ • ERC2771       │
-│  • Nonce Mgmt   │   │  • Event Filter │   │   Forwarder     │
-│  • Gas Estimate │   │  • Balance Alert│   │ • Sample ERC20  │
-│  • Signing      │   │  • Slack/Discord│   │ • Sample ERC721 │
-│  • Webhook      │   │  • Custom Script│   │                 │
-│  Port: 8080     │   │                 │   │                 │
-└────────┬────────┘   └────────┬────────┘   └─────────────────┘
+┌──────────────────┐ ┌─────────────────┐   ┌─────────────────┐
+│  Nginx LB        │ │  OZ Monitor     │   │ Smart Contracts │
+│  (Port 8080)     │ │  v1.1.0 (Rust)  │   │ (Solidity)      │
+│  ──────────────  │ │  ─────────────  │   │ ─────────────   │
+│ • ip_hash        │ │  • Block Watch  │   │ • ERC2771       │
+│ • Round-robin    │ │  • Event Filter │   │   Forwarder     │
+│ • Health check   │ │  • Balance Alert│   │ • Sample ERC20  │
+│ • Failover       │ │  • Slack/Discord│   │ • Sample ERC721 │
+│ • Access logging │ │  • Custom Script│   │                 │
+│                  │ │                 │   │                 │
+│ ┌──────────────┐ │ └────────┬────────┘   └─────────────────┘
+│ │ OZ Relayer 1 │ │
+│ │ (Port 8081)  │ │
+│ └──────────────┘ │
+│ ┌──────────────┐ │
+│ │ OZ Relayer 2 │ │
+│ │ (Port 8082)  │ │
+│ └──────────────┘ │
+│ ┌──────────────┐ │
+│ │ OZ Relayer 3 │ │
+│ │ (Port 8083)  │ │
+│ └──────────────┘ │
+└──────────────────┘
          │                     │
          └──────────┬──────────┘
                     ▼

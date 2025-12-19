@@ -48,8 +48,10 @@ curl http://localhost:3000/api/v1/health
 
 ### Sample API Requests
 
+#### Direct Transaction API (HTTP 202 Accepted)
+
 ```bash
-# Direct Transaction Relay
+# Direct Transaction Relay via Nginx Load Balancer
 curl -X POST http://localhost:3000/api/v1/relay/direct \
   -H "Content-Type: application/json" \
   -H "X-API-Key: local-dev-api-key" \
@@ -59,11 +61,50 @@ curl -X POST http://localhost:3000/api/v1/relay/direct \
     "value": "0"
   }'
 
+# Expected Response (HTTP 202)
+# {
+#   "transactionId": "tx_12345",
+#   "hash": "0xabcd...",
+#   "status": "pending",
+#   "createdAt": "2025-12-19T10:00:00Z"
+# }
+```
+
+#### Testing Direct Transaction API
+
+```bash
+# Run unit tests for Direct Transaction
+pnpm --filter relay-api test -- direct
+
+# Run integration tests with Nginx Load Balancer
+docker compose -f docker/docker-compose.yaml up -d
+sleep 5
+
+# Verify Nginx Load Balancer health
+curl http://localhost:8080/health
+
+# Test Direct Transaction with load balancer
+curl -X POST http://localhost:3000/api/v1/relay/direct \
+  -H "Content-Type: application/json" \
+  -H "X-API-Key: local-dev-api-key" \
+  -d '{
+    "to": "0x1234567890123456789012345678901234567890",
+    "data": "0x",
+    "value": "0"
+  }'
+```
+
+#### Other Relay Endpoints
+
+```bash
 # Get Nonce
 curl http://localhost:3000/api/v1/relay/nonce/0x1234567890123456789012345678901234567890
 
 # Get Transaction Status
 curl http://localhost:3000/api/v1/relay/status/tx_123456
+
+# Health Check (includes Nginx LB status)
+curl http://localhost:3000/api/v1/health
 ```
 
 ### Troubleshooting
@@ -156,11 +197,47 @@ msq-relayer-service/
 └── README.md
 ```
 
-## Status
+## Load Balancer Architecture
 
-**Phase 1 Complete** (Direct + Gasless + Multi-Relayer Pool + Smart Contracts)
+### Nginx Load Balancer (SPEC-PROXY-001)
+
+MSQ Relayer Service uses **Nginx Load Balancer** for distributing requests to OZ Relayer Pool:
+
+**Architecture**:
+```
+API Gateway (Port 3000)
+          ↓
+Direct Transaction API (/api/v1/relay/direct)
+          ↓
+Nginx Load Balancer (Port 8080) - ip_hash strategy
+          ↓
+    ┌─────┼─────┐
+    ↓     ↓     ↓
+ OZ-1  OZ-2  OZ-3 (Ports 8081-8083)
+```
+
+**Features**:
+- **Load Balancing**: ip_hash strategy for session persistence
+- **Health Checks**: Automatic failover (max_fails=3, fail_timeout=30s)
+- **Transparent Proxy**: Maintains X-Real-IP and X-Forwarded-For headers
+- **Access Logging**: Nginx logs all transactions for debugging
+
+See [SPEC-PROXY-001](./docs/SPEC-PROXY-001.md) for detailed architecture.
 
 ---
 
-**Version**: 12.2
+## Status
+
+**Phase 1 Complete** (Direct + Gasless + Multi-Relayer Pool + Smart Contracts + Nginx Proxy)
+
+### Test Results
+- ✅ All 147 tests passing (smart contracts)
+- ✅ Direct Transaction API tested and validated
+- ✅ Nginx Load Balancer integrated with 3+ relayers
+- ✅ Health check endpoint functional
+- ✅ API Key authentication enforced
+
+---
+
+**Version**: 12.3
 **Last Updated**: 2025-12-19
