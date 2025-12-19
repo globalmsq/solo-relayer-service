@@ -1,5 +1,6 @@
 import { Test, TestingModule } from "@nestjs/testing";
 import { HttpService } from "@nestjs/axios";
+import { ConfigService } from "@nestjs/config";
 import {
   HealthCheckService,
   HealthCheckError,
@@ -30,6 +31,17 @@ describe("HealthController (Integration)", () => {
             get: jest.fn(),
           },
         },
+        {
+          provide: ConfigService,
+          useValue: {
+            get: jest.fn((key: string, defaultValue?: string) => {
+              if (key === "OZ_RELAYER_URL") {
+                return defaultValue || "http://oz-relayer-lb:8080";
+              }
+              return defaultValue;
+            }),
+          },
+        },
       ],
     }).compile();
 
@@ -47,7 +59,7 @@ describe("HealthController (Integration)", () => {
     it("should return health check result when all services are healthy", async () => {
       jest
         .spyOn(httpService, "get")
-        .mockReturnValue(of({ data: { status: "ok" } }) as any);
+        .mockReturnValue(of({ status: 200, data: { status: "ok" } }) as any);
 
       const result = await controller.check();
 
@@ -61,7 +73,7 @@ describe("HealthController (Integration)", () => {
     it("should return standard @nestjs/terminus response format", async () => {
       jest
         .spyOn(httpService, "get")
-        .mockReturnValue(of({ data: { status: "ok" } }) as any);
+        .mockReturnValue(of({ status: 200, data: { status: "ok" } }) as any);
 
       const result = await controller.check();
 
@@ -90,7 +102,7 @@ describe("HealthController (Integration)", () => {
     it("should include redis indicator in response", async () => {
       jest
         .spyOn(httpService, "get")
-        .mockReturnValue(of({ data: { status: "ok" } }) as any);
+        .mockReturnValue(of({ status: 200, data: { status: "ok" } }) as any);
 
       const result = await controller.check();
 
@@ -98,38 +110,29 @@ describe("HealthController (Integration)", () => {
       expect(result.info!["redis"].message).toContain("Phase 1");
     });
 
-    // OZ Relayer pool details
-    it("should include oz-relayer-pool details with relayers", async () => {
+    // OZ Relayer LB details (SPEC-PROXY-001: Simplified to single Nginx LB endpoint)
+    it("should include oz-relayer-pool details with LB status", async () => {
       jest
         .spyOn(httpService, "get")
-        .mockReturnValue(of({ data: { status: "ok" } }) as any);
+        .mockReturnValue(of({ status: 200, data: { status: "ok" } }) as any);
 
       const result = await controller.check();
 
       const poolInfo = result.info!["oz-relayer-pool"];
-      expect(poolInfo.status).toBe("healthy");
-      expect(poolInfo.healthyCount).toBe(3);
-      expect(poolInfo.totalCount).toBe(3);
-      expect(poolInfo.relayers).toHaveLength(3);
-
-      poolInfo.relayers.forEach((r: any) => {
-        expect(["oz-relayer-1", "oz-relayer-2", "oz-relayer-3"]).toContain(
-          r.id,
-        );
-        expect(r.status).toBe("healthy");
-        expect(typeof r.responseTime).toBe("number");
-      });
+      expect(poolInfo).toBeDefined();
+      expect(poolInfo.url).toBe("http://oz-relayer-lb:8080");
+      expect(typeof poolInfo.responseTime).toBe("number");
+      expect(poolInfo.responseTime).toBeGreaterThanOrEqual(0);
     });
 
-    // AC-008: Service unavailable (503 error) - degraded
-    it("should throw ServiceUnavailableException when pool is degraded", async () => {
+    // AC-008: Service unavailable (503 error) - LB unhealthy
+    it("should throw ServiceUnavailableException when Nginx LB is unhealthy", async () => {
       jest.spyOn(ozRelayerHealth, "isHealthy").mockRejectedValue(
-        new HealthCheckError("Pool degraded", {
+        new HealthCheckError("LB unhealthy", {
           "oz-relayer-pool": {
-            status: "degraded",
-            healthyCount: 1,
-            totalCount: 3,
-            relayers: [{ id: "oz-relayer-1", status: "healthy" }],
+            url: "http://oz-relayer-lb:8080",
+            responseTime: 0,
+            error: "Connection refused",
           },
         }),
       );
@@ -142,15 +145,14 @@ describe("HealthController (Integration)", () => {
       }
     });
 
-    // AC-008: Service unavailable (503 error) - unhealthy
-    it("should throw ServiceUnavailableException when pool is completely unhealthy", async () => {
+    // AC-008: Service unavailable (503 error) - HTTP error
+    it("should throw ServiceUnavailableException when LB returns non-200", async () => {
       jest.spyOn(ozRelayerHealth, "isHealthy").mockRejectedValue(
-        new HealthCheckError("Pool unhealthy", {
+        new HealthCheckError("LB error", {
           "oz-relayer-pool": {
-            status: "unhealthy",
-            healthyCount: 0,
-            totalCount: 3,
-            relayers: [],
+            url: "http://oz-relayer-lb:8080",
+            responseTime: 45,
+            error: "HTTP 503",
           },
         }),
       );
@@ -168,7 +170,7 @@ describe("HealthController (Integration)", () => {
     it("should return pool status with success flag", async () => {
       jest
         .spyOn(httpService, "get")
-        .mockReturnValue(of({ data: { status: "ok" } }) as any);
+        .mockReturnValue(of({ status: 200, data: { status: "ok" } }) as any);
 
       const response = await controller.getRelayerPoolStatus();
 
@@ -180,25 +182,23 @@ describe("HealthController (Integration)", () => {
     it("should return detailed pool information", async () => {
       jest
         .spyOn(httpService, "get")
-        .mockReturnValue(of({ data: { status: "ok" } }) as any);
+        .mockReturnValue(of({ status: 200, data: { status: "ok" } }) as any);
 
       const response = await controller.getRelayerPoolStatus();
 
       const poolData = response.data;
-      expect(poolData.status).toBe("healthy");
-      expect(poolData.healthyCount).toBeDefined();
-      expect(poolData.totalCount).toBeDefined();
-      expect(poolData.relayers).toBeDefined();
+      expect(poolData.url).toBeDefined();
+      expect(poolData.responseTime).toBeDefined();
+      expect(typeof poolData.responseTime).toBe("number");
     });
 
-    it("should handle degraded pool status", async () => {
+    it("should handle unhealthy LB status", async () => {
       jest.spyOn(ozRelayerHealth, "isHealthy").mockRejectedValue(
-        new HealthCheckError("Pool degraded", {
+        new HealthCheckError("LB unhealthy", {
           "oz-relayer-pool": {
-            status: "degraded",
-            healthyCount: 2,
-            totalCount: 3,
-            relayers: [],
+            url: "http://oz-relayer-lb:8080",
+            responseTime: 0,
+            error: "Connection refused",
           },
         }),
       );
@@ -206,8 +206,8 @@ describe("HealthController (Integration)", () => {
       const response = await controller.getRelayerPoolStatus();
 
       expect(response.success).toBe(true);
-      expect(response.data.status).toBe("degraded");
-      expect(response.data.healthyCount).toBe(2);
+      expect(response.data.url).toBe("http://oz-relayer-lb:8080");
+      expect(response.data.error).toBe("Connection refused");
     });
   });
 
