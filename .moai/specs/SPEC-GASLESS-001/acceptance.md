@@ -17,16 +17,32 @@
 **Given** a user submits a ForwardRequest with a valid EIP-712 signature
 **When** the API receives the request at `POST /api/v1/relay/gasless`
 **Then** the system shall:
+- ✅ Query current nonce from Forwarder contract via `nonces(from)`
+- ✅ Build EIP-712 TypedData with nonce included
 - ✅ Verify the signature using ethers.js v6 `verifyTypedData()`
 - ✅ Extract the signer address from the signature
 - ✅ Compare signer address with `request.from` field
 - ✅ Return 401 Unauthorized if signature is invalid or signer mismatch
+
+**Signature Verification Flow**:
+```typescript
+// 1. Query current nonce from Forwarder
+const nonce = await getNonceFromForwarder(request.from);
+
+// 2. Build EIP-712 TypedData with nonce
+const message = { ...request, nonce };
+
+// 3. Verify signature
+const recoveredAddress = verifyTypedData(domain, types, message, signature);
+return recoveredAddress === request.from;
+```
 
 **Test Cases**:
 - Valid signature from correct signer → Accept
 - Valid signature from wrong signer → Reject with 401
 - Invalid signature format → Reject with 401
 - Malformed signature → Reject with 401
+- Nonce query fails → Return 503
 
 ---
 
@@ -46,8 +62,8 @@
 
 ---
 
-### AC-3: Nonce Management
-**Given** users need to track nonce values
+### AC-3: Nonce 조회 API
+**Given** users need to query nonce values for EIP-712 signature creation
 **When** a GET request is made to `/api/v1/relay/gasless/nonce/:address`
 **Then** the system shall:
 - ✅ Query `ERC2771Forwarder.nonces(address)` via JSON-RPC
@@ -55,8 +71,17 @@
 - ✅ Return 400 for invalid Ethereum addresses
 - ✅ Return 503 if RPC call fails
 
+**Important**: relay-api provides **query API only**. Nonce is automatically managed by the ERC2771Forwarder contract - relay-api does NOT manage nonces.
+
+**Nonce Types Clarification**:
+
+| Nonce Type | Managed By | relay-api Role |
+|------------|-----------|----------------|
+| **OZ Relayer Blockchain Nonce** | OZ Relayer (automatic) | None |
+| **Forwarder User Nonce** | ERC2771Forwarder Contract (automatic) | **Query API only** |
+
 **Test Cases**:
-- Valid address → Returns current nonce
+- Valid address → Returns current nonce from Forwarder contract
 - Invalid address format → Reject with 400
 - RPC unavailable → Return 503
 - Address with no prior nonces → Returns "0"

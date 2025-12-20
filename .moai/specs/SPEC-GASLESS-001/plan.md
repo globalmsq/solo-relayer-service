@@ -10,6 +10,25 @@
 | **Estimated LOC** | ~500 |
 | **Test Cases** | ~20 |
 
+## Architecture
+
+```
+Frontend → Backend API → relay-api → OZ Relayer → Blockchain
+                          ↑
+                    Nonce 조회 제공
+```
+
+**Call Flow**: Backend service calls relay-api (Frontend does NOT call relay-api directly)
+
+## Nonce Handling
+
+| Nonce Type | Managed By | relay-api Role |
+|------------|-----------|----------------|
+| **OZ Relayer Blockchain Nonce** | OZ Relayer (automatic) | None |
+| **Forwarder User Nonce** | ERC2771Forwarder Contract (automatic) | **Query API only** |
+
+**Important**: relay-api provides **nonce query API** via `GET /nonce/:address`. Nonce is automatically managed by the Forwarder contract - relay-api does NOT manage it.
+
 ## Phase Breakdown
 
 ### Phase 1: DTO Definitions (5 files)
@@ -21,6 +40,27 @@
 3. `packages/relay-api/src/relay/gasless/dto/gasless-tx-response.dto.ts`
 
 **Implementation Details**:
+```typescript
+// ForwardRequestDto (API request structure - NO nonce field)
+export class ForwardRequestDto {
+  @IsEthereumAddress() from: string;
+  @IsEthereumAddress() to: string;
+  @IsNumberString() value: string;
+  @IsNumberString() gas: string;
+  @IsNumber() deadline: number;       // uint48
+  @IsHexadecimal() data: string;
+  // ⚠️ NO nonce field - managed by Forwarder contract
+}
+
+// GaslessTxRequestDto (Full API request)
+export class GaslessTxRequestDto {
+  @ValidateNested() @Type(() => ForwardRequestDto)
+  request: ForwardRequestDto;
+
+  @IsHexadecimal() signature: string;  // ← Separate field
+}
+```
+
 - Use `class-validator` decorators for validation
 - Follow Direct TX API DTO pattern as reference
 - Include OpenAPI/Swagger annotations
@@ -38,7 +78,7 @@
 **Key Methods**:
 ```typescript
 class SignatureVerifierService {
-  verifySignature(request: ForwardRequestDto, signature: string): boolean
+  verifySignature(request: ForwardRequestDto, signature: string, nonce: string): boolean
   validateDeadline(deadline: number): boolean
   private buildEIP712Domain(): TypedDataDomain
   private buildEIP712Types(): Record<string, Array<TypedDataField>>
@@ -50,6 +90,34 @@ class SignatureVerifierService {
 - EIP-712 domain: name='ERC2771Forwarder', version='1'
 - Inject ConfigService for chainId and verifyingContract
 - Deadline validation: `block.timestamp <= deadline`
+
+**Signature Verification Logic** (핵심):
+```typescript
+// 1. Query current nonce from Forwarder (passed as parameter)
+const nonce = await getNonceFromForwarder(request.from);
+
+// 2. Build EIP-712 TypedData with nonce
+const message = { ...request, nonce };  // from, to, value, gas, nonce, deadline, data
+
+// 3. Verify signature
+const recoveredAddress = verifyTypedData(domain, types, message, signature);
+return recoveredAddress.toLowerCase() === request.from.toLowerCase();
+```
+
+**EIP-712 Types** (TypeHash INCLUDES nonce):
+```typescript
+const types = {
+  ForwardRequest: [
+    { name: 'from', type: 'address' },
+    { name: 'to', type: 'address' },
+    { name: 'value', type: 'uint256' },
+    { name: 'gas', type: 'uint256' },
+    { name: 'nonce', type: 'uint256' },    // ← Required for signature verification
+    { name: 'deadline', type: 'uint48' },
+    { name: 'data', type: 'bytes' },
+  ],
+};
+```
 
 **Expected LOC**: ~80 lines
 
@@ -72,9 +140,33 @@ class GaslessService {
 
 **Implementation Details**:
 - Inject: SignatureVerifierService, OzRelayerService, ConfigService
-- Validate deadline → verify signature → build TX → send via OZ Relayer
+- Validate deadline → Query nonce → Verify signature → Build TX → Send via OZ Relayer
 - Use ethers.js `Interface` to encode `execute(request, signature)`
 - Query nonce via JSON-RPC `eth_call` to Forwarder contract
+
+**Nonce Query Flow**:
+```
+Backend → GET /nonce/:address → GaslessService.getNonceFromForwarder()
+        → RPC eth_call → Forwarder.nonces(address) → nonce 반환
+```
+
+**Forwarder TX Build** (ForwardRequestData structure):
+```typescript
+// API request: { request: { from, to, value, gas, deadline, data }, signature }
+// Forwarder.execute() expects: ForwardRequestData structure
+
+const forwardRequestData = {
+  from: dto.request.from,
+  to: dto.request.to,
+  value: dto.request.value,
+  gas: dto.request.gas,
+  deadline: dto.request.deadline,
+  data: dto.request.data,
+  signature: dto.signature,  // ← Combined structure
+};
+
+const calldata = forwarderInterface.encodeFunctionData('execute', [forwardRequestData]);
+```
 
 **Expected LOC**: ~150 lines
 

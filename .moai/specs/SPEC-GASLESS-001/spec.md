@@ -21,9 +21,18 @@ Implement a Gasless Transaction API (`POST /api/v1/relay/gasless`) that:
 
 1. Accepts EIP-712 typed data signatures from users
 2. Verifies signature validity using ethers.js v6 `verifyTypedData()`
-3. Validates deadline and nonce from ERC2771Forwarder contract
+3. Validates deadline and queries nonce from ERC2771Forwarder contract
 4. Builds and submits `ERC2771Forwarder.execute()` transactions via OZ Relayer
 5. Returns transaction ID and status to user
+
+**Architecture**:
+```
+Frontend → Backend API → relay-api → OZ Relayer → Blockchain
+                          ↑
+                    Nonce 조회 제공
+```
+
+**Call Flow**: Backend service calls relay-api (Frontend does NOT call relay-api directly)
 
 ## Functional Requirements
 
@@ -37,10 +46,12 @@ Implement a Gasless Transaction API (`POST /api/v1/relay/gasless`) that:
 **When** the signature verification succeeds
 **Then** the system shall validate that `block.timestamp <= deadline` before proceeding
 
-### U-GASLESS-003: Nonce Management
-**Given** a ForwardRequest contains a `nonce` field
-**When** the API processes the request
-**Then** the system shall query `ERC2771Forwarder.nonces(from)` to provide nonce values via `GET /api/v1/relay/gasless/nonce/:address`
+### U-GASLESS-003: Nonce 조회 API
+**Given** users need to query nonce values for EIP-712 signature creation
+**When** a GET request is made to `/api/v1/relay/gasless/nonce/:address`
+**Then** the system shall query `ERC2771Forwarder.nonces(from)` via JSON-RPC and return the current nonce value
+
+**Note**: Nonce is automatically managed by the ERC2771Forwarder contract. relay-api provides a **query API only** - it does NOT manage nonces.
 
 ### U-GASLESS-004: Forwarder Transaction Build
 **Given** a valid and verified ForwardRequest
@@ -66,7 +77,7 @@ Implement a Gasless Transaction API (`POST /api/v1/relay/gasless`) that:
 - Install `ethers@^6.13.0` in relay-api package
 - Use `verifyTypedData()` for EIP-712 signature verification
 
-### T-GASLESS-002: EIP-712 Domain Structure
+### T-GASLESS-002: EIP-712 Domain and Type Structure
 ```typescript
 const domain: TypedDataDomain = {
   name: 'ERC2771Forwarder',
@@ -75,30 +86,66 @@ const domain: TypedDataDomain = {
   verifyingContract: configService.get('FORWARDER_ADDRESS'),
 };
 
+// TypeHash includes nonce for signature verification
 const types = {
   ForwardRequest: [
     { name: 'from', type: 'address' },
     { name: 'to', type: 'address' },
     { name: 'value', type: 'uint256' },
     { name: 'gas', type: 'uint256' },
-    { name: 'nonce', type: 'uint256' },
+    { name: 'nonce', type: 'uint256' },    // ← Required for signature verification
     { name: 'deadline', type: 'uint48' },
     { name: 'data', type: 'bytes' },
   ],
 };
 ```
 
+**Important Nonce Handling**:
+- **API Request DTO**: Does NOT include nonce field (managed by Forwarder)
+- **EIP-712 TypeHash**: INCLUDES nonce field (required for signature verification)
+- **Verification Process**: relay-api queries nonce from Forwarder, builds TypedData with nonce, then verifies signature
+
 ### T-GASLESS-003: DTO Validation
-- Use class-validator decorators for all DTOs
-- `@IsEthereumAddress()` for address fields
-- `@IsNumberString()` for numeric string fields
-- `@IsHexadecimal()` for data and signature fields
+```typescript
+// ForwardRequestDto - API request structure (NO nonce field)
+export class ForwardRequestDto {
+  @IsEthereumAddress() from: string;
+  @IsEthereumAddress() to: string;
+  @IsNumberString() value: string;
+  @IsNumberString() gas: string;
+  @IsNumber() deadline: number;       // uint48
+  @IsHexadecimal() data: string;
+  // ⚠️ NO nonce field - managed by Forwarder contract
+}
+
+// GaslessTxRequestDto - Full API request
+export class GaslessTxRequestDto {
+  @ValidateNested() @Type(() => ForwardRequestDto)
+  request: ForwardRequestDto;
+
+  @IsHexadecimal() signature: string;  // ← Separate field
+}
+```
 
 ### T-GASLESS-004: Environment Variables
 - `CHAIN_ID`: Network chain ID (default: 31337 for Hardhat)
 - `FORWARDER_ADDRESS`: ERC2771Forwarder contract address
 
-### T-GASLESS-005: RPC Integration
+### T-GASLESS-005: Nonce Types and Management
+**Two Types of Nonces**:
+
+| Nonce Type | Managed By | relay-api Role |
+|------------|-----------|----------------|
+| **OZ Relayer Blockchain Nonce** | OZ Relayer (automatic) | None |
+| **Forwarder User Nonce** | ERC2771Forwarder Contract (automatic) | **Query API only** |
+
+**Nonce Query Flow**:
+```
+Backend → GET /nonce/:address → GaslessService.getNonceFromForwarder()
+        → RPC eth_call → Forwarder.nonces(address) → nonce 반환
+```
+
+### T-GASLESS-006: RPC Integration
 - Query Forwarder nonce via JSON-RPC: `eth_call` to `nonces(address)`
 - Use existing `RPC_URL` from environment
 
