@@ -41,15 +41,15 @@ Frontend → Backend API → relay-api → OZ Relayer → Blockchain
 
 **Implementation Details**:
 ```typescript
-// ForwardRequestDto (API request structure - NO nonce field)
+// ForwardRequestDto (API request structure - INCLUDES nonce field)
 export class ForwardRequestDto {
   @IsEthereumAddress() from: string;
   @IsEthereumAddress() to: string;
   @IsNumberString() value: string;
   @IsNumberString() gas: string;
-  @IsNumber() deadline: number;       // uint48
+  @IsNumberString() nonce: string;     // ← ADDED: Client must provide nonce
+  @IsNumber() deadline: number;        // uint48
   @IsHexadecimal() data: string;
-  // ⚠️ NO nonce field - managed by Forwarder contract
 }
 
 // GaslessTxRequestDto (Full API request)
@@ -78,7 +78,7 @@ export class GaslessTxRequestDto {
 **Key Methods**:
 ```typescript
 class SignatureVerifierService {
-  verifySignature(request: ForwardRequestDto, signature: string, nonce: string): boolean
+  verifySignature(request: ForwardRequestDto, signature: string): boolean
   validateDeadline(deadline: number): boolean
   private buildEIP712Domain(): TypedDataDomain
   private buildEIP712Types(): Record<string, Array<TypedDataField>>
@@ -89,17 +89,22 @@ class SignatureVerifierService {
 - Use ethers.js v6 `verifyTypedData()`
 - EIP-712 domain: name='ERC2771Forwarder', version='1'
 - Inject ConfigService for chainId and verifyingContract
-- Deadline validation: `block.timestamp <= deadline`
+- Deadline validation: `currentTime <= deadline` using server time (Date.now() / 1000)
 
 **Signature Verification Logic** (핵심):
 ```typescript
-// 1. Query current nonce from Forwarder (passed as parameter)
-const nonce = await getNonceFromForwarder(request.from);
+// 1. Build EIP-712 TypedData with nonce from request
+const message = {
+  from: request.from,
+  to: request.to,
+  value: request.value,
+  gas: request.gas,
+  nonce: request.nonce,  // ← Client-provided nonce
+  deadline: request.deadline,
+  data: request.data
+};
 
-// 2. Build EIP-712 TypedData with nonce
-const message = { ...request, nonce };  // from, to, value, gas, nonce, deadline, data
-
-// 3. Verify signature
+// 2. Verify signature
 const recoveredAddress = verifyTypedData(domain, types, message, signature);
 return recoveredAddress.toLowerCase() === request.from.toLowerCase();
 ```
@@ -140,7 +145,7 @@ class GaslessService {
 
 **Implementation Details**:
 - Inject: SignatureVerifierService, OzRelayerService, ConfigService
-- Validate deadline → Query nonce → Verify signature → Build TX → Send via OZ Relayer
+- **NEW FLOW**: Validate deadline → Query expected nonce → Validate request.nonce == expected → Verify signature → Build TX → Send via OZ Relayer
 - Use ethers.js `Interface` to encode `execute(request, signature)`
 - Query nonce via JSON-RPC `eth_call` to Forwarder contract
 

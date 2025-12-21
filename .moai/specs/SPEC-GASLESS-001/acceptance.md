@@ -13,32 +13,58 @@
 
 ## Functional Acceptance Criteria
 
-### AC-1: EIP-712 Signature Verification
-**Given** a user submits a ForwardRequest with a valid EIP-712 signature
+### AC-1: EIP-712 Signature Verification with Nonce Validation
+**Given** a user submits a ForwardRequest with a valid EIP-712 signature and nonce
 **When** the API receives the request at `POST /api/v1/relay/gasless`
 **Then** the system shall:
-- ✅ Query current nonce from Forwarder contract via `nonces(from)`
-- ✅ Build EIP-712 TypedData with nonce included
+- ✅ Query expected nonce from Forwarder contract via `nonces(from)`
+- ✅ Validate that `request.nonce == expectedNonce`
+- ✅ Return 400 Bad Request if nonce mismatch with error "Invalid nonce: expected X, got Y"
+- ✅ Build EIP-712 TypedData with nonce from request
 - ✅ Verify the signature using ethers.js v6 `verifyTypedData()`
 - ✅ Extract the signer address from the signature
 - ✅ Compare signer address with `request.from` field
 - ✅ Return 401 Unauthorized if signature is invalid or signer mismatch
 
-**Signature Verification Flow**:
+**Signature Verification Flow** (UPDATED):
 ```typescript
-// 1. Query current nonce from Forwarder
-const nonce = await getNonceFromForwarder(request.from);
+// EIP-712 Domain (from configuration)
+const domain = {
+  name: "ERC2771Forwarder",
+  version: "1",
+  chainId: configService.get('CHAIN_ID'),
+  verifyingContract: configService.get('FORWARDER_ADDRESS')
+};
 
-// 2. Build EIP-712 TypedData with nonce
-const message = { ...request, nonce };
+// 1. Query expected nonce from Forwarder
+const expectedNonce = await getNonceFromForwarder(request.from);
 
-// 3. Verify signature
+// 2. Validate nonce match
+if (request.nonce !== expectedNonce) {
+  throw new BadRequestException(`Invalid nonce: expected ${expectedNonce}, got ${request.nonce}`);
+}
+
+// 3. Build EIP-712 TypedData with nonce from request
+const message = {
+  from: request.from,
+  to: request.to,
+  value: request.value,
+  gas: request.gas,
+  nonce: request.nonce,  // ← Client-provided nonce
+  deadline: request.deadline,
+  data: request.data
+};
+
+// 4. Verify signature
 const recoveredAddress = verifyTypedData(domain, types, message, signature);
-return recoveredAddress === request.from;
+if (recoveredAddress !== request.from) {
+  throw new UnauthorizedException('Invalid EIP-712 signature');
+}
 ```
 
 **Test Cases**:
-- Valid signature from correct signer → Accept
+- Valid signature with correct nonce → Accept
+- Valid signature with wrong nonce → Reject with 400 "Invalid nonce"
 - Valid signature from wrong signer → Reject with 401
 - Invalid signature format → Reject with 401
 - Malformed signature → Reject with 401
@@ -50,9 +76,11 @@ return recoveredAddress === request.from;
 **Given** a ForwardRequest contains a `deadline` field
 **When** the signature verification succeeds
 **Then** the system shall:
-- ✅ Compare `block.timestamp` with `deadline`
-- ✅ Reject requests where `block.timestamp > deadline` with 400 Bad Request
-- ✅ Accept requests where `block.timestamp <= deadline`
+- ✅ Compare server time (Date.now() / 1000) with `deadline`
+- ✅ Reject requests where `currentTime > deadline` with 400 Bad Request
+- ✅ Accept requests where `currentTime <= deadline`
+
+**Note**: relay-api validates deadline using server time for pre-check optimization. Final on-chain validation uses `block.timestamp <= deadline` in the Forwarder contract.
 
 **Test Cases**:
 - Deadline in future → Accept
@@ -141,14 +169,17 @@ return recoveredAddress === request.from;
 | Error Scenario | Status Code | Error Message |
 |----------------|-------------|---------------|
 | Invalid signature | 401 Unauthorized | "Invalid EIP-712 signature" |
+| **Nonce mismatch** | **400 Bad Request** | **"Invalid nonce: expected X, got Y"** |
 | Deadline expired | 400 Bad Request | "Transaction deadline expired" |
 | OZ Relayer unavailable | 503 Service Unavailable | "OZ Relayer service unavailable" |
+| **RPC query fails** | **503 Service Unavailable** | **"Failed to query nonce from Forwarder contract"** |
 | Invalid DTO format | 400 Bad Request | Validation error details |
 | Invalid Ethereum address | 400 Bad Request | "Invalid Ethereum address format" |
 | Missing required fields | 400 Bad Request | Field validation errors |
 
 **Test Cases**:
 - Each error scenario → Correct status code and message
+- **Nonce mismatch → 400 with specific expected/actual values**
 - Error response format → Consistent with NestJS HttpException
 - Stack traces → Not exposed to users in production
 
@@ -207,6 +238,28 @@ pnpm run build
 ### AC-9: API Documentation
 **Requirement**: OpenAPI/Swagger documentation must be complete
 
+**Request DTO Schema Documentation**:
+```typescript
+// GaslessTxRequestDto - Full API request structure
+export class GaslessTxRequestDto {
+  @ValidateNested() @Type(() => ForwardRequestDto)
+  request: ForwardRequestDto;
+
+  @IsHexadecimal() signature: string;  // EIP-712 signature
+}
+
+// ForwardRequestDto - EIP-712 ForwardRequest structure
+export class ForwardRequestDto {
+  @IsEthereumAddress() from: string;       // Signer address
+  @IsEthereumAddress() to: string;         // Target contract
+  @IsNumberString() value: string;         // ETH value (wei)
+  @IsNumberString() gas: string;           // Gas limit
+  @IsNumberString() nonce: string;         // ← REQUIRED: User nonce from Forwarder
+  @IsNumber() deadline: number;            // Unix timestamp (uint48)
+  @IsHexadecimal() data: string;           // Encoded call data
+}
+```
+
 **Endpoints to Document**:
 - ✅ POST /api/v1/relay/gasless
   - Request body schema (GaslessTxRequestDto)
@@ -258,18 +311,24 @@ RPC_URL=http://hardhat-node:8545                  # Already exists
 ### IT-1: End-to-End Gasless Flow
 **Test Scenario**: Complete gasless transaction flow from signature to execution
 
-**Steps**:
-1. Generate EIP-712 signature using ethers.js Wallet
-2. Submit POST /api/v1/relay/gasless with signed request
-3. Verify 202 Accepted response with transactionId
-4. Query GET /api/v1/relay/gasless/nonce/:address
-5. Verify nonce incremented after successful TX
+**Steps** (UPDATED ORDER):
+1. Query initial nonce: GET /api/v1/relay/gasless/nonce/:address → nonce = 0
+2. Generate EIP-712 signature using ethers.js Wallet with nonce = 0
+3. Submit POST /api/v1/relay/gasless with signed request (nonce = 0)
+4. Verify 202 Accepted response with transactionId
+5. **Wait for TX to be mined** (poll status or wait for confirmation)
+6. Query final nonce: GET /api/v1/relay/gasless/nonce/:address → nonce = 1
+7. Verify nonce incremented after TX mined
 
 **Expected Results**:
-- ✅ Signature verification succeeds
-- ✅ TX submitted to OZ Relayer
+- ✅ Initial nonce query succeeds
+- ✅ Signature verification succeeds (nonce validation passes)
+- ✅ TX submitted to OZ Relayer (202 Accepted)
 - ✅ TransactionId returned
-- ✅ Nonce incremented by 1
+- ✅ **TX mined successfully** (status changes to "confirmed")
+- ✅ Final nonce incremented by 1 (only after TX mined)
+
+**Important**: Nonce increments **only after TX is mined**, not immediately after 202 Accepted.
 
 **Test Implementation**:
 ```bash
@@ -284,14 +343,17 @@ packages/relay-api/test/gasless.e2e-spec.ts
 
 **Steps**:
 1. Query GET /nonce/:address before any transactions
-2. Submit gasless transaction
-3. Query GET /nonce/:address after transaction
-4. Verify nonce increased by exactly 1
+2. Submit gasless transaction (202 Accepted)
+3. **Wait for TX to be mined**
+4. Query GET /nonce/:address after TX mined
+5. Verify nonce increased by exactly 1
+
+**Important**: Nonce increments **only after TX is mined**, not immediately after 202 Accepted.
 
 **Expected Results**:
 - ✅ Initial nonce = 0 for new address
-- ✅ Nonce = 1 after first transaction
-- ✅ Nonce = 2 after second transaction
+- ✅ Nonce = 1 after first transaction mined
+- ✅ Nonce = 2 after second transaction mined
 - ✅ No nonce skipping or duplication
 
 ---
@@ -314,18 +376,24 @@ packages/relay-api/test/gasless.e2e-spec.ts
 
 ## Security Validation
 
-### SEC-1: Replay Attack Prevention
+### SEC-1: Replay Attack Prevention (Two-Layer Validation)
 **Test Scenario**: Verify nonce prevents replay attacks
 
 **Steps**:
 1. Submit valid gasless transaction (nonce = 0)
-2. Attempt to resubmit same signed request
-3. Verify second request fails
+2. Wait for TX to be mined (nonce increments to 1)
+3. Attempt to resubmit same signed request (still has nonce = 0)
+4. Verify second request fails at relay-api layer
 
 **Expected Results**:
-- ✅ First submission succeeds
-- ✅ Second submission rejected (nonce already used)
+- ✅ First submission succeeds (nonce validation passes)
+- ✅ Second submission rejected at **Layer 1 (relay-api)** with 400 "Invalid nonce: expected 1, got 0"
+- ✅ TX never reaches **Layer 2 (Contract)** due to pre-check
 - ✅ Nonce increments only once
+
+**Security Layers**:
+- **Layer 1 (relay-api)**: Pre-check optimization - validates request.nonce matches contract state
+- **Layer 2 (Contract)**: Final security guarantee - ERC2771Forwarder validates nonce on-chain
 
 ---
 

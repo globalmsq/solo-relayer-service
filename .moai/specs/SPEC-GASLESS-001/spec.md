@@ -1,4 +1,34 @@
+---
+id: SPEC-GASLESS-001
+title: Gasless Transaction API with EIP-712 Signature Verification
+version: 1.0.0
+status: draft
+author: "@user"
+created: 2025-12-19
+updated: 2025-12-21
+priority: high
+dependencies:
+  - SPEC-PROXY-001
+  - SPEC-CONTRACTS-001
+  - SPEC-INFRA-001
+related_tasks:
+  - task-8
+tags:
+  - gasless
+  - eip-712
+  - meta-transaction
+  - erc2771
+---
+
 # SPEC-GASLESS-001: Gasless Transaction API with EIP-712 Signature Verification
+
+## HISTORY
+
+| Version | Date | Author | Changes |
+|---------|------|--------|---------|
+| 1.0.0 | 2025-12-19 | @user | Initial SPEC creation |
+| 1.0.1 | 2025-12-21 | @user | Nonce validation logic clarification, EIP-712 domain added |
+| 1.0.2 | 2025-12-21 | @user | YAML frontmatter standardization, language consistency |
 
 ## Overview
 
@@ -8,7 +38,7 @@
 | **Title** | Gasless Transaction API with EIP-712 Signature Verification |
 | **Status** | Draft |
 | **Created** | 2025-12-19 |
-| **Dependencies** | SPEC-PROXY-001 ✅, SPEC-CONTRACTS-001 ✅, SPEC-INFRA-001 ✅ |
+| **Dependencies** | SPEC-PROXY-001, SPEC-CONTRACTS-001, SPEC-INFRA-001 |
 | **Related Tasks** | Task #8 |
 
 ## Problem Statement
@@ -29,7 +59,7 @@ Implement a Gasless Transaction API (`POST /api/v1/relay/gasless`) that:
 ```
 Frontend → Backend API → relay-api → OZ Relayer → Blockchain
                           ↑
-                    Nonce 조회 제공
+                  Provides nonce query API
 ```
 
 **Call Flow**: Backend service calls relay-api (Frontend does NOT call relay-api directly)
@@ -44,9 +74,11 @@ Frontend → Backend API → relay-api → OZ Relayer → Blockchain
 ### U-GASLESS-002: Deadline Validation
 **Given** a ForwardRequest contains a `deadline` field
 **When** the signature verification succeeds
-**Then** the system shall validate that `block.timestamp <= deadline` before proceeding
+**Then** the system shall validate that `currentTime <= deadline` using server time (Date.now() / 1000) before proceeding
 
-### U-GASLESS-003: Nonce 조회 API
+**Note**: relay-api validates deadline using server time for pre-check optimization. Final on-chain validation uses `block.timestamp <= deadline` in the Forwarder contract.
+
+### U-GASLESS-003: Nonce Query API
 **Given** users need to query nonce values for EIP-712 signature creation
 **When** a GET request is made to `/api/v1/relay/gasless/nonce/:address`
 **Then** the system shall query `ERC2771Forwarder.nonces(from)` via JSON-RPC and return the current nonce value
@@ -64,12 +96,16 @@ Frontend → Backend API → relay-api → OZ Relayer → Blockchain
 **Then** the API shall return HTTP 202 Accepted with `{ transactionId, hash, status, createdAt }`
 
 ### U-GASLESS-006: Error Handling
-**Given** signature verification fails OR deadline expired OR OZ Relayer unavailable
+**Given** signature verification fails OR deadline expired OR nonce mismatch OR OZ Relayer unavailable
 **When** the request cannot be processed
 **Then** the API shall return appropriate HTTP status codes:
-- 401 Unauthorized (invalid signature)
-- 400 Bad Request (deadline expired)
-- 503 Service Unavailable (OZ Relayer down)
+
+| Error Scenario | Status Code | Error Message |
+|----------------|-------------|---------------|
+| Invalid signature | 401 Unauthorized | "Invalid EIP-712 signature" |
+| Nonce mismatch | 400 Bad Request | "Invalid nonce: expected X, got Y" |
+| Deadline expired | 400 Bad Request | "Transaction deadline expired" |
+| OZ Relayer unavailable | 503 Service Unavailable | "OZ Relayer service unavailable" |
 
 ## Technical Requirements
 
@@ -101,21 +137,27 @@ const types = {
 ```
 
 **Important Nonce Handling**:
-- **API Request DTO**: Does NOT include nonce field (managed by Forwarder)
+- **API Request DTO**: INCLUDES nonce field (client provides nonce from GET /nonce/:address)
 - **EIP-712 TypeHash**: INCLUDES nonce field (required for signature verification)
-- **Verification Process**: relay-api queries nonce from Forwarder, builds TypedData with nonce, then verifies signature
+- **Verification Process**:
+  1. Client queries nonce via GET /nonce/:address
+  2. Client creates EIP-712 signature with nonce
+  3. Client submits request with nonce + signature
+  4. relay-api queries current nonce from Forwarder
+  5. relay-api validates request.nonce == expected nonce
+  6. relay-api verifies signature with TypedData (nonce included)
 
 ### T-GASLESS-003: DTO Validation
 ```typescript
-// ForwardRequestDto - API request structure (NO nonce field)
+// ForwardRequestDto - API request structure (INCLUDES nonce field)
 export class ForwardRequestDto {
   @IsEthereumAddress() from: string;
   @IsEthereumAddress() to: string;
   @IsNumberString() value: string;
   @IsNumberString() gas: string;
-  @IsNumber() deadline: number;       // uint48
+  @IsNumberString() nonce: string;     // ← ADDED: Client must provide nonce
+  @IsNumber() deadline: number;        // uint48
   @IsHexadecimal() data: string;
-  // ⚠️ NO nonce field - managed by Forwarder contract
 }
 
 // GaslessTxRequestDto - Full API request
@@ -142,7 +184,7 @@ export class GaslessTxRequestDto {
 **Nonce Query Flow**:
 ```
 Backend → GET /nonce/:address → GaslessService.getNonceFromForwarder()
-        → RPC eth_call → Forwarder.nonces(address) → nonce 반환
+        → RPC eth_call → Forwarder.nonces(address) → returns nonce
 ```
 
 ### T-GASLESS-006: RPC Integration
@@ -256,8 +298,12 @@ packages/relay-api/src/relay/gasless/
 
 ## Security Considerations
 
-- **Replay Protection**: Nonce management prevents replay attacks
+- **Replay Protection**: Two-layer nonce validation
+  - **Layer 1 (relay-api)**: Pre-check optimization - validates request.nonce matches contract state
+  - **Layer 2 (Contract)**: Final security guarantee - ERC2771Forwarder validates nonce on-chain
 - **Expiration**: Deadline validation prevents stale transaction execution
+  - relay-api uses server time (Date.now() / 1000) for pre-check
+  - Forwarder contract uses block.timestamp for final validation
 - **Signature Validation**: EIP-712 ensures typed data integrity
 - **Address Verification**: Signature must match `from` address in ForwardRequest
 
