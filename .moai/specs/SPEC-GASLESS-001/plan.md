@@ -139,6 +139,7 @@ const types = {
 class GaslessService {
   async sendGaslessTransaction(dto: GaslessTxRequestDto): Promise<GaslessTxResponseDto>
   async getNonceFromForwarder(address: string): Promise<string>
+  private validateNonceMatch(requestNonce: string, expectedNonce: string): void  // ← ADDED
   private buildForwarderExecuteTx(dto: GaslessTxRequestDto): DirectTxRequest
 }
 ```
@@ -152,7 +153,18 @@ class GaslessService {
 **Nonce Query Flow**:
 ```
 Backend → GET /nonce/:address → GaslessService.getNonceFromForwarder()
-        → RPC eth_call → Forwarder.nonces(address) → nonce 반환
+        → RPC eth_call → Forwarder.nonces(address) → returns nonce
+```
+
+**Nonce Validation Logic** (ADDED):
+```typescript
+private validateNonceMatch(requestNonce: string, expectedNonce: string): void {
+  if (requestNonce !== expectedNonce) {
+    throw new BadRequestException(
+      `Invalid nonce: expected ${expectedNonce}, got ${requestNonce}`
+    );
+  }
+}
 ```
 
 **Forwarder TX Build** (ForwardRequestData structure):
