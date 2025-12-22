@@ -6,11 +6,11 @@ import { of, throwError } from "rxjs";
 import { OzRelayerHealthIndicator } from "./oz-relayer.health";
 
 /**
- * OzRelayerHealthIndicator Tests - Simplified for Nginx LB health check
+ * OzRelayerHealthIndicator Tests - Single Instance Health Check
  *
- * SPEC-PROXY-001: Nginx Load Balancer-based OZ Relayer Proxy
+ * SPEC-GASLESS-001: Single OZ Relayer Instance (Phase 1 MVP)
  * Tests verify:
- * - Single health check to Nginx LB
+ * - Health check via /api/v1/relayers endpoint with Bearer auth
  * - Timeout handling (5 seconds)
  * - Error propagation
  * - Response time measurement
@@ -20,6 +20,13 @@ describe("OzRelayerHealthIndicator", () => {
   let indicator: OzRelayerHealthIndicator;
   let httpService: HttpService;
   let configService: ConfigService;
+
+  // Mock successful relayers response
+  const mockRelayersResponse = {
+    success: true,
+    data: [{ id: "relayer-1", name: "Test Relayer" }],
+    error: null,
+  };
 
   beforeEach(async () => {
     const module: TestingModule = await Test.createTestingModule({
@@ -36,7 +43,10 @@ describe("OzRelayerHealthIndicator", () => {
           useValue: {
             get: jest.fn((key: string, defaultValue?: string) => {
               if (key === "OZ_RELAYER_URL") {
-                return defaultValue || "http://oz-relayer-lb:8080";
+                return "http://oz-relayer-1:8080";
+              }
+              if (key === "OZ_RELAYER_API_KEY") {
+                return "oz-relayer-shared-api-key-local-dev";
               }
               return defaultValue;
             }),
@@ -51,32 +61,36 @@ describe("OzRelayerHealthIndicator", () => {
   });
 
   describe("isHealthy", () => {
-    it("should return healthy when Nginx LB responds with 200", async () => {
+    it("should return healthy when OZ Relayer responds with 200", async () => {
       jest.spyOn(httpService, "get").mockReturnValueOnce(
         of({
           status: 200,
-          data: "healthy",
+          data: mockRelayersResponse,
         } as any),
       );
 
-      const result = await indicator.isHealthy("oz-relayer-lb");
+      const result = await indicator.isHealthy("oz-relayer");
 
       expect(result).toBeDefined();
-      expect(result["oz-relayer-lb"].status).toBe("up");
+      expect(result["oz-relayer"].status).toBe("up");
+      expect(result["oz-relayer"].relayerCount).toBe(1);
       expect(httpService.get).toHaveBeenCalledWith(
-        "http://oz-relayer-lb:8080/health",
-        expect.objectContaining({ timeout: 5000 }),
+        "http://oz-relayer-1:8080/api/v1/relayers",
+        expect.objectContaining({
+          headers: { Authorization: "Bearer oz-relayer-shared-api-key-local-dev" },
+          timeout: 5000,
+        }),
       );
     });
 
-    it("should throw HealthCheckError when Nginx LB is unreachable", async () => {
+    it("should throw HealthCheckError when OZ Relayer is unreachable", async () => {
       jest
         .spyOn(httpService, "get")
         .mockReturnValueOnce(
           throwError(() => new Error("Connection refused")) as any,
         );
 
-      await expect(indicator.isHealthy("oz-relayer-lb")).rejects.toThrow(
+      await expect(indicator.isHealthy("oz-relayer")).rejects.toThrow(
         HealthCheckError,
       );
     });
@@ -88,7 +102,7 @@ describe("OzRelayerHealthIndicator", () => {
           throwError(() => new Error("Timeout after 5000ms")) as any,
         );
 
-      await expect(indicator.isHealthy("oz-relayer-lb")).rejects.toThrow(
+      await expect(indicator.isHealthy("oz-relayer")).rejects.toThrow(
         HealthCheckError,
       );
     });
@@ -97,21 +111,25 @@ describe("OzRelayerHealthIndicator", () => {
       jest.spyOn(httpService, "get").mockReturnValueOnce(
         of({
           status: 200,
-          data: "healthy",
+          data: mockRelayersResponse,
         } as any),
       );
 
-      const result = await indicator.isHealthy("oz-relayer-lb");
+      const result = await indicator.isHealthy("oz-relayer");
 
-      expect(result["oz-relayer-lb"]).toHaveProperty("responseTime");
-      expect(typeof result["oz-relayer-lb"].responseTime).toBe("number");
-      expect(result["oz-relayer-lb"].responseTime).toBeGreaterThanOrEqual(0);
+      expect(result["oz-relayer"]).toHaveProperty("responseTime");
+      expect(typeof result["oz-relayer"].responseTime).toBe("number");
+      expect(result["oz-relayer"].responseTime).toBeGreaterThanOrEqual(0);
     });
 
     it("should use configured OZ_RELAYER_URL environment variable", async () => {
       jest
         .spyOn(configService, "get")
-        .mockReturnValueOnce("http://custom-lb:8080");
+        .mockImplementation((key: string, defaultValue?: string) => {
+          if (key === "OZ_RELAYER_URL") return "http://custom-relayer:8080";
+          if (key === "OZ_RELAYER_API_KEY") return "custom-api-key";
+          return defaultValue;
+        });
 
       const newIndicator = new OzRelayerHealthIndicator(
         httpService,
@@ -121,61 +139,79 @@ describe("OzRelayerHealthIndicator", () => {
       jest.spyOn(httpService, "get").mockReturnValueOnce(
         of({
           status: 200,
-          data: "healthy",
+          data: mockRelayersResponse,
         } as any),
       );
 
-      await newIndicator.isHealthy("oz-relayer-lb");
+      await newIndicator.isHealthy("oz-relayer");
 
       expect(httpService.get).toHaveBeenCalledWith(
-        "http://custom-lb:8080/health",
-        expect.any(Object),
+        "http://custom-relayer:8080/api/v1/relayers",
+        expect.objectContaining({
+          headers: { Authorization: "Bearer custom-api-key" },
+        }),
       );
     });
 
-    it("should include error details in HealthCheckError when LB is down", async () => {
+    it("should include error details in HealthCheckError when relayer is down", async () => {
       const errorMessage = "ECONNREFUSED: connection refused";
       jest
         .spyOn(httpService, "get")
         .mockReturnValueOnce(throwError(() => new Error(errorMessage)) as any);
 
       try {
-        await indicator.isHealthy("oz-relayer-lb");
+        await indicator.isHealthy("oz-relayer");
         fail("Should have thrown HealthCheckError");
       } catch (error) {
         expect(error).toBeInstanceOf(HealthCheckError);
-        expect(error.causes["oz-relayer-lb"].error).toContain("ECONNREFUSED");
+        expect(error.causes["oz-relayer"].error).toContain("ECONNREFUSED");
       }
     });
 
-    it("should only make single health check call to Nginx LB", async () => {
+    it("should only make single health check call", async () => {
       const getSpy = jest.spyOn(httpService, "get").mockReturnValueOnce(
         of({
           status: 200,
-          data: "healthy",
+          data: mockRelayersResponse,
         } as any),
       );
 
-      await indicator.isHealthy("oz-relayer-lb");
+      await indicator.isHealthy("oz-relayer");
 
-      // Only 1 call to Nginx LB (not 3 calls to individual relayers)
       expect(getSpy).toHaveBeenCalledTimes(1);
     });
 
-    it("should check /health endpoint on Nginx LB", async () => {
+    it("should check /api/v1/relayers endpoint with Bearer auth", async () => {
       const getSpy = jest.spyOn(httpService, "get").mockReturnValueOnce(
         of({
           status: 200,
-          data: "healthy",
+          data: mockRelayersResponse,
         } as any),
       );
 
-      await indicator.isHealthy("oz-relayer-lb");
+      await indicator.isHealthy("oz-relayer");
 
       expect(getSpy).toHaveBeenCalledWith(
-        expect.stringContaining("/health"),
-        expect.any(Object),
+        expect.stringContaining("/api/v1/relayers"),
+        expect.objectContaining({
+          headers: expect.objectContaining({
+            Authorization: expect.stringContaining("Bearer"),
+          }),
+        }),
       );
+    });
+
+    it("should return down status when response is not successful", async () => {
+      jest.spyOn(httpService, "get").mockReturnValueOnce(
+        of({
+          status: 200,
+          data: { success: false, error: "Some error" },
+        } as any),
+      );
+
+      const result = await indicator.isHealthy("oz-relayer");
+
+      expect(result["oz-relayer"].status).toBe("down");
     });
   });
 

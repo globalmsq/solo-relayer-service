@@ -6,7 +6,6 @@
       "network": "hardhat",
       "network_type": "evm",
       "signer_id": "relayer-1-signer",
-      "notification_id": "relayer-1-webhook",
       "paused": false,
       "custom_rpc_urls": [
         {
@@ -33,17 +32,7 @@
       }
     }
   ],
-  "notifications": [
-    {
-      "id": "relayer-1-webhook",
-      "type": "webhook",
-      "url": "http://relay-api:3000/api/v1/webhook/relayer",
-      "signing_key": {
-        "type": "env",
-        "value": "WEBHOOK_SIGNING_KEY"
-      }
-    }
-  ],
+  "notifications": [],
   "networks": [
     {
       "type": "evm",

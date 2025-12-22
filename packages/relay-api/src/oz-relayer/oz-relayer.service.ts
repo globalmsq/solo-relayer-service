@@ -48,15 +48,12 @@ interface OzRelayerTxData {
 }
 
 /**
- * OzRelayerService - Simplified to use single Nginx Load Balancer endpoint
- * Delegates load balancing, health checking, and failover to Nginx
+ * OzRelayerService - Single OZ Relayer Instance (Phase 1 MVP)
  *
- * SPEC-PROXY-001: Nginx Load Balancer-based OZ Relayer Proxy
- * - Removed: Custom pool management logic (~50 LOC)
- * - Removed: Relayer endpoints array (3 instances)
- * - Added: Single relayerUrl from environment variable
- * - Added: Dynamic relayer ID discovery with caching
- * - Result: 60% code reduction
+ * SPEC-GASLESS-001: Gasless Transaction API
+ * - Single relayer instance for simplified Phase 1 deployment
+ * - Relayer ID caching for performance optimization
+ * - Phase 2+: Queue system (BullMQ/SQS) with multiple instances
  */
 @Injectable()
 export class OzRelayerService {
@@ -81,11 +78,16 @@ export class OzRelayerService {
   }
 
   /**
-   * Fetch the relayer ID from OZ Relayer
-   * Note: No caching because Nginx ip_hash may route to different instances
-   * Each instance has its own unique relayer ID
+   * Fetch the relayer ID from OZ Relayer with caching
+   * Single instance mode: Cache relayer ID after first discovery
+   * Phase 2+: Queue system will handle multi-instance routing
    */
   private async getRelayerId(): Promise<string> {
+    // Return cached ID if available
+    if (this.relayerId) {
+      return this.relayerId;
+    }
+
     try {
       const response = await firstValueFrom(
         this.httpService.get<{ data: Array<{ id: string }> }>(
@@ -100,7 +102,8 @@ export class OzRelayerService {
       );
 
       if (response.data?.data?.[0]?.id) {
-        return response.data.data[0].id;
+        this.relayerId = response.data.data[0].id;
+        return this.relayerId;
       }
 
       throw new Error("No relayer found");
@@ -110,8 +113,7 @@ export class OzRelayerService {
   }
 
   /**
-   * Send transaction to OZ Relayer via Nginx Load Balancer
-   * Nginx handles distribution to healthy relayers
+   * Send transaction to OZ Relayer
    *
    * @param request - DirectTxRequest with transaction details
    * @returns DirectTxResponse with transaction ID, hash, and status
@@ -156,7 +158,7 @@ export class OzRelayerService {
   }
 
   /**
-   * Query transaction status via Nginx Load Balancer
+   * Query transaction status from OZ Relayer
    *
    * @param txId - Transaction ID to query
    * @returns Transaction status and details
