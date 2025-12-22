@@ -1,9 +1,9 @@
 # MSQ Relayer Service - Structure Document
 
 ## Document Information
-- **Version**: 12.1
-- **Last Updated**: 2025-12-19
-- **Status**: Phase 1 Complete (Direct + Gasless + Nginx Load Balancer + Multi-Relayer Pool)
+- **Version**: 12.2
+- **Last Updated**: 2025-12-22
+- **Status**: Phase 1 MVP Complete (Direct TX + Gasless TX with EIP-712 Verification + Single OZ Relayer)
 
 ### Related Documents
 - [Product Requirements](./product.md)
@@ -23,8 +23,8 @@ It utilizes **OZ open-source (Relayer + Monitor)** as its core, with NestJS API 
 
 | Phase | Scope | Status |
 |-------|-------|--------|
-| **Phase 1** | OZ Relayer + Redis, Auth, Health, Direct TX, Gasless TX, ERC2771Forwarder, EIP-712 verification, Nginx LB Proxy, Multi-Relayer Pool | **Complete** ✅ |
-| **Phase 2+** | TX History (MySQL), Webhook Handler, Queue System (Redis/SQS), OZ Monitor, Policy Engine, Kubernetes | Planned |
+| **Phase 1** | OZ Relayer + Redis, Auth, Health, Direct TX, Gasless TX, ERC2771Forwarder, EIP-712 verification, Nonce API, Single OZ Relayer instance | **Complete** ✅ |
+| **Phase 2+** | TX History (MySQL), Webhook Handler, Queue System (Redis/SQS), OZ Monitor, Policy Engine, Multi-Relayer Pool, Kubernetes | Planned |
 
 ---
 
@@ -154,10 +154,10 @@ flowchart TB
 
 | Component | Role | Implementation | Phase |
 |-----------|------|----------------|-------|
-| **OZ Relayer Pool** | TX relay, Nonce/Gas/Retry (Multi-Instance) | Docker image (config only) | Phase 1 |
+| **OZ Relayer** | TX relay, Nonce/Gas/Retry (Single Instance - Phase 1) | Docker image (config only) | Phase 1 |
 | **OZ Monitor** | Event detection, Balance alerts | Docker image (config only) | Phase 2+ |
-| **NestJS Gateway** | Auth, Load Balancing, Direct TX, Gasless TX, EIP-712 verification | Custom development | Phase 1 (Production) |
-| **ERC2771Forwarder** | Meta-TX Forwarder | OZ Contracts deployment | Phase 1 |
+| **NestJS Gateway** | Auth, Health, Direct TX, Gasless TX, EIP-712 verification, Nonce query | Custom development | Phase 1 (Production) |
+| **ERC2771Forwarder** | Meta-TX Forwarder, Nonce management | OZ Contracts deployment | Phase 1 |
 
 ### 1.3 Multi-Relayer Pool Architecture
 
@@ -429,15 +429,15 @@ cd docker && docker-compose -f docker-compose-amoy.yaml up
 
 **NestJS API Gateway** - Authentication, Policy, Quota, OZ Relayer proxy
 
-| Module | Responsibility | Phase |
-|--------|---------------|-------|
-| `auth/` | API Key authentication | Phase 1 |
-| `relay/direct/` | Direct TX endpoint, OZ Relayer proxy | Phase 1 |
-| `relay/gasless/` | Gasless TX endpoint, EIP-712 pre-verification | Phase 1 |
-| `relay/status/` | Transaction status query | Phase 1 |
-| `policy/` | Contract/Method Whitelist, User Blacklist | Phase 2+ |
-| `webhook/` | OZ Relayer Webhook handler, TX History storage | Phase 2+ |
-| `oz-relayer/` | OZ Relayer SDK wrapper service | Phase 1 |
+| Module | Responsibility | Phase | Status |
+|--------|---------------|-------|--------|
+| `auth/` | API Key authentication | Phase 1 | ✅ Complete |
+| `relay/direct/` | Direct TX endpoint, OZ Relayer proxy | Phase 1 | ✅ Complete |
+| `relay/gasless/` | Gasless TX endpoint, EIP-712 pre-verification | Phase 1 | ✅ Complete |
+| `relay/status/` | Transaction status query | Phase 1 | ✅ Complete |
+| `policy/` | Contract/Method Whitelist, User Blacklist | Phase 2+ | - |
+| `webhook/` | OZ Relayer Webhook handler, TX History storage | Phase 2+ | - |
+| `oz-relayer/` | OZ Relayer SDK wrapper service | Phase 1 | ✅ Complete |
 
 #### 4.3.1 Auth Module Details (Phase 1)
 
@@ -463,6 +463,66 @@ relay-api:
 ```
 
 **Phase 2+ Extension**: Multiple clients, DB-based storage, Key rotation
+
+#### 4.3.2 Gasless Module Details (Phase 1 - SPEC-GASLESS-001)
+
+**Purpose**: Gasless Transaction API with EIP-712 signature verification and nonce management
+
+**Architecture**:
+```
+packages/relay-api/src/relay/gasless/
+├── dto/
+│   ├── forward-request.dto.ts        # EIP-712 ForwardRequest structure (7 fields)
+│   ├── gasless-tx-request.dto.ts     # API request: request + signature
+│   └── gasless-tx-response.dto.ts    # API response: txId + status + timestamp
+├── gasless.controller.ts              # Endpoints: POST /gasless, GET /nonce/:address
+├── gasless.service.ts                 # Orchestration & nonce management
+├── gasless.module.ts                  # NestJS module registration
+├── signature-verifier.service.ts      # EIP-712 verification (ethers.js v6)
+├── gasless.controller.spec.ts         # Controller tests (5 cases)
+├── gasless.service.spec.ts            # Service tests (8 cases)
+└── signature-verifier.service.spec.ts # Signature verifier tests (7 cases)
+```
+
+**Key Components**:
+
+| Component | Responsibility | Implementation |
+|-----------|---|---|
+| **SignatureVerifierService** | EIP-712 signature verification + deadline validation | ethers.js `verifyTypedData()` |
+| **GaslessService** | Orchestration: nonce query → validation → signature check → TX build → submit | RPC eth_call + OzRelayerService |
+| **GaslessController** | REST endpoints: POST /gasless + GET /nonce/:address | NestJS controller with DTO validation |
+| **ForwardRequestDto** | EIP-712 message structure (7 fields including nonce) | class-validator decorators |
+
+**API Endpoints**:
+
+| Endpoint | Method | Purpose | Status Code |
+|----------|--------|---------|-------------|
+| `/api/v1/relay/gasless` | POST | Submit gasless transaction | 202/400/401/503 |
+| `/api/v1/relay/gasless/nonce/:address` | GET | Query current nonce | 200/400/503 |
+
+**Workflow** (7-step validation):
+1. Validate deadline is in future (server time)
+2. Query expected nonce from ERC2771Forwarder contract
+3. Validate request.nonce == expected nonce (Layer 1 pre-check)
+4. Verify EIP-712 signature with recovered address
+5. Build ERC2771Forwarder.execute() transaction calldata
+6. Submit to OZ Relayer via OzRelayerService
+7. Return 202 Accepted with transactionId + status
+
+**Security Features**:
+- Two-layer nonce validation (relay-api pre-check + contract final validation)
+- Deadline validation (prevents stale transaction execution)
+- EIP-712 signature verification (prevents tampering)
+- Signer address verification (prevents spoofing)
+
+**Test Coverage**: ~20 test cases across 3 test files (≥90% coverage target)
+
+**E2E Test Script**: `packages/relay-api/scripts/test-gasless.ts`
+- Scenario 1: Nonce query API
+- Scenario 2: Valid gasless transaction submission
+- Scenario 3: Invalid signature detection
+- Scenario 4: Expired deadline detection
+- Scenario 5: Invalid address format handling
 
 ### 4.4 packages/contracts
 
@@ -805,6 +865,7 @@ sequenceDiagram
 
 | Version | Date | Changes |
 |---------|------|---------|
+| 12.2 | 2025-12-22 | Phase 1 MVP Completion - Updated version to 12.2, Changed architecture status to Single OZ Relayer instance, Updated Section 1.2 OZ Service Role Separation with Phase 1 Single Instance note, Added Status column to Module Responsibility table (all Phase 1 modules marked Complete), Updated Implementation Scope with Phase 1/2+ separation |
 | 12.1 | 2025-12-19 | SPEC-CONTRACTS-001 integration - Added packages/contracts structure to Section 3, Expanded Section 4.4 with deployment artifacts, test suites, and deployment commands, Updated related documents section with SPEC links and cross-references |
 | 12.0 | 2025-12-15 | Document version sync - Complete document structure cleanup, Remove duplicates, Establish cross-reference system |
 | 11.4 | 2025-12-15 | Document role clarification - Add related documents section (cross-references) |
