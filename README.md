@@ -94,14 +94,30 @@ curl -X POST http://localhost:3000/api/v1/relay/direct \
   }'
 ```
 
+#### Transaction Status Query API
+
+```bash
+# Query transaction status (Polling method)
+curl http://localhost:3000/api/v1/relay/status/550e8400-e29b-41d4-a716-446655440000
+
+# Expected Response (HTTP 200)
+# {
+#   "transactionId": "550e8400-e29b-41d4-a716-446655440000",
+#   "hash": "0xabcd...",
+#   "status": "confirmed",
+#   "createdAt": "2025-12-19T10:00:00Z",
+#   "confirmedAt": "2025-12-19T10:05:00Z",
+#   "from": "0x...",
+#   "to": "0x...",
+#   "value": "0"
+# }
+```
+
 #### Other Relay Endpoints
 
 ```bash
 # Get Nonce
 curl http://localhost:3000/api/v1/relay/nonce/0x1234567890123456789012345678901234567890
-
-# Get Transaction Status
-curl http://localhost:3000/api/v1/relay/status/tx_123456
 
 # Health Check (includes Nginx LB status)
 curl http://localhost:3000/api/v1/health
@@ -228,16 +244,18 @@ See [SPEC-PROXY-001](./docs/SPEC-PROXY-001.md) for detailed architecture.
 
 ## Status
 
-**Phase 1 Complete** (Direct + Gasless + Multi-Relayer Pool + Smart Contracts + Nginx Proxy)
+**Phase 1 Complete** (Direct + Gasless + Multi-Relayer Pool + Smart Contracts + Nginx Proxy + Transaction Status Polling)
 
 ### Test Results
 - ✅ All 147 tests passing (smart contracts)
 - ✅ Direct Transaction API tested and validated
+- ✅ Gasless Transaction API (EIP-712) tested and validated
+- ✅ Transaction Status Polling API implemented and tested (9/9 tests passing, 80.95% coverage)
 - ✅ Nginx Load Balancer integrated with 3+ relayers
 - ✅ Health check endpoint functional
 - ✅ API Key authentication enforced
 
 ---
 
-**Version**: 12.3
-**Last Updated**: 2025-12-19
+**Version**: 12.4
+**Last Updated**: 2025-12-23

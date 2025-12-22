@@ -6,18 +6,20 @@
 **Blockchain Transaction Relayer System (MSQ Relayer Service)**
 
 ### Document Version
-- **Version**: 12.2
-- **Last Updated**: 2025-12-22
-- **Status**: Phase 1 MVP Complete (Direct TX + Gasless TX with EIP-712 Verification)
+- **Version**: 12.3
+- **Last Updated**: 2025-12-23
+- **Status**: Phase 1 MVP Complete (Direct TX + Gasless TX with EIP-712 Verification + Transaction Status Polling)
 
 ### Related Documents
 - [Technical Stack and API Spec](./tech.md)
   - [Section 4: Smart Contracts Technical Stack](./tech.md#4-smart-contracts-technical-stack) - Smart contracts specification
+  - [Section 5.4: Transaction Status Polling API](./tech.md#54-transaction-status-polling-api-spec-status-001) - Status query endpoint specification
 - [System Architecture](./structure.md)
   - [Section 4.4: packages/contracts](./structure.md#44-packagescontracts) - Contracts directory structure
 - [Task Master PRD](../.taskmaster/docs/prd.txt)
 - [SPEC-CONTRACTS-001](../.moai/specs/SPEC-CONTRACTS-001/spec.md) - Smart Contracts Specification (ERC2771Forwarder, Sample Contracts)
 - [SPEC-PROXY-001](../.moai/specs/SPEC-PROXY-001/spec.md) - Nginx Load Balancer and Direct Transaction API
+- [SPEC-STATUS-001](../.moai/specs/SPEC-STATUS-001/spec.md) - Transaction Status Polling API
 
 ---
 
@@ -130,16 +132,16 @@ As OpenZeppelin Defender service will be discontinued in July 2026, we are build
 5. Target contract receives `_msgSender() = End User address` (not relayer)
 
 **API Gateway (Production Level)**:
-| Feature | Description |
-|---------|-------------|
-| NestJS Project | Production scaffold |
-| API Key Authentication | Single environment variable (`RELAY_API_KEY`), Header: `X-API-Key` |
-| Health Check | `/api/v1/health` |
-| Direct TX Endpoint | `/api/v1/relay/direct` |
-| Gasless TX Endpoint | `/api/v1/relay/gasless` |
-| Nonce Query | `/api/v1/relay/nonce/{address}` |
-| Status Query | `/api/v1/relay/status/{txId}` (Polling method) |
-| EIP-712 Signature Verification | Gasless TX pre-validation |
+| Feature | Description | Status |
+|---------|-------------|--------|
+| NestJS Project | Production scaffold | ✅ Complete |
+| API Key Authentication | Single environment variable (`RELAY_API_KEY`), Header: `X-API-Key` | ✅ Complete |
+| Health Check | `/api/v1/health` | ✅ Complete |
+| Direct TX Endpoint | `/api/v1/relay/direct` | ✅ Complete (SPEC-PROXY-001) |
+| Gasless TX Endpoint | `/api/v1/relay/gasless` | ✅ Complete (SPEC-GASLESS-001) |
+| Nonce Query | `/api/v1/relay/gasless/nonce/{address}` | ✅ Complete |
+| Transaction Status Polling | `GET /api/v1/relay/status/{txId}` (Phase 1) | ✅ Complete (SPEC-STATUS-001) |
+| EIP-712 Signature Verification | Gasless TX pre-validation | ✅ Complete |
 
 **Phase 1 Use Case**: Payment System Integration
 - Direct TX: Token transfer to multiple users during settlement

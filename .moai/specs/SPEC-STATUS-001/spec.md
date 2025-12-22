@@ -1,16 +1,16 @@
 ---
 id: SPEC-STATUS-001
 title: Transaction Status Polling API - Phase 1
-version: 1.3.0
-status: draft
+version: 1.4.0
+status: completed
 author: "@user"
 created: 2025-12-22
-updated: 2025-12-22
+updated: 2025-12-23
 priority: high
 dependencies:
   - SPEC-PROXY-001
 related_tasks:
-  - task-9
+  - task-9.1
 tags:
   - transaction-status
   - polling
@@ -24,10 +24,11 @@ tags:
 
 | Version | Date | Author | Changes |
 |---------|------|--------|---------|
-| 1.0.0 | 2025-12-22 | @user | Initial SPEC creation - Phase 1 Polling API only |
-| 1.1.0 | 2025-12-22 | @user | Code Review: Direct HTTP calls for 404/503 error handling |
-| 1.2.0 | 2025-12-22 | @user | Code Review: getRelayerId() accessibility, Direct vs Gasless docs |
+| 1.4.0 | 2025-12-23 | @user | Implementation Complete - Status: draft → completed, All tests passing (9/9, 80.95% coverage) |
 | 1.3.0 | 2025-12-22 | @user | Detailed review: Document consistency fixes, status enum clarification |
+| 1.2.0 | 2025-12-22 | @user | Code Review: getRelayerId() accessibility, Direct vs Gasless docs |
+| 1.1.0 | 2025-12-22 | @user | Code Review: Direct HTTP calls for 404/503 error handling |
+| 1.0.0 | 2025-12-22 | @user | Initial SPEC creation - Phase 1 Polling API only |
 
 ## Overview
 

@@ -1,9 +1,9 @@
 # MSQ Relayer Service - Technical Document
 
 ## Document Information
-- **Version**: 12.5
-- **Last Updated**: 2025-12-19
-- **Status**: Phase 1 Complete (Direct + Gasless + Multi-Relayer Proxy + Nginx LB + API Key Authentication)
+- **Version**: 12.6
+- **Last Updated**: 2025-12-23
+- **Status**: Phase 1 Complete (Direct + Gasless + Multi-Relayer Proxy + Nginx LB + Transaction Status Polling + API Key Authentication)
 
 > **Note**: This document covers technical implementation details (HOW).
 > - Business requirements (WHAT/WHY): [product.md](./product.md)
@@ -914,26 +914,119 @@ Response (200 OK):
 }
 ```
 
-### 5.4 Status Query API
+### 5.4 Transaction Status Polling API (SPEC-STATUS-001)
+
+**Overview**: Transaction Status Polling API enables clients to query the status of submitted transactions. This is a Phase 1 polling-based approach with plans for webhook notifications in Phase 2+.
+
+#### 5.4.1 Architecture and Data Flow
+
+```
+Client Service
+    │
+    └─→ GET /api/v1/relay/status/:txId  (Query status)
+            │
+            └─→ StatusService.getTransactionStatus()
+                └─→ Direct HTTP call → OZ Relayer
+                    └─→ Transform → TxStatusResponseDto
+```
+
+**Design Principle**: Thin API gateway with proper error handling (404 vs 503 differentiation).
+
+#### 5.4.2 Module Structure
+
+```
+packages/relay-api/src/relay/status/
+├── dto/
+│   └── tx-status-response.dto.ts    # Response DTO with Swagger annotations
+├── status.controller.ts              # GET /status/{txId} endpoint
+├── status.service.ts                 # OzRelayerService wrapper
+├── status.module.ts                  # Module definition
+├── status.controller.spec.ts        # Controller tests (5 tests)
+└── status.service.spec.ts           # Service tests (4 tests)
+```
+
+#### 5.4.3 Request/Response Specification
+
+**Endpoint: GET /api/v1/relay/status/:txId**
 
 ```yaml
-GET /api/v1/relay/status/{txId}
+GET /api/v1/relay/status/550e8400-e29b-41d4-a716-446655440000
+X-API-Key: {api_key}
 
 Response (200 OK):
 {
-  "success": true,
-  "data": {
-    "txId": "tx_abc123def456",        # Internal transaction ID
-    "status": "confirmed",            # pending|submitted|confirmed|failed
-    "txHash": "0x...",                # Blockchain transaction hash
-    "blockNumber": 12345678,          # Confirmed block number
-    "gasUsed": "21000",               # Gas used
-    "effectiveGasPrice": "30000000000", # Actual gas price
-    "confirmedAt": "2025-12-15T00:01:00.000Z"  # Confirmation time
-  },
-  "timestamp": "2025-12-15T00:00:00.000Z"
+  "transactionId": "550e8400-e29b-41d4-a716-446655440000",  # UUID v4 format
+  "hash": "0xabcd1234...",                                   # Blockchain tx hash
+  "status": "confirmed",                                     # pending|confirmed|failed
+  "createdAt": "2025-12-19T10:00:00Z",                      # ISO 8601 timestamp
+  "confirmedAt": "2025-12-19T10:05:00Z",                    # Optional: Confirmation time
+  "from": "0x70997970C51812dc3A010C7d01b50e0d17dc79C8",    # Relayer address
+  "to": "0x5FbDB2315678afecb367f032d93F642f64180aa3",      # Target contract or Forwarder
+  "value": "0"                                               # ETH transfer amount (wei)
 }
+
+Error Responses:
+- 400 Bad Request: Invalid transaction ID format (not UUID v4)
+  {
+    "statusCode": 400,
+    "message": "Invalid transaction ID format",
+    "error": "Bad Request"
+  }
+
+- 404 Not Found: Transaction ID does not exist in OZ Relayer
+  {
+    "statusCode": 404,
+    "message": "Transaction not found",
+    "error": "Not Found"
+  }
+
+- 503 Service Unavailable: OZ Relayer unavailable or timeout
+  {
+    "statusCode": 503,
+    "message": "OZ Relayer service unavailable",
+    "error": "Service Unavailable"
+  }
 ```
+
+#### 5.4.4 Status Values
+
+Status values from OZ Relayer are simplified for client clarity:
+
+| OZ Relayer Status | API Response | Description |
+|------------------|--------------|-------------|
+| `pending` | `pending` | Awaiting processing |
+| `sent` | `pending` | Submitted to blockchain |
+| `submitted` | `pending` | In mempool |
+| `inmempool` | `pending` | In transaction mempool |
+| `mined` | `pending` | Included in block (unconfirmed) |
+| `confirmed` | `confirmed` | Confirmed (terminal state) |
+| `failed` | `failed` | Transaction failed (terminal state) |
+
+#### 5.4.5 Direct vs Gasless Transaction Response
+
+| Type | `to` Field | Description |
+|------|-----------|-------------|
+| Direct | Target contract address | User-specified destination |
+| Gasless | ERC2771Forwarder address | Meta-transaction forwarder |
+
+Both transaction types use the same status query endpoint.
+
+#### 5.4.6 Technical Implementation Details
+
+**Transaction ID Validation**:
+- Must be valid UUID v4 format
+- Validation before OZ Relayer query prevents unnecessary network calls
+- Returns 400 Bad Request for invalid format
+
+**Direct HTTP Integration**:
+- StatusService makes direct HTTP calls to OZ Relayer
+- Timeout: 10 seconds (consistent with existing services)
+- Proper 404/503 error differentiation enables accurate client error handling
+
+**Response Transformation**:
+- OZ Relayer response → TxStatusResponseDto
+- Consistent with Direct and Gasless transaction responses
+- Swagger/OpenAPI annotations for API documentation
 
 ### 5.5 Health Check API
 
