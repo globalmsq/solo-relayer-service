@@ -81,14 +81,11 @@ export class OzRelayerService {
   }
 
   /**
-   * Fetch and cache the relayer ID from OZ Relayer
-   * Uses ip_hash in Nginx to ensure consistent routing
+   * Fetch the relayer ID from OZ Relayer
+   * Note: No caching because Nginx ip_hash may route to different instances
+   * Each instance has its own unique relayer ID
    */
   private async getRelayerId(): Promise<string> {
-    if (this.relayerId) {
-      return this.relayerId;
-    }
-
     try {
       const response = await firstValueFrom(
         this.httpService.get<{ data: Array<{ id: string }> }>(
@@ -103,8 +100,7 @@ export class OzRelayerService {
       );
 
       if (response.data?.data?.[0]?.id) {
-        this.relayerId = response.data.data[0].id;
-        return this.relayerId;
+        return response.data.data[0].id;
       }
 
       throw new Error("No relayer found");
@@ -131,7 +127,9 @@ export class OzRelayerService {
             to: request.to,
             data: request.data,
             value: request.value ? parseInt(request.value, 10) : 0,
-            gas_limit: request.gasLimit ? parseInt(request.gasLimit, 10) : 21000,
+            gas_limit: request.gasLimit
+              ? parseInt(request.gasLimit, 10)
+              : 21000,
             speed: request.speed || "average",
           },
           {

@@ -118,7 +118,6 @@ describe("GaslessController", () => {
 
     it("TC-022: Address with different case should be accepted", async () => {
       // Arrange
-      const addressLowercase = "0x1234567890123456789012345678901234567890";
       const addressMixed = "0x1234567890123456789012345678901234567890"; // Checksum format
 
       // Act

@@ -115,6 +115,12 @@ services:
       REDIS_URL: redis://redis:6379
       RPC_URL: http://hardhat-node:8545
       RELAY_API_KEY: local-dev-api-key
+      CHAIN_ID: 31337
+      FORWARDER_ADDRESS: "0x5FbDB2315678afecb367f032d93F642f64180aa3"
+      # Direct connection to single OZ Relayer for consistent relayer ID
+      # (Load balancer causes ID mismatch between getRelayerId and sendTransaction)
+      OZ_RELAYER_URL: http://oz-relayer-1:8080
+      OZ_RELAYER_API_KEY: oz-relayer-shared-api-key-local-dev
     networks:
       - msq-relayer-network
     restart: unless-stopped

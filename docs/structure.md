@@ -464,6 +464,66 @@ relay-api:
 
 **Phase 2+ Extension**: Multiple clients, DB-based storage, Key rotation
 
+#### 4.3.2 Gasless Module Details (Phase 1 - SPEC-GASLESS-001)
+
+**Purpose**: Gasless Transaction API with EIP-712 signature verification and nonce management
+
+**Architecture**:
+```
+packages/relay-api/src/relay/gasless/
+├── dto/
+│   ├── forward-request.dto.ts        # EIP-712 ForwardRequest structure (7 fields)
+│   ├── gasless-tx-request.dto.ts     # API request: request + signature
+│   └── gasless-tx-response.dto.ts    # API response: txId + status + timestamp
+├── gasless.controller.ts              # Endpoints: POST /gasless, GET /nonce/:address
+├── gasless.service.ts                 # Orchestration & nonce management
+├── gasless.module.ts                  # NestJS module registration
+├── signature-verifier.service.ts      # EIP-712 verification (ethers.js v6)
+├── gasless.controller.spec.ts         # Controller tests (5 cases)
+├── gasless.service.spec.ts            # Service tests (8 cases)
+└── signature-verifier.service.spec.ts # Signature verifier tests (7 cases)
+```
+
+**Key Components**:
+
+| Component | Responsibility | Implementation |
+|-----------|---|---|
+| **SignatureVerifierService** | EIP-712 signature verification + deadline validation | ethers.js `verifyTypedData()` |
+| **GaslessService** | Orchestration: nonce query → validation → signature check → TX build → submit | RPC eth_call + OzRelayerService |
+| **GaslessController** | REST endpoints: POST /gasless + GET /nonce/:address | NestJS controller with DTO validation |
+| **ForwardRequestDto** | EIP-712 message structure (7 fields including nonce) | class-validator decorators |
+
+**API Endpoints**:
+
+| Endpoint | Method | Purpose | Status Code |
+|----------|--------|---------|-------------|
+| `/api/v1/relay/gasless` | POST | Submit gasless transaction | 202/400/401/503 |
+| `/api/v1/relay/gasless/nonce/:address` | GET | Query current nonce | 200/400/503 |
+
+**Workflow** (7-step validation):
+1. Validate deadline is in future (server time)
+2. Query expected nonce from ERC2771Forwarder contract
+3. Validate request.nonce == expected nonce (Layer 1 pre-check)
+4. Verify EIP-712 signature with recovered address
+5. Build ERC2771Forwarder.execute() transaction calldata
+6. Submit to OZ Relayer via OzRelayerService
+7. Return 202 Accepted with transactionId + status
+
+**Security Features**:
+- Two-layer nonce validation (relay-api pre-check + contract final validation)
+- Deadline validation (prevents stale transaction execution)
+- EIP-712 signature verification (prevents tampering)
+- Signer address verification (prevents spoofing)
+
+**Test Coverage**: ~20 test cases across 3 test files (≥90% coverage target)
+
+**E2E Test Script**: `packages/relay-api/scripts/test-gasless.ts`
+- Scenario 1: Nonce query API
+- Scenario 2: Valid gasless transaction submission
+- Scenario 3: Invalid signature detection
+- Scenario 4: Expired deadline detection
+- Scenario 5: Invalid address format handling
+
 ### 4.4 packages/contracts
 
 **Smart Contracts** - Hardhat project with OpenZeppelin-based contracts (SPEC-CONTRACTS-001)

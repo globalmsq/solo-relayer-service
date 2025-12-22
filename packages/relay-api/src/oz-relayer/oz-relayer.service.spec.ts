@@ -12,7 +12,6 @@ import {
 describe("OzRelayerService", () => {
   let service: OzRelayerService;
   let httpService: HttpService;
-  let configService: ConfigService;
 
   // OZ Relayer API response format
   const mockOzRelayerTxResponse = {
@@ -73,7 +72,6 @@ describe("OzRelayerService", () => {
 
     service = module.get<OzRelayerService>(OzRelayerService);
     httpService = module.get<HttpService>(HttpService);
-    configService = module.get<ConfigService>(ConfigService);
   });
 
   it("should be defined", () => {

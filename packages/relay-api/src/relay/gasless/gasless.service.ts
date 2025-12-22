@@ -3,6 +3,7 @@ import {
   UnauthorizedException,
   BadRequestException,
   ServiceUnavailableException,
+  Logger,
 } from "@nestjs/common";
 import { ConfigService } from "@nestjs/config";
 import { HttpService } from "@nestjs/axios";
@@ -27,10 +28,12 @@ import { DirectTxRequestDto } from "../dto/direct-tx-request.dto";
  */
 @Injectable()
 export class GaslessService {
+  private readonly logger = new Logger(GaslessService.name);
   // ERC2771Forwarder contract ABI for nonces() and execute()
+  // OpenZeppelin v5 uses ForwardRequestData struct with signature inside
   private forwarderInterface = new Interface([
     "function nonces(address from) view returns (uint256)",
-    "function execute((address,address,uint256,uint256,uint256,uint48,bytes) request, bytes signature) returns (bool, bytes)",
+    "function execute((address from, address to, uint256 value, uint256 gas, uint48 deadline, bytes data, bytes signature) request)",
   ]);
 
   constructor(
@@ -89,6 +92,10 @@ export class GaslessService {
     try {
       const response = await this.ozRelayerService.sendTransaction(forwarderTx);
 
+      this.logger.log(
+        `Gasless transaction submitted: txId=${response.transactionId}, from=${dto.request.from}`,
+      );
+
       // Step 7: Return transaction response
       return {
         transactionId: response.transactionId,
@@ -97,6 +104,10 @@ export class GaslessService {
         createdAt: response.createdAt,
       };
     } catch (error) {
+      this.logger.error(
+        `OZ Relayer error for address ${dto.request.from}: ${error instanceof Error ? error.message : "Unknown error"}`,
+        error instanceof Error ? error.stack : undefined,
+      );
       throw new ServiceUnavailableException("OZ Relayer service unavailable");
     }
   }
@@ -115,18 +126,20 @@ export class GaslessService {
   async getNonceFromForwarder(address: string): Promise<string> {
     try {
       const rpcUrl = this.configService.get<string>("RPC_URL");
-      const forwarderAddress = this.configService.get<string>(
-        "FORWARDER_ADDRESS",
-      );
+      const forwarderAddress =
+        this.configService.get<string>("FORWARDER_ADDRESS");
 
       if (!rpcUrl || !forwarderAddress) {
         throw new Error("RPC_URL or FORWARDER_ADDRESS not configured");
       }
 
       // Build eth_call request to nonces(address)
-      // nonces function selector: 0xc37f2c3d (first 4 bytes of keccak256("nonces(address)"))
-      const noncesFunctionSelector = "0xc37f2c3d";
-      const paddedAddress = address.toLowerCase().replace("0x", "").padStart(64, "0");
+      // nonces function selector: 0x7ecebe00 (first 4 bytes of keccak256("nonces(address)"))
+      const noncesFunctionSelector = "0x7ecebe00";
+      const paddedAddress = address
+        .toLowerCase()
+        .replace("0x", "")
+        .padStart(64, "0");
       const callData = noncesFunctionSelector + paddedAddress;
 
       // Make JSON-RPC call
@@ -152,6 +165,9 @@ export class GaslessService {
 
       throw new Error("No result from eth_call");
     } catch (error) {
+      this.logger.error(
+        `Failed to query nonce for address ${address}: ${error instanceof Error ? error.message : "Unknown error"}`,
+      );
       throw new ServiceUnavailableException(
         "Failed to query nonce from Forwarder contract",
       );
@@ -169,7 +185,10 @@ export class GaslessService {
    * @param expectedNonce - Current nonce from Forwarder contract
    * @throws BadRequestException if nonce mismatch with detailed error message
    */
-  private validateNonceMatch(requestNonce: string, expectedNonce: string): void {
+  private validateNonceMatch(
+    requestNonce: string,
+    expectedNonce: string,
+  ): void {
     if (requestNonce !== expectedNonce) {
       throw new BadRequestException(
         `Invalid nonce: expected ${expectedNonce}, got ${requestNonce}`,
@@ -183,45 +202,56 @@ export class GaslessService {
    * Encodes the ERC2771Forwarder.execute(request, signature) call
    * The execute function takes a ForwardRequest struct and signature
    *
-   * Function signature:
-   * execute((address,address,uint256,uint256,uint256,uint48,bytes) request, bytes signature)
+   * Function signature (OpenZeppelin v5):
+   * execute((address from, address to, uint256 value, uint256 gas, uint48 deadline, bytes data, bytes signature) request)
+   *
+   * Note: Signature is INSIDE the ForwardRequestData struct, not a separate parameter.
+   * Nonce is used for EIP-712 signing but NOT included in the calldata.
    *
    * Returns: DirectTxRequestDto to be sent to OZ Relayer
    *
    * @param dto - GaslessTxRequestDto with request and signature
    * @returns DirectTxRequestDto with encoded Forwarder call
    */
-  private buildForwarderExecuteTx(dto: GaslessTxRequestDto): DirectTxRequestDto {
-    const forwarderAddress = this.configService.get<string>(
-      "FORWARDER_ADDRESS",
-    );
+  private buildForwarderExecuteTx(
+    dto: GaslessTxRequestDto,
+  ): DirectTxRequestDto {
+    const forwarderAddress =
+      this.configService.get<string>("FORWARDER_ADDRESS");
 
     if (!forwarderAddress) {
       throw new Error("FORWARDER_ADDRESS not configured");
     }
 
-    // Build ForwardRequest struct data in correct order for encoding
-    const forwardRequestTuple = [
+    // Build ForwardRequestData struct (OpenZeppelin v5 format)
+    // Order: from, to, value, gas, deadline, data, signature
+    // Note: nonce is NOT in the struct - only used for EIP-712 signing
+    const forwardRequestData = [
       dto.request.from,
       dto.request.to,
       dto.request.value,
       dto.request.gas,
-      dto.request.nonce,
       dto.request.deadline,
       dto.request.data,
+      dto.signature,
     ];
 
-    // Encode execute(request, signature) call
+    // Encode execute(request) call - signature is inside the struct
     const callData = this.forwarderInterface.encodeFunctionData("execute", [
-      forwardRequestTuple,
-      dto.signature,
+      forwardRequestData,
     ]);
+
+    // Get gas limit from config (default: 200000 for Forwarder.execute() + inner call)
+    const gasLimit = this.configService.get<string>(
+      "FORWARDER_GAS_LIMIT",
+      "200000",
+    );
 
     return {
       to: forwarderAddress,
       data: callData,
       value: "0", // Forwarder itself doesn't receive value
-      gasLimit: undefined, // Let relayer estimate
+      gasLimit,
       speed: "fast", // Default speed
     };
   }

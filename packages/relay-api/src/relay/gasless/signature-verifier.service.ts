@@ -1,10 +1,6 @@
-import { Injectable } from "@nestjs/common";
+import { Injectable, Logger } from "@nestjs/common";
 import { ConfigService } from "@nestjs/config";
-import {
-  verifyTypedData,
-  TypedDataDomain,
-  TypedDataField,
-} from "ethers";
+import { verifyTypedData, TypedDataDomain, TypedDataField } from "ethers";
 import { ForwardRequestDto } from "../dto/forward-request.dto";
 
 /**
@@ -18,6 +14,8 @@ import { ForwardRequestDto } from "../dto/forward-request.dto";
  */
 @Injectable()
 export class SignatureVerifierService {
+  private readonly logger = new Logger(SignatureVerifierService.name);
+
   constructor(private readonly configService: ConfigService) {}
 
   /**
@@ -25,14 +23,15 @@ export class SignatureVerifierService {
    * Used for signature verification with ethers.js verifyTypedData()
    *
    * Domain parameters:
-   * - name: 'ERC2771Forwarder' (contract name)
+   * - name: from FORWARDER_NAME env var (default: 'MSQForwarder')
+   *         MUST match the name used during ERC2771Forwarder deployment
    * - version: '1' (contract version)
    * - chainId: from configuration (network chain ID)
    * - verifyingContract: from configuration (Forwarder contract address)
    */
   private buildEIP712Domain(): TypedDataDomain {
     return {
-      name: "ERC2771Forwarder",
+      name: this.configService.get<string>("FORWARDER_NAME") || "MSQForwarder",
       version: "1",
       chainId: this.configService.get<number>("CHAIN_ID") || 31337,
       verifyingContract: this.configService.get<string>("FORWARDER_ADDRESS"),
@@ -98,9 +97,21 @@ export class SignatureVerifierService {
       );
 
       // Compare recovered signer with request.from (case-insensitive)
-      return recoveredAddress.toLowerCase() === request.from.toLowerCase();
+      const isValid =
+        recoveredAddress.toLowerCase() === request.from.toLowerCase();
+
+      if (!isValid) {
+        this.logger.warn(
+          `Signature verification failed: recovered ${recoveredAddress}, expected ${request.from}`,
+        );
+      }
+
+      return isValid;
     } catch (error) {
-      // Invalid signature format or verification failed
+      // Log signature verification failure for security monitoring
+      this.logger.warn(
+        `Signature verification error for address ${request.from}: ${error instanceof Error ? error.message : "Unknown error"}`,
+      );
       return false;
     }
   }

@@ -1,13 +1,15 @@
 import { Test, TestingModule } from "@nestjs/testing";
-import { BadRequestException, ServiceUnavailableException, UnauthorizedException } from "@nestjs/common";
+import {
+  BadRequestException,
+  ServiceUnavailableException,
+  UnauthorizedException,
+} from "@nestjs/common";
 import { ConfigService } from "@nestjs/config";
 import { HttpService } from "@nestjs/axios";
-import { of, throwError } from "rxjs";
 import { GaslessService } from "./gasless.service";
 import { SignatureVerifierService } from "./signature-verifier.service";
 import { OzRelayerService } from "../../oz-relayer/oz-relayer.service";
 import { GaslessTxRequestDto } from "../dto/gasless-tx-request.dto";
-import { GaslessTxResponseDto } from "../dto/gasless-tx-response.dto";
 
 describe("GaslessService", () => {
   let service: GaslessService;
@@ -65,7 +67,9 @@ describe("GaslessService", () => {
     }).compile();
 
     service = module.get<GaslessService>(GaslessService);
-    signatureVerifier = module.get<SignatureVerifierService>(SignatureVerifierService);
+    signatureVerifier = module.get<SignatureVerifierService>(
+      SignatureVerifierService,
+    );
     ozRelayerService = module.get<OzRelayerService>(OzRelayerService);
     configService = module.get<ConfigService>(ConfigService);
     httpService = module.get<HttpService>(HttpService);
@@ -107,7 +111,9 @@ describe("GaslessService", () => {
       const request = createValidRequest();
       request.request.deadline = Math.floor(Date.now() / 1000) - 1; // Expired
 
-      jest.spyOn(signatureVerifier, "validateDeadline").mockReturnValueOnce(false);
+      jest
+        .spyOn(signatureVerifier, "validateDeadline")
+        .mockReturnValueOnce(false);
 
       // Act & Assert
       await expect(service.sendGaslessTransaction(request)).rejects.toThrow(
@@ -144,7 +150,9 @@ describe("GaslessService", () => {
       jest.spyOn(httpService.axiosRef, "post").mockResolvedValueOnce({
         data: { result: "0x0" },
       });
-      jest.spyOn(signatureVerifier, "verifySignature").mockReturnValueOnce(false);
+      jest
+        .spyOn(signatureVerifier, "verifySignature")
+        .mockReturnValueOnce(false);
 
       // Act & Assert
       await expect(service.sendGaslessTransaction(request)).rejects.toThrow(
@@ -269,14 +277,12 @@ describe("GaslessService", () => {
       jest.spyOn(httpService.axiosRef, "post").mockResolvedValueOnce({
         data: { result: "0x0" },
       });
-      jest
-        .spyOn(ozRelayerService, "sendTransaction")
-        .mockResolvedValueOnce({
-          transactionId: "tx_unique_id_123",
-          hash: null,
-          status: "pending",
-          createdAt: createdAtTime,
-        });
+      jest.spyOn(ozRelayerService, "sendTransaction").mockResolvedValueOnce({
+        transactionId: "tx_unique_id_123",
+        hash: null,
+        status: "pending",
+        createdAt: createdAtTime,
+      });
 
       // Act
       const result = await service.sendGaslessTransaction(dto);
@@ -309,14 +315,12 @@ describe("GaslessService", () => {
       jest.spyOn(httpService.axiosRef, "post").mockResolvedValueOnce({
         data: { result: "0x0" },
       });
-      jest
-        .spyOn(ozRelayerService, "sendTransaction")
-        .mockResolvedValueOnce({
-          transactionId: "tx_pending",
-          hash: null,
-          status: "pending",
-          createdAt: new Date().toISOString(),
-        });
+      jest.spyOn(ozRelayerService, "sendTransaction").mockResolvedValueOnce({
+        transactionId: "tx_pending",
+        hash: null,
+        status: "pending",
+        createdAt: new Date().toISOString(),
+      });
 
       // Act
       const result = await service.sendGaslessTransaction(dto);

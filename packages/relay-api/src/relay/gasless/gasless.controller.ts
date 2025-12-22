@@ -24,7 +24,7 @@ import { GaslessTxResponseDto } from "../dto/gasless-tx-response.dto";
  * - U-GASLESS-006: Error Handling
  */
 @ApiTags("Gasless Transaction")
-@Controller("api/v1/relay/gasless")
+@Controller("relay/gasless")
 export class GaslessController {
   constructor(private readonly gaslessService: GaslessService) {}
 

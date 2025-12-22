@@ -2,17 +2,9 @@ import { Test, TestingModule } from "@nestjs/testing";
 import { ConfigService } from "@nestjs/config";
 import { SignatureVerifierService } from "./signature-verifier.service";
 import { ForwardRequestDto } from "../dto/forward-request.dto";
-import {
-  TypedDataDomain,
-  TypedDataField,
-  verifyTypedData,
-  getAddress,
-  toBeHex,
-} from "ethers";
 
 describe("SignatureVerifierService", () => {
   let service: SignatureVerifierService;
-  let configService: ConfigService;
 
   // Test wallet address and signature
   const testAddress = "0x1234567890123456789012345678901234567890";
@@ -29,6 +21,7 @@ describe("SignatureVerifierService", () => {
             get: (key: string) => {
               if (key === "CHAIN_ID") return testChainId;
               if (key === "FORWARDER_ADDRESS") return testForwarder;
+              if (key === "FORWARDER_NAME") return "MSQForwarder";
               return null;
             },
           },
@@ -37,7 +30,6 @@ describe("SignatureVerifierService", () => {
     }).compile();
 
     service = module.get<SignatureVerifierService>(SignatureVerifierService);
-    configService = module.get<ConfigService>(ConfigService);
   });
 
   describe("verifySignature", () => {
@@ -51,36 +43,6 @@ describe("SignatureVerifierService", () => {
         nonce: "0",
         deadline: Math.floor(Date.now() / 1000) + 3600,
         data: "0xabcdef",
-      };
-
-      // For testing, we'll create a valid signature by signing with ethers
-      const domain: TypedDataDomain = {
-        name: "ERC2771Forwarder",
-        version: "1",
-        chainId: testChainId,
-        verifyingContract: testForwarder,
-      };
-
-      const types: Record<string, TypedDataField[]> = {
-        ForwardRequest: [
-          { name: "from", type: "address" },
-          { name: "to", type: "address" },
-          { name: "value", type: "uint256" },
-          { name: "gas", type: "uint256" },
-          { name: "nonce", type: "uint256" },
-          { name: "deadline", type: "uint48" },
-          { name: "data", type: "bytes" },
-        ],
-      };
-
-      const message = {
-        from: request.from,
-        to: request.to,
-        value: request.value,
-        gas: request.gas,
-        nonce: request.nonce,
-        deadline: request.deadline,
-        data: request.data,
       };
 
       // Create a signature using verifyTypedData (for testing purposes)
