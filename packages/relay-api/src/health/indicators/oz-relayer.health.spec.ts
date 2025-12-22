@@ -77,7 +77,9 @@ describe("OzRelayerHealthIndicator", () => {
       expect(httpService.get).toHaveBeenCalledWith(
         "http://oz-relayer-1:8080/api/v1/relayers",
         expect.objectContaining({
-          headers: { Authorization: "Bearer oz-relayer-shared-api-key-local-dev" },
+          headers: {
+            Authorization: "Bearer oz-relayer-shared-api-key-local-dev",
+          },
           timeout: 5000,
         }),
       );
