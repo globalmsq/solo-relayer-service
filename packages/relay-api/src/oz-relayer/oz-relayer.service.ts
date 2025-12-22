@@ -81,8 +81,10 @@ export class OzRelayerService {
    * Fetch the relayer ID from OZ Relayer with caching
    * Single instance mode: Cache relayer ID after first discovery
    * Phase 2+: Queue system will handle multi-instance routing
+   *
+   * SPEC-STATUS-001: Made public for StatusService access
    */
-  private async getRelayerId(): Promise<string> {
+  public async getRelayerId(): Promise<string> {
     // Return cached ID if available
     if (this.relayerId) {
       return this.relayerId;
