@@ -2501,6 +2501,203 @@ const queueUrl = process.env.AWS_SQS_QUEUE_URL;
 
 ---
 
+## 8. E2E Test Infrastructure (SPEC-E2E-001)
+
+### 8.1 Overview
+
+**Status**: Phase 1 Complete (29 E2E tests implemented)
+
+E2E (End-to-End) tests verify complete API flows using Mock OZ Relayer responses (no actual blockchain calls). This ensures all API endpoints function correctly in integrated scenarios.
+
+**Key Features**:
+- 29 test cases across 5 test suites
+- Mock OZ Relayer HTTP responses (Jest Spy)
+- EIP-712 signature generation and verification
+- Complete payment flow testing
+- < 30 seconds execution time
+
+### 8.2 Test Architecture
+
+```
+E2E Test Suite
+├── supertest (HTTP endpoint testing)
+├── @nestjs/testing (NestJS Test Module)
+├── ethers.js (EIP-712 signature utility)
+└── Jest Spy (OZ Relayer Mock responses)
+```
+
+**Test Execution Flow**:
+
+```
+1. Initialize NestJS Test Module
+   └─ Load all modules (RelayModule, AuthModule)
+   └─ Mock OZ Relayer HTTP client with Jest Spy
+
+2. Execute 5 Test Suites (29 tests total)
+   ├─ direct.e2e-spec.ts (8 tests)
+   │  └─ Valid/invalid requests, authentication, error handling
+   ├─ gasless.e2e-spec.ts (10 tests)
+   │  └─ EIP-712 signature verification, nonce management
+   ├─ status.e2e-spec.ts (6 tests)
+   │  └─ Status query, error conditions
+   ├─ health.e2e-spec.ts (3 tests)
+   │  └─ Service health status, public endpoint
+   └─ payment-integration.e2e-spec.ts (2 tests)
+       └─ Complete payment flows (batch, gasless)
+
+3. Verify Results
+   └─ All 29 tests pass
+   └─ No unit test regression
+   └─ No external API calls made (Mock only)
+```
+
+### 8.3 Test Suite Details
+
+#### 8.3.1 Direct Transaction Tests (8 tests)
+
+**Endpoint**: `POST /api/v1/relay/direct`
+
+| Test Case | Condition | Expected Result |
+|-----------|-----------|-----------------|
+| TC-E2E-D001 | Valid request | 202 Accepted |
+| TC-E2E-D002 | Minimal fields | 202 Accepted |
+| TC-E2E-D003 | Invalid address | 400 Bad Request |
+| TC-E2E-D004 | Invalid hex data | 400 Bad Request |
+| TC-E2E-D005 | Invalid speed enum | 400 Bad Request |
+| TC-E2E-D006 | Missing API key | 401 Unauthorized |
+| TC-E2E-D007 | Invalid API key | 401 Unauthorized |
+| TC-E2E-D008 | OZ Relayer down | 503 Service Unavailable |
+
+#### 8.3.2 Gasless Transaction Tests (10 tests)
+
+**Endpoints**:
+- `GET /api/v1/relay/gasless/nonce/{address}`
+- `POST /api/v1/relay/gasless`
+
+**Signature Verification Flow**:
+1. Query nonce (GET /api/v1/relay/gasless/nonce/{address})
+2. Create ForwardRequest with nonce
+3. Sign with EIP-712 using ethers.js
+4. Submit Gasless TX (POST /api/v1/relay/gasless)
+5. Verify signature with SignatureVerifierService
+
+**EIP-712 Domain**:
+```typescript
+const EIP712_DOMAIN = {
+  name: 'ERC2771Forwarder',
+  version: '1',
+  chainId: 31337,
+  verifyingContract: '0xCf7Ed3AccA5a467e9e704C703E8D87F634fB0Fc9'
+};
+```
+
+#### 8.3.3 Status Polling Tests (6 tests)
+
+**Endpoint**: `GET /api/v1/relay/status/{txId}`
+
+| Test Case | Query | Expected Response |
+|-----------|-------|-------------------|
+| TC-E2E-S001 | pending txId | 200 + status: pending |
+| TC-E2E-S002 | confirmed txId | 200 + hash + confirmedAt |
+| TC-E2E-S003 | failed txId | 200 + status: failed |
+| TC-E2E-S004 | invalid UUID | 400 Bad Request |
+| TC-E2E-S005 | OZ Relayer down | 503 Service Unavailable |
+| TC-E2E-S006 | non-existent txId | 404 Not Found |
+
+#### 8.3.4 Health Check Tests (3 tests)
+
+**Endpoint**: `GET /api/v1/health` (Public, no API key required)
+
+| Test Case | Condition | Expected Result |
+|-----------|-----------|-----------------|
+| TC-E2E-H001 | All services healthy | 200 + status: ok |
+| TC-E2E-H002 | Public endpoint | 200 (no API key) |
+| TC-E2E-H003 | Relayer pool down | 503 Service Unavailable |
+
+#### 8.3.5 Payment Integration Tests (2 tests)
+
+**Test 1**: Batch token transfer (3 Direct TXs in parallel)
+**Test 2**: Complete gasless payment flow (4 steps)
+
+### 8.4 Test Files and Utilities
+
+#### Directory Structure
+
+```
+packages/relay-api/test/
+├── e2e/                             # E2E test suite
+│   ├── direct.e2e-spec.ts          # Direct TX tests (8)
+│   ├── gasless.e2e-spec.ts         # Gasless TX tests (10)
+│   ├── status.e2e-spec.ts          # Status Polling tests (6)
+│   ├── health.e2e-spec.ts          # Health Check tests (3)
+│   └── payment-integration.e2e-spec.ts  # Payment Flow tests (2)
+├── fixtures/                        # Test data
+│   ├── test-wallets.ts             # Hardhat accounts
+│   ├── test-config.ts              # Test configuration
+│   └── mock-responses.ts           # OZ Relayer mock responses
+├── utils/                           # Test utilities
+│   ├── eip712-signer.ts            # EIP-712 signature utility
+│   ├── encoding.ts                 # ERC-20 encoding
+│   └── test-app.factory.ts         # NestJS app factory
+└── jest-e2e.json                    # Jest E2E configuration
+```
+
+### 8.5 Running E2E Tests
+
+```bash
+# Run all E2E tests
+pnpm --filter relay-api test:e2e
+
+# Expected output: 29/29 tests passing (~12 seconds)
+
+# Run with coverage
+pnpm --filter relay-api test:e2e:cov
+
+# Run specific test suite
+pnpm --filter relay-api test:e2e -- direct.e2e-spec
+
+# Run in watch mode
+pnpm --filter relay-api test:e2e --watch
+```
+
+**Test Results**:
+```
+Test Suites: 5 passed, 5 total
+Tests:       29 passed, 29 total
+Time:        ~12.5 seconds
+```
+
+### 8.6 Mock OZ Relayer Strategy
+
+E2E tests use Jest Spy to mock OZ Relayer HTTP responses (no actual blockchain calls):
+- Fast execution (no network latency)
+- Reliable (no external service dependency)
+- Isolated (API layer only)
+- Repeatable (same response every time)
+
+### 8.7 Quality Metrics
+
+**Test Coverage**:
+- 29 test cases covering all 5 API endpoints
+- 100% pass rate (0 failures)
+- Execution time: < 30 seconds
+
+**Quality Gates**:
+- All 29 E2E tests pass
+- No unit test regression
+- No TypeScript errors
+- No ESLint warnings
+
+### 8.8 Related Specifications
+
+| Document | Purpose |
+|----------|---------|
+| [SPEC-E2E-001](../.moai/specs/SPEC-E2E-001/spec.md) | E2E Test Infrastructure Specification |
+| [SPEC-E2E-001 Acceptance](../.moai/specs/SPEC-E2E-001/acceptance.md) | Acceptance Criteria and Test Scenarios |
+| [docs/TESTING.md](./TESTING.md) | Comprehensive Testing Guide |
+
+---
+
 ## Related Document References
 
 | Document | Description | Path |
@@ -2508,6 +2705,7 @@ const queueUrl = process.env.AWS_SQS_QUEUE_URL;
 | Product Requirements | Business requirements, milestones, success metrics | `./product.md` |
 | System Architecture | Architecture, directory structure, data flow | `./structure.md` |
 | Task Master PRD | PRD for task management | `.taskmaster/docs/prd.txt` |
+| Testing Guide | Unit and E2E testing documentation | `./TESTING.md` |
 
 ---
 

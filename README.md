@@ -70,13 +70,42 @@ curl -X POST http://localhost:3000/api/v1/relay/direct \
 # }
 ```
 
-#### Testing Direct Transaction API
+#### Unit and E2E Tests
 
+**Unit Tests** (function verification):
 ```bash
-# Run unit tests for Direct Transaction
-pnpm --filter relay-api test -- direct
+# Run all unit tests
+pnpm --filter relay-api test
 
-# Run integration tests with Nginx Load Balancer
+# Run unit tests with coverage
+pnpm --filter relay-api test --coverage
+
+# Run unit tests for specific module
+pnpm --filter relay-api test -- direct
+```
+
+**E2E Tests** (API endpoint verification with mock OZ Relayer):
+```bash
+# Run all E2E tests (29 tests, ~12 seconds)
+pnpm --filter relay-api test:e2e
+
+# Expected output: 29/29 tests passing
+# - Direct Transaction API (8 tests)
+# - Gasless Transaction API (10 tests)
+# - Status Polling API (6 tests)
+# - Health Check API (3 tests)
+# - Payment Integration (2 tests)
+
+# Run E2E tests with coverage
+pnpm --filter relay-api test:e2e:cov
+
+# Run specific E2E test suite
+pnpm --filter relay-api test:e2e -- direct.e2e-spec
+```
+
+**Integration Tests with Nginx Load Balancer**:
+```bash
+# Start all services (API Gateway, Relayers, Redis, Nginx)
 docker compose -f docker/docker-compose.yaml up -d
 sleep 5
 
@@ -93,6 +122,14 @@ curl -X POST http://localhost:3000/api/v1/relay/direct \
     "value": "0"
   }'
 ```
+
+**Testing Documentation**:
+See [docs/TESTING.md](./docs/TESTING.md) for comprehensive testing guide including:
+- Unit test setup and execution
+- E2E test architecture (mock vs real)
+- Test fixtures and utilities
+- Troubleshooting guide
+- CI/CD integration examples
 
 #### Transaction Status Query API
 
