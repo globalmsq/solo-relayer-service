@@ -1,43 +1,43 @@
-# SPEC-E2E-001 구현 계획
+# SPEC-E2E-001 Implementation Plan
 
-## 개요
+## Overview
 
-| 항목 | 내용 |
-|------|------|
+| Item | Content |
+|------|---------|
 | **SPEC ID** | SPEC-E2E-001 |
-| **제목** | E2E 테스트 인프라 및 결제 시스템 연동 검증 |
-| **총 예상 시간** | ~4시간 (4 Phase) |
-| **파일 변경** | 신규 11개, 수정 1개 |
-| **테스트 케이스** | 29개 (5개 카테고리) |
+| **Title** | E2E Test Infrastructure and Payment System Integration Verification |
+| **Total Estimated Time** | ~4 hours (4 Phases) |
+| **File Changes** | 12 new, 1 modified |
+| **Test Cases** | 29 (5 categories) |
 
 ---
 
-## 기술 스택
+## Tech Stack
 
-| 라이브러리 | 버전 | 용도 | 설치 상태 |
-|-----------|------|------|---------|
-| **supertest** | ^7.0.0 | HTTP 엔드포인트 테스트 | ❌ 설치 필요 |
-| **@types/supertest** | ^6.0.0 | TypeScript 타입 정의 | ❌ 설치 필요 |
-| **ethers.js** | (기존 설치) | EIP-712 서명 생성 | ✅ 이미 설치됨 |
-| **@nestjs/testing** | (기존 설치) | NestJS 테스트 유틸 | ✅ 이미 설치됨 |
-| **jest** | (기존 설치) | 테스트 프레임워크 | ✅ 이미 설치됨 |
+| Library | Version | Purpose | Installation Status |
+|---------|---------|---------|---------------------|
+| **supertest** | ^7.0.0 | HTTP endpoint testing | ❌ Installation required |
+| **@types/supertest** | ^6.0.0 | TypeScript type definitions | ❌ Installation required |
+| **ethers.js** | (existing) | EIP-712 signature generation | ✅ Already installed |
+| **@nestjs/testing** | (existing) | NestJS test utilities | ✅ Already installed |
+| **jest** | (existing) | Test framework | ✅ Already installed |
 
 ---
 
-## Phase 1: E2E 테스트 인프라 구축 (30분)
+## Phase 1: E2E Test Infrastructure Setup (30 minutes)
 
-### 목표 (Goal)
-- supertest 및 관련 패키지 설치
-- Jest E2E 설정 파일 생성
-- npm 스크립트 추가
+### Goal
+- Install supertest and related packages
+- Create Jest E2E configuration file
+- Add npm scripts
 
-### 작업 내용 (Tasks)
+### Tasks
 
-#### 1.1 Dependencies 설치
+#### 1.1 Install Dependencies
 
-**파일**: `packages/relay-api/package.json` (수정)
+**File**: `packages/relay-api/package.json` (modified)
 
-**변경 사항**:
+**Changes**:
 ```json
 {
   "devDependencies": {
@@ -47,17 +47,17 @@
 }
 ```
 
-**실행**:
+**Execution**:
 ```bash
 cd packages/relay-api
 pnpm add -D supertest@^7.0.0 @types/supertest@^6.0.0
 ```
 
-#### 1.2 Jest E2E 설정 파일 생성
+#### 1.2 Create Jest E2E Configuration File
 
-**파일**: `packages/relay-api/test/jest-e2e.json` (신규)
+**File**: `packages/relay-api/test/jest-e2e.json` (new)
 
-**내용**:
+**Content**:
 ```json
 {
   "moduleFileExtensions": ["js", "json", "ts"],
@@ -70,16 +70,16 @@ pnpm add -D supertest@^7.0.0 @types/supertest@^6.0.0
 }
 ```
 
-**설명**:
-- `testRegex`: `.e2e-spec.ts` 파일만 실행
-- `testTimeout`: 30초 (외부 API Mock 시간 고려)
-- `moduleNameMapper`: src 경로 alias
+**Explanation**:
+- `testRegex`: Run only `.e2e-spec.ts` files
+- `testTimeout`: 30 seconds (considering external API mock time)
+- `moduleNameMapper`: src path alias
 
-#### 1.3 npm 스크립트 추가
+#### 1.3 Add npm Scripts
 
-**파일**: `packages/relay-api/package.json` (수정)
+**File**: `packages/relay-api/package.json` (modified)
 
-**추가 스크립트**:
+**Additional Scripts**:
 ```json
 {
   "scripts": {
@@ -89,36 +89,36 @@ pnpm add -D supertest@^7.0.0 @types/supertest@^6.0.0
 }
 ```
 
-### 예상 산출물 (Deliverables)
-- ✅ supertest ^7.0.0 설치 완료
-- ✅ @types/supertest ^6.0.0 설치 완료
-- ✅ jest-e2e.json 설정 파일 생성
-- ✅ test:e2e, test:e2e:cov 스크립트 추가
+### Deliverables
+- ✅ supertest ^7.0.0 installed
+- ✅ @types/supertest ^6.0.0 installed
+- ✅ jest-e2e.json configuration file created
+- ✅ test:e2e, test:e2e:cov scripts added
 
-### 검증 기준 (Verification)
+### Verification
 ```bash
-# Dependencies 확인
+# Verify dependencies
 pnpm list supertest @types/supertest
 
-# 스크립트 실행 가능 확인 (테스트 파일 없어도 오류 없음)
+# Verify scripts are executable (no error even without test files)
 pnpm test:e2e
 
-# 예상 출력: "No tests found..."
+# Expected output: "No tests found..."
 ```
 
 ---
 
-## Phase 2: 테스트 유틸리티 및 Fixtures (45분)
+## Phase 2: Test Utilities and Fixtures (45 minutes)
 
-### 목표 (Goal)
-- EIP-712 서명 유틸리티 구현
-- Test Wallets 및 Config Fixtures 생성
-- Mock OZ Relayer 응답 팩토리 생성
-- NestJS Test App Factory 구현
+### Goal
+- Implement EIP-712 signature utilities
+- Create Test Wallets and Config Fixtures
+- Create Mock OZ Relayer response factory
+- Implement NestJS Test App Factory
 
-### 작업 내용 (Tasks)
+### Tasks
 
-#### 2.1 디렉토리 구조 생성
+#### 2.1 Create Directory Structure
 
 ```bash
 mkdir -p packages/relay-api/test/e2e
@@ -128,13 +128,13 @@ mkdir -p packages/relay-api/test/utils
 
 #### 2.2 Test Wallets Fixture
 
-**파일**: `packages/relay-api/test/fixtures/test-wallets.ts` (신규)
+**File**: `packages/relay-api/test/fixtures/test-wallets.ts` (new)
 
-**내용**:
+**Content**:
 ```typescript
 import { Wallet } from 'ethers';
 
-// Hardhat 기본 계정 #0~#2 (잘 알려진 테스트 지갑)
+// Hardhat default accounts #0~#2 (well-known test wallets)
 export const TEST_WALLETS = {
   relayer: new Wallet('0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80'),  // Account #0
   user: new Wallet('0x59c6995e998f97a5a0044966f0945389dc9e86dae88c7a8412f4603b6b78690d'),     // Account #1
@@ -148,16 +148,16 @@ export const TEST_ADDRESSES = {
 };
 ```
 
-**설명**:
-- Account #0: Relayer (트랜잭션 제출자)
-- Account #1: User (Gasless TX 서명자)
-- Account #2: Merchant (토큰 수신자)
+**Explanation**:
+- Account #0: Relayer (transaction submitter)
+- Account #1: User (Gasless TX signer)
+- Account #2: Merchant (token receiver)
 
 #### 2.3 Test Config Fixture
 
-**파일**: `packages/relay-api/test/fixtures/test-config.ts` (신규)
+**File**: `packages/relay-api/test/fixtures/test-config.ts` (new)
 
-**내용**:
+**Content**:
 ```typescript
 export const TEST_CONFIG = {
   oz_relayer: {
@@ -166,7 +166,7 @@ export const TEST_CONFIG = {
     relayer_id: 'test-relayer-id',
   },
   forwarder: {
-    address: '0xCf7Ed3AccA5a467e9e704C703E8D87F634fB0Fc9', // Hardhat 기본 Forwarder
+    address: '0xCf7Ed3AccA5a467e9e704C703E8D87F634fB0Fc9', // Hardhat default Forwarder
     chain_id: 31337, // Hardhat local network
   },
   api: {
@@ -175,11 +175,11 @@ export const TEST_CONFIG = {
 };
 ```
 
-#### 2.4 Mock OZ Relayer 응답 팩토리
+#### 2.4 Mock OZ Relayer Response Factory
 
-**파일**: `packages/relay-api/test/fixtures/mock-responses.ts` (신규)
+**File**: `packages/relay-api/test/fixtures/mock-responses.ts` (new)
 
-**내용**:
+**Content**:
 ```typescript
 import { randomUUID } from 'crypto';
 
@@ -211,11 +211,11 @@ export const createMockFailedResponse = (overrides?: Partial<any>) => ({
 });
 ```
 
-#### 2.5 EIP-712 서명 유틸리티
+#### 2.5 EIP-712 Signature Utilities
 
-**파일**: `packages/relay-api/test/utils/eip712-signer.ts` (신규)
+**File**: `packages/relay-api/test/utils/eip712-signer.ts` (new)
 
-**내용**:
+**Content**:
 ```typescript
 import { Wallet } from 'ethers';
 import { TEST_CONFIG } from '../fixtures/test-config';
@@ -267,7 +267,7 @@ export function createForwardRequest(
     value: '0',
     gas: '100000',
     nonce: 0,
-    deadline: Math.floor(Date.now() / 1000) + 3600, // 1시간 후
+    deadline: Math.floor(Date.now() / 1000) + 3600, // 1 hour later
     data: '0x',
     ...options,
   };
@@ -278,18 +278,18 @@ export function createExpiredForwardRequest(
   to: string,
 ): ForwardRequest {
   return createForwardRequest(from, to, {
-    deadline: Math.floor(Date.now() / 1000) - 3600, // 1시간 전 (만료됨)
+    deadline: Math.floor(Date.now() / 1000) - 3600, // 1 hour ago (expired)
   });
 }
 ```
 
-**참조**: `packages/relay-api/scripts/test-gasless.ts` 패턴 재사용
+**Reference**: `packages/relay-api/scripts/test-gasless.ts` pattern reuse
 
-#### 2.6 ERC-20 인코딩 유틸리티
+#### 2.6 ERC-20 Encoding Utilities
 
-**파일**: `packages/relay-api/test/utils/encoding.ts` (신규)
+**File**: `packages/relay-api/test/utils/encoding.ts` (new)
 
-**내용**:
+**Content**:
 ```typescript
 import { Interface } from 'ethers';
 
@@ -305,9 +305,9 @@ export function encodeERC20Transfer(to: string, amount: string): string {
 
 #### 2.7 NestJS Test App Factory
 
-**파일**: `packages/relay-api/test/utils/test-app.factory.ts` (신규)
+**File**: `packages/relay-api/test/utils/test-app.factory.ts` (new)
 
-**내용**:
+**Content**:
 ```typescript
 import { Test, TestingModule } from '@nestjs/testing';
 import { INestApplication, ValidationPipe } from '@nestjs/common';
@@ -361,19 +361,19 @@ export async function createTestApp(): Promise<INestApplication> {
 }
 ```
 
-#### 2.8 Nonce Mock 전략
+#### 2.8 Nonce Mock Strategy
 
-**문제**: `GET /api/v1/relay/gasless/nonce/:address`가 실제 RPC 호출 (Forwarder contract)을 수행
+**Problem**: `GET /api/v1/relay/gasless/nonce/:address` performs actual RPC call (Forwarder contract)
 
-**해결 방법**: Jest Spy로 GaslessService.getNonce 메서드를 Mock
+**Solution**: Mock GaslessService.getNonce method with Jest Spy
 
-**구현** (test-app.factory.ts에 추가):
+**Implementation** (add to test-app.factory.ts):
 ```typescript
 // Option 1: GaslessService Mock
 const gaslessService = app.get(GaslessService);
 jest.spyOn(gaslessService, 'getNonce').mockResolvedValue(0n);
 
-// Option 2: HttpService Mock (RPC 호출 차단)
+// Option 2: HttpService Mock (block RPC calls)
 const httpService = app.get(HttpService);
 jest.spyOn(httpService, 'post').mockImplementation((url) => {
   if (url.includes('nonces')) {
@@ -383,53 +383,53 @@ jest.spyOn(httpService, 'post').mockImplementation((url) => {
 });
 ```
 
-**적용 테스트 케이스**:
-- TC-E2E-G003: Nonce 조회 → 200 OK + nonce: 0
-- TC-E2E-G008: Nonce 불일치 → 400 Bad Request
+**Applicable Test Cases**:
+- TC-E2E-G003: Nonce query → 200 OK + nonce: 0
+- TC-E2E-G008: Nonce mismatch → 400 Bad Request
 
-### 예상 산출물 (Deliverables)
-- ✅ `test-wallets.ts` - Hardhat 계정 #0~#2
-- ✅ `test-config.ts` - 테스트 환경 설정
-- ✅ `mock-responses.ts` - OZ Relayer Mock 응답 팩토리 (crypto.randomUUID() 사용)
-- ✅ `eip712-signer.ts` - EIP-712 서명 유틸리티 (3개 함수)
-- ✅ `encoding.ts` - ERC-20 transfer 인코딩
-- ✅ `test-app.factory.ts` - NestJS 테스트 앱 팩토리 (ConfigService.getOrThrow 포함)
+### Deliverables
+- ✅ `test-wallets.ts` - Hardhat accounts #0~#2
+- ✅ `test-config.ts` - Test environment configuration
+- ✅ `mock-responses.ts` - OZ Relayer Mock response factory (using crypto.randomUUID())
+- ✅ `eip712-signer.ts` - EIP-712 signature utilities (3 functions)
+- ✅ `encoding.ts` - ERC-20 transfer encoding
+- ✅ `test-app.factory.ts` - NestJS test app factory (including ConfigService.getOrThrow)
 
-### 검증 기준 (Verification)
+### Verification
 ```bash
-# TypeScript 컴파일 확인
+# Verify TypeScript compilation
 npx tsc --noEmit
 
-# 유틸리티 함수 import 테스트 (간단한 스크립트)
+# Test utility function imports (simple script)
 node -e "const { TEST_WALLETS } = require('./test/fixtures/test-wallets'); console.log(TEST_WALLETS.relayer.address);"
 ```
 
 ---
 
-## Phase 3: E2E 테스트 스위트 작성 (2.5시간)
+## Phase 3: E2E Test Suite Implementation (2.5 hours)
 
-### 목표 (Goal)
-- 5개 E2E 테스트 파일 작성 (29개 테스트 케이스)
-- Mock OZ Relayer 응답 설정
-- Given-When-Then 형식 주석 포함
+### Goal
+- Write 5 E2E test files (29 test cases)
+- Configure Mock OZ Relayer responses
+- Include Given-When-Then format comments
 
-### 작업 내용 (Tasks)
+### Tasks
 
-#### 3.1 Direct Transaction E2E 테스트
+#### 3.1 Direct Transaction E2E Tests
 
-**파일**: `packages/relay-api/test/e2e/direct.e2e-spec.ts` (신규)
+**File**: `packages/relay-api/test/e2e/direct.e2e-spec.ts` (new)
 
-**테스트 케이스** (8개):
-1. TC-E2E-D001: 유효한 Direct TX → 202 Accepted
-2. TC-E2E-D002: 최소 필드만 포함 → 202 Accepted
-3. TC-E2E-D003: 잘못된 이더리움 주소 → 400 Bad Request
-4. TC-E2E-D004: 잘못된 hexadecimal data → 400 Bad Request
-5. TC-E2E-D005: 잘못된 speed enum → 400 Bad Request
-6. TC-E2E-D006: API key 누락 → 401 Unauthorized
-7. TC-E2E-D007: 잘못된 API key → 401 Unauthorized
-8. TC-E2E-D008: OZ Relayer 불가 → 503 Service Unavailable
+**Test Cases** (8):
+1. TC-E2E-D001: Valid Direct TX → 202 Accepted
+2. TC-E2E-D002: Minimum fields only → 202 Accepted
+3. TC-E2E-D003: Invalid Ethereum address → 400 Bad Request
+4. TC-E2E-D004: Invalid hexadecimal data → 400 Bad Request
+5. TC-E2E-D005: Invalid speed enum → 400 Bad Request
+6. TC-E2E-D006: Missing API key → 401 Unauthorized
+7. TC-E2E-D007: Invalid API key → 401 Unauthorized
+8. TC-E2E-D008: OZ Relayer unavailable → 503 Service Unavailable
 
-**구조**:
+**Structure**:
 ```typescript
 import * as request from 'supertest';
 import { INestApplication } from '@nestjs/common';
@@ -450,47 +450,47 @@ describe('Direct Transaction E2E Tests', () => {
 
   describe('POST /api/v1/relay/direct', () => {
     it('TC-E2E-D001: should accept valid direct transaction', async () => {
-      // Given: 유효한 Direct TX 요청
+      // Given: Valid Direct TX request
       const payload = {
         to: TEST_ADDRESSES.merchant,
         data: '0x',
         speed: 'fast',
       };
 
-      // When: POST /api/v1/relay/direct 호출
+      // When: Call POST /api/v1/relay/direct
       const response = await request(app.getHttpServer())
         .post('/api/v1/relay/direct')
         .set('x-api-key', 'test-api-key')
         .send(payload);
 
-      // Then: 202 Accepted + txId 포함
+      // Then: 202 Accepted + txId included
       expect(response.status).toBe(202);
       expect(response.body).toHaveProperty('txId');
-      expect(response.body.txId).toMatch(/^[0-9a-f-]{36}$/); // UUID 형식
+      expect(response.body.txId).toMatch(/^[0-9a-f-]{36}$/); // UUID format
     });
 
-    // ... 6개 테스트 케이스 추가
+    // ... 7 more test cases
   });
 });
 ```
 
-#### 3.2 Gasless Transaction E2E 테스트
+#### 3.2 Gasless Transaction E2E Tests
 
-**파일**: `packages/relay-api/test/e2e/gasless.e2e-spec.ts` (신규)
+**File**: `packages/relay-api/test/e2e/gasless.e2e-spec.ts` (new)
 
-**테스트 케이스** (10개):
-1. TC-E2E-G001: 유효한 서명 포함 Gasless TX → 202 Accepted
-2. TC-E2E-G002: Custom gas 및 value 포함 → 202 Accepted
-3. TC-E2E-G003: Nonce 조회 → 200 OK + 현재 nonce
-4. TC-E2E-G004: 잘못된 주소로 nonce 조회 → 400 Bad Request
-5. TC-E2E-G005: 잘못된 서명 형식 → 401 Unauthorized
-6. TC-E2E-G006: 잘못된 서명자 서명 → 401 Unauthorized
-7. TC-E2E-G007: 만료된 deadline → 400 Bad Request
-8. TC-E2E-G008: Nonce 불일치 → 400 Bad Request
-9. TC-E2E-G009: 잘못된 형식 서명 → 400 Bad Request
-10. TC-E2E-G010: 필수 필드 누락 → 400 Bad Request
+**Test Cases** (10):
+1. TC-E2E-G001: Valid Gasless TX with signature → 202 Accepted
+2. TC-E2E-G002: Custom gas and value included → 202 Accepted
+3. TC-E2E-G003: Nonce query → 200 OK + current nonce
+4. TC-E2E-G004: Nonce query with invalid address → 400 Bad Request
+5. TC-E2E-G005: Invalid signature format → 401 Unauthorized
+6. TC-E2E-G006: Wrong signer signature → 401 Unauthorized
+7. TC-E2E-G007: Expired deadline → 400 Bad Request
+8. TC-E2E-G008: Nonce mismatch → 400 Bad Request
+9. TC-E2E-G009: Invalid format signature → 400 Bad Request
+10. TC-E2E-G010: Required fields missing → 400 Bad Request
 
-**구조**:
+**Structure**:
 ```typescript
 import { signForwardRequest, createForwardRequest } from '../utils/eip712-signer';
 import { TEST_WALLETS, TEST_ADDRESSES } from '../fixtures/test-wallets';
@@ -498,7 +498,7 @@ import { TEST_WALLETS, TEST_ADDRESSES } from '../fixtures/test-wallets';
 describe('Gasless Transaction E2E Tests', () => {
   describe('POST /api/v1/relay/gasless', () => {
     it('TC-E2E-G001: should accept valid gasless transaction with signature', async () => {
-      // Given: 유효한 ForwardRequest + 서명
+      // Given: Valid ForwardRequest + signature
       const request = createForwardRequest(
         TEST_ADDRESSES.user,
         TEST_ADDRESSES.merchant,
@@ -506,59 +506,59 @@ describe('Gasless Transaction E2E Tests', () => {
       );
       const signature = await signForwardRequest(TEST_WALLETS.user, request);
 
-      // When: POST /api/v1/relay/gasless 호출
+      // When: Call POST /api/v1/relay/gasless
       const response = await request(app.getHttpServer())
         .post('/api/v1/relay/gasless')
         .set('x-api-key', 'test-api-key')
         .send({ request, signature });
 
-      // Then: 202 Accepted + txId 포함
+      // Then: 202 Accepted + txId included
       expect(response.status).toBe(202);
       expect(response.body).toHaveProperty('txId');
     });
 
-    // ... 9개 테스트 케이스 추가
+    // ... 9 more test cases
   });
 });
 ```
 
-#### 3.3 Status Polling E2E 테스트
+#### 3.3 Status Polling E2E Tests
 
-**파일**: `packages/relay-api/test/e2e/status.e2e-spec.ts` (신규)
+**File**: `packages/relay-api/test/e2e/status.e2e-spec.ts` (new)
 
-**테스트 케이스** (6개):
-1. TC-E2E-S001: Pending 상태 조회 → 200 + status: pending
-2. TC-E2E-S002: Confirmed 상태 조회 → 200 + hash + confirmedAt
-3. TC-E2E-S003: Failed 상태 조회 → 200 + status: failed
-4. TC-E2E-S004: 잘못된 UUID 형식 → 400 Bad Request
-5. TC-E2E-S005: OZ Relayer 불가 → 503 Service Unavailable
-6. TC-E2E-S006: 존재하지 않는 txId → 404 Not Found
+**Test Cases** (6):
+1. TC-E2E-S001: Query pending status → 200 + status: pending
+2. TC-E2E-S002: Query confirmed status → 200 + hash + confirmedAt
+3. TC-E2E-S003: Query failed status → 200 + status: failed
+4. TC-E2E-S004: Invalid UUID format → 400 Bad Request
+5. TC-E2E-S005: OZ Relayer unavailable → 503 Service Unavailable
+6. TC-E2E-S006: Non-existent txId → 404 Not Found
 
-#### 3.4 Health Check E2E 테스트
+#### 3.4 Health Check E2E Tests
 
-**파일**: `packages/relay-api/test/e2e/health.e2e-spec.ts` (신규)
+**File**: `packages/relay-api/test/e2e/health.e2e-spec.ts` (new)
 
-**테스트 케이스** (3개):
-1. TC-E2E-H001: 모든 서비스 정상 → 200 + status: ok
-2. TC-E2E-H002: Public 엔드포인트 (API key 불필요) → 200 OK
-3. TC-E2E-H003: OZ Relayer pool 비정상 → 503 Service Unavailable
+**Test Cases** (3):
+1. TC-E2E-H001: All services healthy → 200 + status: ok
+2. TC-E2E-H002: Public endpoint (no API key required) → 200 OK
+3. TC-E2E-H003: OZ Relayer pool unhealthy → 503 Service Unavailable
 
-#### 3.5 Payment Integration E2E 테스트
+#### 3.5 Payment Integration E2E Tests
 
-**파일**: `packages/relay-api/test/e2e/payment-integration.e2e-spec.ts` (신규)
+**File**: `packages/relay-api/test/e2e/payment-integration.e2e-spec.ts` (new)
 
-**테스트 케이스** (2개):
-1. TC-E2E-P001: Batch 토큰 전송 (Direct TX) → 여러 202 응답
-2. TC-E2E-P002: 전체 Gasless 결제 플로우 → 4단계 완료
+**Test Cases** (2):
+1. TC-E2E-P001: Batch token transfer (Direct TX) → Multiple 202 responses
+2. TC-E2E-P002: Full Gasless payment flow → 4 steps complete
 
-**구조**:
+**Structure**:
 ```typescript
 describe('Payment Integration E2E Tests', () => {
   it('TC-E2E-P002: should complete full gasless payment flow', async () => {
-    // Given: User 주소
+    // Given: User address
     const userAddress = TEST_ADDRESSES.user;
 
-    // Step 1: Nonce 조회
+    // Step 1: Query nonce
     const nonceResponse = await request(app.getHttpServer())
       .get(`/api/v1/relay/gasless/nonce/${userAddress}`)
       .set('x-api-key', 'test-api-key');
@@ -566,7 +566,7 @@ describe('Payment Integration E2E Tests', () => {
     expect(nonceResponse.status).toBe(200);
     const nonce = nonceResponse.body.nonce;
 
-    // Step 2: ForwardRequest 생성 및 서명
+    // Step 2: Create and sign ForwardRequest
     const forwardRequest = createForwardRequest(
       userAddress,
       TEST_ADDRESSES.merchant,
@@ -574,7 +574,7 @@ describe('Payment Integration E2E Tests', () => {
     );
     const signature = await signForwardRequest(TEST_WALLETS.user, forwardRequest);
 
-    // Step 3: Gasless TX 제출
+    // Step 3: Submit Gasless TX
     const submitResponse = await request(app.getHttpServer())
       .post('/api/v1/relay/gasless')
       .set('x-api-key', 'test-api-key')
@@ -583,7 +583,7 @@ describe('Payment Integration E2E Tests', () => {
     expect(submitResponse.status).toBe(202);
     const txId = submitResponse.body.txId;
 
-    // Step 4: Status 조회
+    // Step 4: Query status
     const statusResponse = await request(app.getHttpServer())
       .get(`/api/v1/relay/status/${txId}`)
       .set('x-api-key', 'test-api-key');
@@ -594,205 +594,206 @@ describe('Payment Integration E2E Tests', () => {
 });
 ```
 
-### 예상 산출물 (Deliverables)
-- ✅ `direct.e2e-spec.ts` - 8개 테스트 케이스
-- ✅ `gasless.e2e-spec.ts` - 10개 테스트 케이스
-- ✅ `status.e2e-spec.ts` - 6개 테스트 케이스
-- ✅ `health.e2e-spec.ts` - 3개 테스트 케이스
-- ✅ `payment-integration.e2e-spec.ts` - 2개 테스트 케이스
+### Deliverables
+- ✅ `direct.e2e-spec.ts` - 8 test cases
+- ✅ `gasless.e2e-spec.ts` - 10 test cases
+- ✅ `status.e2e-spec.ts` - 6 test cases
+- ✅ `health.e2e-spec.ts` - 3 test cases
+- ✅ `payment-integration.e2e-spec.ts` - 2 test cases
 
-### 검증 기준 (Verification)
+### Verification
 ```bash
-# E2E 테스트 실행
+# Run E2E tests
 pnpm --filter @msq-relayer/relay-api test:e2e
 
-# 예상 출력: 29 tests passed
+# Expected output: 29 tests passed
 ```
 
 ---
 
-## Phase 4: 실행 및 검증 (15분)
+## Phase 4: Execution and Verification (15 minutes)
 
-### 목표 (Goal)
-- 모든 유닛 테스트 통과 확인
-- 모든 E2E 테스트 통과 확인
-- 테스트 커버리지 확인
-- TaskMaster Task #11 완료 상태 변경
+### Goal
+- Verify all unit tests pass
+- Verify all E2E tests pass
+- Check test coverage
+- Update TaskMaster Task #11 status to done
 
-### 작업 내용 (Tasks)
+### Tasks
 
-#### 4.1 유닛 테스트 실행
+#### 4.1 Run Unit Tests
 
 ```bash
-# 유닛 테스트 실행 (회귀 확인)
+# Run unit tests (regression check)
 pnpm --filter @msq-relayer/relay-api test
 
-# 예상 출력: All tests passed
+# Expected output: All tests passed
 ```
 
-#### 4.2 E2E 테스트 실행
+#### 4.2 Run E2E Tests
 
 ```bash
-# E2E 테스트 실행
+# Run E2E tests
 pnpm --filter @msq-relayer/relay-api test:e2e
 
-# 예상 출력: 29 tests passed
+# Expected output: 29 tests passed
 ```
 
-#### 4.3 E2E 테스트 커버리지
+#### 4.3 E2E Test Coverage
 
 ```bash
-# E2E 테스트 커버리지 (선택사항)
+# E2E test coverage (optional)
 pnpm --filter @msq-relayer/relay-api test:e2e:cov
 
-# 참고: E2E 커버리지는 90% 목표와 별도 관리
+# Note: E2E coverage is managed separately from 90% goal
 ```
 
-#### 4.4 TaskMaster 업데이트
+#### 4.4 Update TaskMaster
 
 ```bash
-# Task #11 완료 상태로 변경
+# Mark Task #11 as done
 task-master set-status --id=11 --status=done
 ```
 
-### 예상 산출물 (Deliverables)
-- ✅ 모든 유닛 테스트 통과 (회귀 없음)
-- ✅ 29개 E2E 테스트 케이스 통과
-- ✅ TaskMaster Task #11 완료 상태
+### Deliverables
+- ✅ All unit tests pass (no regression)
+- ✅ 29 E2E test cases pass
+- ✅ TaskMaster Task #11 status: done
 
-### 검증 기준 (Verification)
-- ✅ `pnpm test` 성공 (유닛 테스트 회귀 없음)
-- ✅ `pnpm test:e2e` 성공 (29개 테스트 통과)
-- ✅ TaskMaster 상태: Task #11 → done
+### Verification
+- ✅ `pnpm test` succeeds (no unit test regression)
+- ✅ `pnpm test:e2e` succeeds (29 tests pass)
+- ✅ TaskMaster status: Task #11 → done
 
 ---
 
-## Git 워크플로우 전략
+## Git Workflow Strategy
 
-### Personal Mode 기반 브랜치 전략
+### Personal Mode Branch Strategy
 
 ```bash
-# 1. Feature Branch 생성
+# 1. Create Feature Branch
 git checkout -b feature/SPEC-E2E-001
 
-# 2. Phase별 Commit 전략
-# Phase 1 완료
+# 2. Commit Strategy per Phase
+# Phase 1 complete
 git add packages/relay-api/package.json packages/relay-api/test/jest-e2e.json
 git commit -m "feat(e2e): setup E2E test infrastructure with supertest"
 
-# Phase 2 완료
+# Phase 2 complete
 git add packages/relay-api/test/fixtures/ packages/relay-api/test/utils/
 git commit -m "feat(e2e): add test utilities and fixtures for E2E tests"
 
-# Phase 3 완료
+# Phase 3 complete
 git add packages/relay-api/test/e2e/
-git commit -m "feat(e2e): implement 27 E2E test cases across 5 endpoints"
+git commit -m "feat(e2e): implement 29 E2E test cases across 5 endpoints"
 
-# Phase 4 완료
+# Phase 4 complete
 git add .
 git commit -m "test(e2e): verify all E2E tests pass with coverage"
 
-# 3. Branch Merge (Personal mode: main에 직접 merge)
+# 3. Branch Merge (Personal mode: merge directly to main)
 git checkout main
 git merge feature/SPEC-E2E-001
 ```
 
-### Commit Message 규칙 (Conventional Commits)
+### Commit Message Conventions (Conventional Commits)
 
-- `feat(e2e):` - E2E 테스트 인프라 및 유틸리티 추가
-- `test(e2e):` - 테스트 케이스 구현
-- `docs(e2e):` - E2E 테스트 문서화
+- `feat(e2e):` - E2E test infrastructure and utilities added
+- `test(e2e):` - Test case implementation
+- `docs(e2e):` - E2E test documentation
 
 ---
 
-## 파일 변경 목록
+## File Changes List
 
-### 신규 파일 (11개)
+### New Files (12)
 
-| 경로 | 용도 | Phase |
-|------|------|-------|
-| `test/jest-e2e.json` | Jest E2E 설정 | Phase 1 |
-| `test/fixtures/test-wallets.ts` | Hardhat 테스트 계정 | Phase 2 |
-| `test/fixtures/test-config.ts` | 테스트 환경 설정 | Phase 2 |
-| `test/fixtures/mock-responses.ts` | OZ Relayer Mock 응답 | Phase 2 |
-| `test/utils/eip712-signer.ts` | EIP-712 서명 유틸 | Phase 2 |
-| `test/utils/encoding.ts` | ERC-20 인코딩 | Phase 2 |
-| `test/utils/test-app.factory.ts` | NestJS 앱 팩토리 | Phase 2 |
+| Path | Purpose | Phase |
+|------|---------|-------|
+| `test/jest-e2e.json` | Jest E2E configuration | Phase 1 |
+| `test/fixtures/test-wallets.ts` | Hardhat test accounts | Phase 2 |
+| `test/fixtures/test-config.ts` | Test environment configuration | Phase 2 |
+| `test/fixtures/mock-responses.ts` | OZ Relayer Mock responses | Phase 2 |
+| `test/utils/eip712-signer.ts` | EIP-712 signature utilities | Phase 2 |
+| `test/utils/encoding.ts` | ERC-20 encoding | Phase 2 |
+| `test/utils/test-app.factory.ts` | NestJS app factory | Phase 2 |
 | `test/e2e/direct.e2e-spec.ts` | Direct TX E2E | Phase 3 |
 | `test/e2e/gasless.e2e-spec.ts` | Gasless TX E2E | Phase 3 |
 | `test/e2e/status.e2e-spec.ts` | Status Polling E2E | Phase 3 |
 | `test/e2e/health.e2e-spec.ts` | Health Check E2E | Phase 3 |
+| `test/e2e/payment-integration.e2e-spec.ts` | Payment Integration E2E | Phase 3 |
 
-### 수정 파일 (1개)
+### Modified Files (1)
 
-| 경로 | 변경 사항 | Phase |
+| Path | Changes | Phase |
 |------|---------|-------|
 | `packages/relay-api/package.json` | supertest deps + test:e2e scripts | Phase 1 |
 
 ---
 
-## 주의사항
+## Important Warnings
 
-### E2E-WARN-001: 유닛 테스트 간섭 방지
-- E2E 테스트는 `test/e2e/` 디렉토리에만 위치
-- Jest 설정 파일 분리 (`jest-e2e.json` vs 기본 Jest)
-- 테스트 실행 명령어 분리 (`test:e2e` vs `test`)
+### E2E-WARN-001: Prevent Unit Test Interference
+- E2E tests located only in `test/e2e/` directory
+- Separate Jest configuration files (`jest-e2e.json` vs default Jest)
+- Separate test execution commands (`test:e2e` vs `test`)
 
-### E2E-WARN-002: Mock 응답 일관성 유지
-- OZ Relayer API 응답 형식 변경 시 `mock-responses.ts` 업데이트 필요
-- 실제 API와 Mock의 일관성 정기적 검증 필요
+### E2E-WARN-002: Maintain Mock Response Consistency
+- Update `mock-responses.ts` when OZ Relayer API response format changes
+- Regularly verify consistency between actual API and Mocks
 
-### E2E-WARN-003: 테스트 타임아웃 설정
-- 기본 타임아웃 30초 (jest-e2e.json)
-- 느린 테스트 케이스는 개별 타임아웃 설정 가능 (`jest.setTimeout()`)
+### E2E-WARN-003: Test Timeout Configuration
+- Default timeout 30 seconds (jest-e2e.json)
+- Individual timeout can be set for slow test cases (`jest.setTimeout()`)
 
-### E2E-WARN-004: 실제 통합 테스트 제외
-- Task #11은 Mock 기반 E2E 테스트만 다룸
-- Task #13 (Docker 기반 실제 통합 테스트)는 별도 SPEC 필요
-
----
-
-## 성공 기준
-
-### 기능 검증
-✅ Direct Transaction API 8개 테스트 통과
-✅ Gasless Transaction API 10개 테스트 통과
-✅ Status Polling API 6개 테스트 통과
-✅ Health Check API 3개 테스트 통과
-✅ Payment Integration 2개 시나리오 통과
-
-### 품질 검증
-✅ 기존 유닛 테스트 회귀 없음
-✅ E2E 테스트 실행 시간 30초 이내
-✅ Mock 응답 사용으로 외부 의존성 제거
-✅ EIP-712 서명 유틸리티 검증 통과
-
-### 문서화
-✅ 각 테스트 파일에 Given-When-Then 주석 포함
-✅ TESTING.md 업데이트 (E2E 테스트 실행 방법)
+### E2E-WARN-004: Exclude Real Integration Tests
+- Task #11 covers only Mock-based E2E tests
+- Task #13 (Docker-based real integration tests) requires separate SPEC
 
 ---
 
-## 참조 파일 (읽기 전용)
+## Success Criteria
 
-| 경로 | 용도 |
-|------|------|
-| `packages/relay-api/scripts/test-gasless.ts` | EIP-712 서명 패턴 참조 |
-| `packages/relay-api/src/relay/gasless/gasless.service.ts` | Gasless TX 워크플로우 참조 |
-| `packages/relay-api/src/relay/gasless/signature-verifier.service.ts` | 서명 검증 로직 |
-| `packages/relay-api/src/relay/direct/direct.controller.ts` | Direct TX 엔드포인트 참조 |
-| `packages/relay-api/src/relay/status/status.controller.ts` | Status 엔드포인트 참조 |
+### Functional Verification
+✅ 8 Direct Transaction API tests pass
+✅ 10 Gasless Transaction API tests pass
+✅ 6 Status Polling API tests pass
+✅ 3 Health Check API tests pass
+✅ 2 Payment Integration scenarios pass
+
+### Quality Verification
+✅ No regression in existing unit tests
+✅ E2E test execution time within 30 seconds
+✅ External dependencies removed using Mock responses
+✅ EIP-712 signature utilities verification pass
+
+### Documentation
+✅ Given-When-Then comments included in each test file
+✅ TESTING.md updated (E2E test execution instructions)
 
 ---
 
-## 다음 단계 (Phase 2+)
+## Reference Files (Read-Only)
 
-### SPEC-E2E-002: Docker 기반 실제 통합 테스트 (Task #13)
-- Docker Compose로 Hardhat 로컬 노드 실행
-- 실제 OZ Relayer 인스턴스 사용
-- 실제 블록체인 트랜잭션 검증
+| Path | Purpose |
+|------|---------|
+| `packages/relay-api/scripts/test-gasless.ts` | EIP-712 signature pattern reference |
+| `packages/relay-api/src/relay/gasless/gasless.service.ts` | Gasless TX workflow reference |
+| `packages/relay-api/src/relay/gasless/signature-verifier.service.ts` | Signature verification logic |
+| `packages/relay-api/src/relay/direct/direct.controller.ts` | Direct TX endpoint reference |
+| `packages/relay-api/src/relay/status/status.controller.ts` | Status endpoint reference |
 
-### SPEC-LOAD-001: Artillery 부하 테스트 (선택사항)
-- 동시 요청 처리 검증
-- 처리량(throughput) 측정
-- 병목 지점 식별
+---
+
+## Next Steps (Phase 2+)
+
+### SPEC-E2E-002: Docker-Based Real Integration Tests (Task #13)
+- Run Hardhat local node with Docker Compose
+- Use actual OZ Relayer instance
+- Verify actual blockchain transactions
+
+### SPEC-LOAD-001: Artillery Load Testing (Optional)
+- Verify concurrent request handling
+- Measure throughput
+- Identify bottlenecks
