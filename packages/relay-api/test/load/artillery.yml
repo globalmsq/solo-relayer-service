@@ -1,0 +1,104 @@
+# Artillery Load Test Configuration
+# Network Agnostic - works with any configured API endpoint
+#
+# Run with:
+#   pnpm test:load                                  # Default (localhost:3000)
+#   API_URL=https://api.example.com pnpm test:load  # Custom endpoint
+#
+# Prerequisites:
+#   pnpm add -D artillery
+
+config:
+  target: "{{ $processEnvironment.API_URL || 'http://localhost:3000' }}"
+  phases:
+    # Warm-up phase
+    - duration: 10
+      arrivalRate: 2
+      name: "Warm up"
+    # Ramp-up phase
+    - duration: 30
+      arrivalRate: 5
+      rampTo: 15
+      name: "Ramp up"
+    # Sustained load
+    - duration: 60
+      arrivalRate: 15
+      name: "Sustained load"
+    # Spike test
+    - duration: 10
+      arrivalRate: 30
+      name: "Spike test"
+  defaults:
+    headers:
+      x-api-key: "{{ $processEnvironment.API_KEY || 'test-api-key' }}"
+      Content-Type: "application/json"
+  # Performance thresholds
+  ensure:
+    p95: 500        # 95th percentile response time < 500ms
+    p99: 1000       # 99th percentile response time < 1000ms
+    maxErrorRate: 5 # Max error rate 5%
+
+scenarios:
+  # Scenario 1: Health Check (lightweight, high frequency)
+  - name: "Health Check"
+    weight: 10
+    flow:
+      - get:
+          url: "/api/v1/health"
+          expect:
+            - statusCode: 200
+            - contentType: application/json
+
+  # Scenario 2: Direct TX Submission
+  - name: "Direct TX Submission"
+    weight: 40
+    flow:
+      - post:
+          url: "/api/v1/relay/direct"
+          json:
+            to: "0x70997970C51812dc3A010C7d01b50e0d17dc79C8"
+            data: "0x00"
+            speed: "fast"
+          expect:
+            - statusCode: 202
+          capture:
+            - json: "$.transactionId"
+              as: "txId"
+      # Optional: Check status after submission
+      - think: 2
+      - get:
+          url: "/api/v1/relay/status/{{ txId }}"
+          ifTrue: "txId"
+          expect:
+            - statusCode:
+                - 200
+                - 404  # May not be found immediately
+
+  # Scenario 3: Gasless Nonce Query
+  - name: "Gasless Nonce Query"
+    weight: 30
+    flow:
+      - get:
+          url: "/api/v1/relay/gasless/nonce/0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266"
+          expect:
+            - statusCode:
+                - 200
+                - 503  # Service unavailable if RPC down
+            - contentType: application/json
+
+  # Scenario 4: Status Check (polling simulation)
+  - name: "Status Polling"
+    weight: 20
+    flow:
+      # Simulate checking status of a known transaction
+      - get:
+          url: "/api/v1/relay/status/test-tx-id-{{ $randomNumber(1, 1000) }}"
+          expect:
+            - statusCode:
+                - 200
+                - 404  # Not found is acceptable for random IDs
+            - contentType: application/json
+
+# Plugins for enhanced metrics (optional)
+# plugins:
+#   metrics-by-endpoint: {}
