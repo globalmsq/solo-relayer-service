@@ -4,15 +4,17 @@
 # ============================================================================
 # BASE STAGE: Common dependencies and setup
 # ============================================================================
-FROM node:22-alpine AS base
+# Note: Using node:22-slim (Debian/glibc) instead of alpine (musl) because
+# @nomicfoundation/solidity-analyzer requires glibc pre-built binaries
+FROM node:22-slim AS base
 
 WORKDIR /app
 
 # Install common dependencies and enable pnpm via corepack
-RUN apk add --no-cache \
+RUN apt-get update && apt-get install -y --no-install-recommends \
     curl \
-    bash \
     ca-certificates \
+    && rm -rf /var/lib/apt/lists/* \
     && corepack enable \
     && corepack prepare pnpm@9.15.1 --activate
 
