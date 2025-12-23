@@ -1,6 +1,6 @@
 import request from 'supertest';
-import { INestApplication } from '@nestjs/common';
-import { createTestApp } from '../utils/test-app.factory';
+import { INestApplication, ServiceUnavailableException } from '@nestjs/common';
+import { createTestApp, getOzRelayerServiceMock, resetMocks } from '../utils/test-app.factory';
 import { TEST_ADDRESSES } from '../fixtures/test-wallets';
 
 describe('Direct Transaction E2E Tests', () => {
@@ -14,12 +14,16 @@ describe('Direct Transaction E2E Tests', () => {
     await app.close();
   });
 
+  beforeEach(() => {
+    resetMocks(app);
+  });
+
   describe('POST /api/v1/relay/direct', () => {
     it('TC-E2E-D001: should accept valid direct transaction', async () => {
       // Given: Valid Direct TX request
       const payload = {
         to: TEST_ADDRESSES.merchant,
-        data: '0x',
+        data: '0x00',
         speed: 'fast',
       };
 
@@ -29,19 +33,17 @@ describe('Direct Transaction E2E Tests', () => {
         .set('x-api-key', 'test-api-key')
         .send(payload);
 
-      // Then: Response should contain txId and status should be 202 (or handling error gracefully)
-      expect(response.status).toBeGreaterThanOrEqual(200);
-      if (response.status === 202) {
-        expect(response.body).toHaveProperty('txId');
-        expect(response.body.txId).toMatch(/^[0-9a-f\-]{36}$/); // UUID format
-      }
+      // Then: Should return 202 Accepted with transactionId
+      expect(response.status).toBe(202);
+      expect(response.body).toHaveProperty('transactionId');
+      expect(response.body.transactionId).toMatch(/^[0-9a-f-]{36}$/); // UUID format
     });
 
     it('TC-E2E-D002: should accept minimal fields only', async () => {
       // Given: Minimal Direct TX request (only required fields)
       const payload = {
         to: TEST_ADDRESSES.merchant,
-        data: '0x',
+        data: '0x00',
       };
 
       // When: Call POST /api/v1/relay/direct
@@ -50,18 +52,16 @@ describe('Direct Transaction E2E Tests', () => {
         .set('x-api-key', 'test-api-key')
         .send(payload);
 
-      // Then: Should be accepted or return valid error response
-      expect(response.status).toBeGreaterThanOrEqual(200);
-      if (response.status === 202) {
-        expect(response.body).toHaveProperty('txId');
-      }
+      // Then: Should return 202 Accepted with transactionId
+      expect(response.status).toBe(202);
+      expect(response.body).toHaveProperty('transactionId');
     });
 
     it('TC-E2E-D003: should return 400 for invalid Ethereum address', async () => {
       // Given: Invalid Ethereum address
       const payload = {
         to: 'invalid-address',
-        data: '0x',
+        data: '0x00',
         speed: 'fast',
       };
 
@@ -99,7 +99,7 @@ describe('Direct Transaction E2E Tests', () => {
       // Given: Invalid speed enum value
       const payload = {
         to: TEST_ADDRESSES.merchant,
-        data: '0x',
+        data: '0x00',
         speed: 'invalid-speed',
       };
 
@@ -118,7 +118,7 @@ describe('Direct Transaction E2E Tests', () => {
       // Given: Request without API key
       const payload = {
         to: TEST_ADDRESSES.merchant,
-        data: '0x',
+        data: '0x00',
         speed: 'fast',
       };
 
@@ -136,7 +136,7 @@ describe('Direct Transaction E2E Tests', () => {
       // Given: Request with invalid API key
       const payload = {
         to: TEST_ADDRESSES.merchant,
-        data: '0x',
+        data: '0x00',
         speed: 'fast',
       };
 
@@ -151,11 +151,16 @@ describe('Direct Transaction E2E Tests', () => {
       expect(response.body).toHaveProperty('message');
     });
 
-    it('TC-E2E-D008: should handle service unavailability gracefully', async () => {
-      // Given: Valid Direct TX request
+    it('TC-E2E-D008: should return 503 when OZ Relayer unavailable', async () => {
+      // Given: OZ Relayer service is unavailable
+      const ozRelayerMock = getOzRelayerServiceMock(app);
+      ozRelayerMock.sendTransaction.mockRejectedValueOnce(
+        new ServiceUnavailableException('OZ Relayer service unavailable'),
+      );
+
       const payload = {
         to: TEST_ADDRESSES.merchant,
-        data: '0x',
+        data: '0x00',
         speed: 'fast',
       };
 
@@ -165,8 +170,9 @@ describe('Direct Transaction E2E Tests', () => {
         .set('x-api-key', 'test-api-key')
         .send(payload);
 
-      // Then: Response should be either success or error, properly handled
-      expect([200, 202, 400, 401, 503]).toContain(response.status);
+      // Then: Should return 503 Service Unavailable
+      expect(response.status).toBe(503);
+      expect(response.body).toHaveProperty('message');
     });
   });
 });

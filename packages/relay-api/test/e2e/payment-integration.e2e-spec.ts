@@ -1,6 +1,7 @@
 import request from 'supertest';
 import { INestApplication } from '@nestjs/common';
-import { createTestApp } from '../utils/test-app.factory';
+import { of } from 'rxjs';
+import { createTestApp, getHttpServiceMock, resetMocks } from '../utils/test-app.factory';
 import { TEST_WALLETS, TEST_ADDRESSES } from '../fixtures/test-wallets';
 import { signForwardRequest, createForwardRequest } from '../utils/eip712-signer';
 
@@ -15,10 +16,14 @@ describe('Payment Integration E2E Tests', () => {
     await app.close();
   });
 
+  beforeEach(() => {
+    resetMocks(app);
+  });
+
   describe('Complete Payment Flows', () => {
     it('TC-E2E-P001: batch token transfer with multiple Direct TX requests', async () => {
       // Given: Multiple Direct TX requests for batch token transfer
-      const txIds: string[] = [];
+      const transactionIds: string[] = [];
       const recipients = [
         TEST_ADDRESSES.merchant,
         '0x1111111111111111111111111111111111111111',
@@ -29,7 +34,7 @@ describe('Payment Integration E2E Tests', () => {
       for (const recipient of recipients) {
         const payload = {
           to: recipient,
-          data: '0x',
+          data: '0x00',
           speed: 'fast',
         };
 
@@ -38,16 +43,17 @@ describe('Payment Integration E2E Tests', () => {
           .set('x-api-key', 'test-api-key')
           .send(payload);
 
-        // Then: Each request should be handled
-        expect([200, 202, 400, 401, 503]).toContain(response.status);
-        if (response.status === 202) {
-          expect(response.body).toHaveProperty('txId');
-          txIds.push(response.body.txId);
-        }
+        // Then: Each request should return 202 Accepted
+        expect(response.status).toBe(202);
+        expect(response.body).toHaveProperty('transactionId');
+        transactionIds.push(response.body.transactionId);
       }
 
-      // Verify: At least some requests completed successfully
-      expect(txIds.length).toBeGreaterThanOrEqual(0);
+      // Verify: All 3 requests completed successfully
+      expect(transactionIds.length).toBe(3);
+      // Verify all transactionIds are unique UUIDs
+      const uniqueTransactionIds = new Set(transactionIds);
+      expect(uniqueTransactionIds.size).toBe(3);
     });
 
     it('TC-E2E-P002: complete gasless payment flow with all 4 steps', async () => {
@@ -60,18 +66,22 @@ describe('Payment Integration E2E Tests', () => {
         .get(`/api/v1/relay/gasless/nonce/${userAddress}`)
         .set('x-api-key', 'test-api-key');
 
-      expect([200, 400, 401, 500, 503]).toContain(nonceResponse.status);
+      // Then: Nonce query should return 200 with nonce
+      expect(nonceResponse.status).toBe(200);
+      expect(nonceResponse.body).toHaveProperty('nonce');
+      expect(nonceResponse.body.nonce).toBe('0');
 
       // Step 2: Create and sign ForwardRequest
       const forwardRequest = createForwardRequest(
         userAddress,
         recipientAddress,
-        { nonce: 0, data: '0x' }
+        { nonce: 0 }
       );
       const signature = await signForwardRequest(TEST_WALLETS.user, forwardRequest);
 
+      // Then: Signature should be valid EIP-712 signature (132 chars: 0x + 130 hex)
       expect(signature).toBeTruthy();
-      expect(signature.length).toBeGreaterThan(0);
+      expect(signature).toMatch(/^0x[a-fA-F0-9]{130}$/);
 
       // Step 3: Submit Gasless TX
       const submitResponse = await request(app.getHttpServer())
@@ -79,20 +89,35 @@ describe('Payment Integration E2E Tests', () => {
         .set('x-api-key', 'test-api-key')
         .send({ request: forwardRequest, signature });
 
-      expect([200, 202, 400, 401, 503]).toContain(submitResponse.status);
+      // Then: Gasless TX should return 202 Accepted with transactionId
+      expect(submitResponse.status).toBe(202);
+      expect(submitResponse.body).toHaveProperty('transactionId');
+      const transactionId = submitResponse.body.transactionId;
 
-      // Step 4: Query status (if we have a txId)
-      if (submitResponse.status === 202 && submitResponse.body.txId) {
-        const txId = submitResponse.body.txId;
-        const statusResponse = await request(app.getHttpServer())
-          .get(`/api/v1/relay/status/${txId}`)
-          .set('x-api-key', 'test-api-key');
+      // Step 4: Query status
+      // Setup HttpService.get() mock for confirmed status
+      const httpMock = getHttpServiceMock(app);
+      httpMock.get.mockReturnValueOnce(
+        of({
+          data: {
+            id: transactionId,
+            hash: '0x' + '1'.repeat(64),
+            status: 'confirmed',
+            created_at: new Date().toISOString(),
+            confirmed_at: new Date().toISOString(),
+          },
+          status: 200,
+        }),
+      );
 
-        expect([200, 400, 404, 503]).toContain(statusResponse.status);
-      }
+      const statusResponse = await request(app.getHttpServer())
+        .get(`/api/v1/relay/status/${transactionId}`)
+        .set('x-api-key', 'test-api-key');
 
-      // Verify: Complete flow handled appropriately
-      expect([forwardRequest, signature]).toBeTruthy();
+      // Then: Status should return 200 with confirmed status
+      expect(statusResponse.status).toBe(200);
+      expect(statusResponse.body).toHaveProperty('status', 'confirmed');
+      expect(statusResponse.body).toHaveProperty('hash');
     });
   });
 });

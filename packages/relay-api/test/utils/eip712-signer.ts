@@ -2,7 +2,7 @@ import { Wallet } from 'ethers';
 import { TEST_CONFIG } from '../fixtures/test-config';
 
 const EIP712_DOMAIN = {
-  name: 'ERC2771Forwarder',
+  name: TEST_CONFIG.forwarder.name,
   version: '1',
   chainId: TEST_CONFIG.forwarder.chain_id,
   verifyingContract: TEST_CONFIG.forwarder.address,
@@ -25,7 +25,7 @@ export interface ForwardRequest {
   to: string;
   value: string;
   gas: string;
-  nonce: number;
+  nonce: string;
   deadline: number;
   data: string;
 }
@@ -40,17 +40,18 @@ export async function signForwardRequest(
 export function createForwardRequest(
   from: string,
   to: string,
-  options: Partial<ForwardRequest> = {},
+  options: Partial<Omit<ForwardRequest, 'nonce'>> & { nonce?: number } = {},
 ): ForwardRequest {
+  const { nonce = 0, ...restOptions } = options;
   return {
     from,
     to,
     value: '0',
     gas: '100000',
-    nonce: 0,
+    nonce: String(nonce),
     deadline: Math.floor(Date.now() / 1000) + 3600, // 1 hour later
-    data: '0x',
-    ...options,
+    data: '0x00',
+    ...restOptions,
   };
 }
 
@@ -58,7 +59,8 @@ export function createExpiredForwardRequest(
   from: string,
   to: string,
 ): ForwardRequest {
-  return createForwardRequest(from, to, {
+  return {
+    ...createForwardRequest(from, to),
     deadline: Math.floor(Date.now() / 1000) - 3600, // 1 hour ago (expired)
-  });
+  };
 }
