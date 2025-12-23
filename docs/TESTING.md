@@ -352,16 +352,18 @@ pnpm test:e2e --verbose
 
 ## Mock OZ Relayer Strategy
 
-E2E tests **do not call actual OZ Relayer API**. Instead, they use Jest Spy to mock HTTP responses:
+E2E tests **do not call actual OZ Relayer API or RPC endpoints**. Instead, they use service-level mocking:
 
 ### Architecture
 
 ```
 E2E Test
   ↓
-NestJS App (with mocked HttpClient)
+NestJS App (with mocked services)
   ↓
-Jest Spy intercepts HTTP calls
+OzRelayerService Mock (no HTTP calls)
+GaslessService Spy (no RPC calls)
+HttpService Mock (for status polling)
   ↓
 Returns Mock Response (configured in mock-responses.ts)
   ↓
@@ -370,30 +372,54 @@ E2E Test verifies response
 
 ### Mocking Strategy
 
+**1. OzRelayerService Mock** (Direct/Gasless TX submission):
+
 ```typescript
-// In E2E test setup
-const ozRelayerMock = jest.spyOn(httpClient, 'post')
-  .mockResolvedValue(MOCK_OZ_RESPONSES.directTransaction);
+// In test-app.factory.ts - Service-level mock
+.overrideProvider(OzRelayerService)
+.useValue({
+  sendTransaction: jest.fn().mockResolvedValue(createMockOzRelayerResponse()),
+  getTransactionStatus: jest.fn().mockResolvedValue(createMockConfirmedResponse()),
+  getRelayerId: jest.fn().mockResolvedValue('test-relayer-id'),
+})
+```
 
-// During test
-const response = await request(app.getHttpServer())
-  .post('/api/v1/relay/direct')
-  .set('x-api-key', 'test-api-key')
-  .send({ to, data, speed });
+**2. GaslessService Spy** (RPC nonce queries):
 
-// Verify mock was called
-expect(ozRelayerMock).toHaveBeenCalledWith(
-  expect.stringContaining('/api/v1/transactions'),
-  expect.any(Object)
+```typescript
+// Spy on getNonceFromForwarder to avoid real RPC calls
+const gaslessService = moduleFixture.get(GaslessService);
+jest.spyOn(gaslessService, 'getNonceFromForwarder').mockResolvedValue('0');
+```
+
+**3. HttpService Mock** (Status polling):
+
+```typescript
+// Mock HttpService.get for status endpoint
+const httpMock = getHttpServiceMock(app);
+httpMock.get.mockReturnValueOnce(of({
+  data: { id: txId, status: 'confirmed', hash: '0x...' },
+  status: 200,
+}));
+```
+
+**4. Test-specific error scenarios**:
+
+```typescript
+// Simulate OZ Relayer unavailability
+const ozRelayerMock = getOzRelayerServiceMock(app);
+ozRelayerMock.sendTransaction.mockRejectedValueOnce(
+  new ServiceUnavailableException('OZ Relayer service unavailable')
 );
 ```
 
 ### Benefits
 
-- **Fast**: No network latency
+- **Fast**: No network latency (no HTTP/RPC calls)
 - **Reliable**: No dependency on external services
-- **Isolated**: Tests only verify API layer
-- **Repeatable**: Same mock response every time
+- **Isolated**: Tests only verify API layer logic
+- **Repeatable**: Deterministic mock responses every time
+- **Controllable**: Easy to simulate error scenarios (503, timeouts)
 
 ---
 
