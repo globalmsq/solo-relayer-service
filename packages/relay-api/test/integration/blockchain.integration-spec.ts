@@ -34,6 +34,7 @@ describe('Blockchain Integration Tests', () => {
   let app: INestApplication;
   let networkConfig: ReturnType<typeof getNetworkConfig>;
   let networkAvailable: boolean;
+  const API_KEY = process.env.RELAY_API_KEY || 'test-api-key';
 
   beforeAll(async () => {
     // Check network availability first
@@ -159,7 +160,7 @@ describe('Blockchain Integration Tests', () => {
 
       const response = await request(app.getHttpServer())
         .post('/api/v1/relay/direct')
-        .set('x-api-key', 'test-api-key')
+        .set('x-api-key', API_KEY)
         .send(payload);
 
       // API should accept the request (202) or reject if OZ Relayer not configured
@@ -210,7 +211,7 @@ describe('Blockchain Integration Tests', () => {
 
       const response = await request(app.getHttpServer())
         .get(`/api/v1/relay/gasless/nonce/${TEST_ADDRESSES.user}`)
-        .set('x-api-key', 'test-api-key');
+        .set('x-api-key', API_KEY);
 
       // Should return nonce or service unavailable if RPC fails
       expect([200, 503]).toContain(response.status);

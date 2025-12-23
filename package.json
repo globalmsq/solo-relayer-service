@@ -11,7 +11,8 @@
     "lint": "pnpm -r run lint",
     "docker:up": "cd docker && docker compose up -d",
     "docker:down": "cd docker && docker compose down",
-    "docker:build": "cd docker && docker compose up --build"
+    "docker:build": "cd docker && docker compose up --build",
+    "create-keystore": "node scripts/create-keystore.js"
   },
   "engines": {
     "node": ">=18.0.0"
@@ -20,5 +21,8 @@
     "type": "git",
     "url": "https://github.com/your-org/msq-relayer-service.git"
   },
-  "license": "MIT"
+  "license": "MIT",
+  "devDependencies": {
+    "ethers": "^6.13.0"
+  }
 }
