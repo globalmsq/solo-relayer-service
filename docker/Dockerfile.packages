@@ -90,8 +90,10 @@ WORKDIR /app/packages/contracts
 # Install package-specific dependencies and compile contracts
 RUN pnpm install && pnpm run compile
 
-# Environment variables for deployment
-ENV LOCALHOST_RPC_URL=http://hardhat-node:8545
+# Environment variables for deployment (Network Agnostic)
+# These are defaults - override via docker-compose environment
+ENV RPC_URL=http://hardhat-node:8545
+ENV CHAIN_ID=31337
 
 # Deploy contracts to localhost
 CMD ["pnpm", "run", "deploy:local"]

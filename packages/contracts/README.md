@@ -33,11 +33,11 @@ pnpm deploy:local
 ### Deployment
 
 ```bash
-# Deploy to Polygon Amoy testnet
-pnpm deploy:amoy
+# Deploy Forwarder (set RPC_URL and CHAIN_ID first)
+RPC_URL=https://rpc-amoy.polygon.technology CHAIN_ID=80002 pnpm deploy:forwarder
 
 # Verify contracts on Polygonscan
-pnpm verify --network amoy <CONTRACT_ADDRESS> "<CONSTRUCTOR_ARGS>"
+RPC_URL=https://rpc-amoy.polygon.technology CHAIN_ID=80002 pnpm verify <CONTRACT_ADDRESS> "<CONSTRUCTOR_ARGS>"
 ```
 
 ## Contract Architecture
@@ -118,19 +118,23 @@ pnpm test:coverage
 | `pnpm test` | Run tests (27 passing tests covering all functionality) |
 | `pnpm test:coverage` | Run tests with coverage report |
 | `pnpm node` | Start local Hardhat node |
-| `pnpm deploy:local` | Deploy to localhost (SampleToken + SampleNFT) |
-| `pnpm deploy:amoy` | Deploy forwarder to Polygon Amoy |
-| `pnpm verify` | Verify contract on Polygonscan |
+| `pnpm deploy:local` | Deploy sample contracts (SampleToken + SampleNFT) |
+| `pnpm deploy:forwarder` | Deploy ERC2771Forwarder |
+| `pnpm verify` | Verify contract on block explorer |
 | `pnpm clean` | Clean artifacts |
 | `pnpm typechain` | Generate TypeChain types |
 
 ## Networks
 
-| Network | Chain ID | RPC URL |
+Network configuration is now **network agnostic**. Set `RPC_URL` and `CHAIN_ID` for any network:
+
+| Network | CHAIN_ID | RPC_URL |
 |---------|----------|---------|
-| Hardhat | 31337 | In-memory |
-| Localhost | 31337 | http://localhost:8545 |
+| Hardhat (in-memory) | 31337 | N/A (default test network) |
+| Hardhat node (local) | 31337 | http://localhost:8545 |
+| Hardhat node (Docker) | 31337 | http://hardhat-node:8545 |
 | Polygon Amoy | 80002 | https://rpc-amoy.polygon.technology |
+| Polygon Mainnet | 137 | https://polygon-rpc.com |
 
 ## Project Structure
 
@@ -166,16 +170,24 @@ typechain-types/        # TypeScript types (generated)
 Networks configured in `hardhat.config.ts`:
 
 - **hardhat**: In-memory test network (ChainID: 31337)
-- **localhost**: Local Hardhat node (ChainID: 31337)
-- **amoy**: Polygon Amoy testnet (ChainID: 80002)
+- **external**: Network agnostic external connection (uses RPC_URL + CHAIN_ID)
 
 ### Environment Variables
 
-Create `.env` file with:
+Create `.env` file with (network agnostic configuration):
 
-```
+```bash
+# Private key for deployments
 PRIVATE_KEY=<your_private_key>
-AMOY_RPC_URL=<amoy_rpc_url>
+
+# Network Agnostic RPC Configuration
+# Set these for any network:
+# - Hardhat node: RPC_URL=http://localhost:8545 CHAIN_ID=31337
+# - Amoy testnet: RPC_URL=https://rpc-amoy.polygon.technology CHAIN_ID=80002
+RPC_URL=http://localhost:8545
+CHAIN_ID=31337
+
+# Contract verification
 POLYGONSCAN_API_KEY=<your_api_key>
 ```
 

@@ -1,13 +1,15 @@
 import { ethers, network } from "hardhat";
 
 async function main() {
-  // CRITICAL: SampleToken and SampleNFT should ONLY be deployed to localhost
-  const allowedNetworks = ["hardhat", "localhost"];
+  // CRITICAL: SampleToken and SampleNFT should ONLY be deployed to development networks
+  // Network Agnostic: Check chainId instead of network name
+  const DEVELOPMENT_CHAIN_IDS = [31337];
+  const currentChainId = network.config.chainId;
 
-  if (!allowedNetworks.includes(network.name)) {
+  if (!DEVELOPMENT_CHAIN_IDS.includes(currentChainId as number)) {
     throw new Error(
-      `SampleToken and SampleNFT deployment is restricted to localhost/hardhat networks. ` +
-      `Current network: ${network.name}. Please use 'hardhat run scripts/deploy-samples.ts --network localhost'`
+      `SampleToken and SampleNFT deployment is restricted to development networks (chainId: 31337). ` +
+      `Current chainId: ${currentChainId}. These sample contracts are for testing only.`
     );
   }
 

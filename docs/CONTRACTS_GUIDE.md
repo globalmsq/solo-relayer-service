@@ -153,18 +153,19 @@ npx hardhat run scripts/deploy-forwarder.ts --network localhost
 ### Polygon Amoy Deployment
 
 ```bash
-# 1. Set environment variables
-export AMOY_RPC_URL="https://rpc-amoy.polygon.technology"
-export DEPLOYER_PRIVATE_KEY="0x..."
+# 1. Set environment variables (Network Agnostic)
+export RPC_URL="https://rpc-amoy.polygon.technology"
+export CHAIN_ID="80002"
+export PRIVATE_KEY="0x..."
 
 # 2. Deploy contract
-npx hardhat run scripts/deploy-forwarder.ts --network amoy
+npx hardhat run scripts/deploy-forwarder.ts --network external
 
 # 3. Verify on block explorer (optional)
-npx hardhat verify --network amoy <CONTRACT_ADDRESS>
+npx hardhat verify --network external <CONTRACT_ADDRESS>
 ```
 
-**Artifact**: `deployments/amoy/forwarder.json`
+**Artifact**: `deployments/external/forwarder.json`
 
 ### Production Deployment
 
