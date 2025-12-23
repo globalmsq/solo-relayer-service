@@ -1,0 +1,15 @@
+{
+  "network": "polygon-amoy",
+  "chainId": 80002,
+  "contracts": {
+    "ERC2771Forwarder": {
+      "address": "0xF034a404241707F347A952Cd4095f9035AF877Bf",
+      "constructorArgs": ["MSQForwarder"],
+      "deployedAt": "2024-12-23",
+      "deployer": "0x9B00bF7321e8Dc5f253Ab73c95D2b5b573a5e3bb",
+      "verified": true,
+      "verifiedUrl": "https://amoy.polygonscan.com/address/0xF034a404241707F347A952Cd4095f9035AF877Bf#code"
+    }
+  },
+  "notes": "ERC2771Forwarder is a stateless utility contract. Once deployed, it can be used permanently by any contract that trusts it."
+}

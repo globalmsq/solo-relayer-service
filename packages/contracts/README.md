@@ -30,15 +30,48 @@ pnpm node
 pnpm deploy:local
 ```
 
-### Deployment
+### Deployment to Testnet (Polygon Amoy)
+
+**Step 1: Configure `.env`**
 
 ```bash
-# Deploy Forwarder (set RPC_URL and CHAIN_ID first)
-RPC_URL=https://rpc-amoy.polygon.technology CHAIN_ID=80002 pnpm deploy:forwarder
+# Network configuration
+RPC_URL=https://rpc-amoy.polygon.technology
+CHAIN_ID=80002
+PRIVATE_KEY=your_private_key_here
 
-# Verify contracts on Polygonscan
-RPC_URL=https://rpc-amoy.polygon.technology CHAIN_ID=80002 pnpm verify <CONTRACT_ADDRESS> "<CONSTRUCTOR_ARGS>"
+# For contract verification (get from https://etherscan.io/myapikey)
+ETHERSCAN_API_KEY=your_etherscan_api_key
 ```
+
+**Step 2: Deploy ERC2771Forwarder**
+
+```bash
+pnpm deploy:forwarder
+```
+
+Output:
+```
+Deploying ERC2771Forwarder...
+ERC2771Forwarder deployed to: 0x...
+```
+
+**Step 3: Verify Contract**
+
+```bash
+pnpm verify --contract contracts/ERC2771Forwarder.sol:ERC2771Forwarder <FORWARDER_ADDRESS> "MSQForwarder"
+```
+
+Example:
+```bash
+pnpm verify --contract contracts/ERC2771Forwarder.sol:ERC2771Forwarder 0xF034a404241707F347A952Cd4095f9035AF877Bf "MSQForwarder"
+```
+
+**Deployed Contracts (Polygon Amoy)**
+
+| Contract | Address |
+|----------|---------|
+| ERC2771Forwarder | `0xF034a404241707F347A952Cd4095f9035AF877Bf` |
 
 ## Contract Architecture
 
@@ -160,8 +193,8 @@ typechain-types/        # TypeScript types (generated)
 2. Write tests in `test/`
 3. Run tests: `pnpm test`
 4. Deploy locally: `pnpm node` + `pnpm deploy:local`
-5. Deploy to testnet: `pnpm deploy:amoy`
-6. Verify: `pnpm verify --network amoy <contract-address> "<args>"`
+5. Deploy to testnet: Configure `.env` with RPC_URL/CHAIN_ID, then `pnpm deploy:forwarder`
+6. Verify: `pnpm verify --contract <path:Contract> <address> "<args>"`
 
 ## Configuration
 
@@ -187,8 +220,9 @@ PRIVATE_KEY=<your_private_key>
 RPC_URL=http://localhost:8545
 CHAIN_ID=31337
 
-# Contract verification
-POLYGONSCAN_API_KEY=<your_api_key>
+# Contract verification (Etherscan V2 API - works for all networks)
+# Get your API key from: https://etherscan.io/myapikey
+ETHERSCAN_API_KEY=<your_api_key>
 ```
 
 ## Key Safety Considerations

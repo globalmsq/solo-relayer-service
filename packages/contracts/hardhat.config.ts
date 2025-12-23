@@ -10,7 +10,7 @@ dotenv.config();
 const PRIVATE_KEY = process.env.PRIVATE_KEY || "";
 const RPC_URL = process.env.RPC_URL || "http://localhost:8545";
 const CHAIN_ID = parseInt(process.env.CHAIN_ID || "31337", 10);
-const POLYGONSCAN_API_KEY = process.env.POLYGONSCAN_API_KEY || "";
+const ETHERSCAN_API_KEY = process.env.ETHERSCAN_API_KEY || "";
 
 // Helper function to check if PRIVATE_KEY is valid (64 hex chars or 66 with 0x prefix)
 function isValidPrivateKey(key: string): boolean {
@@ -52,12 +52,10 @@ const config: HardhatUserConfig = {
     },
   },
   etherscan: {
-    apiKey: {
-      polygonAmoy: POLYGONSCAN_API_KEY,
-    },
+    apiKey: ETHERSCAN_API_KEY,
     customChains: [
       {
-        network: "polygonAmoy",
+        network: "external",
         chainId: 80002,
         urls: {
           apiURL: "https://api-amoy.polygonscan.com/api",
