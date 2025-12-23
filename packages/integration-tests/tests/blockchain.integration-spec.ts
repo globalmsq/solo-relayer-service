@@ -2,17 +2,17 @@ import request from 'supertest';
 import { INestApplication, ValidationPipe } from '@nestjs/common';
 import { Test, TestingModule } from '@nestjs/testing';
 import { ConfigService } from '@nestjs/config';
-import { AppModule } from '../../src/app.module';
-import { TEST_WALLETS, TEST_ADDRESSES } from '../fixtures/test-wallets';
-import { signForwardRequest, createForwardRequest } from '../utils/eip712-signer';
+import { AppModule } from '@msq-relayer/relay-api/src/app.module';
+import { TEST_WALLETS, TEST_ADDRESSES } from '@msq-relayer/relay-api/test/fixtures/test-wallets';
+import { signForwardRequest, createForwardRequest } from '@msq-relayer/relay-api/test/utils/eip712-signer';
 import {
   getNetworkConfig,
   isNetworkAvailable,
   logNetworkConfig,
   createProvider,
   getBalance,
-} from './utils/network-helpers';
-import { encodeNonces, decodeNonces } from './utils/token-helpers';
+} from '../src/helpers/network';
+import { encodeNonces, decodeNonces } from '../src/helpers/token';
 
 /**
  * Blockchain Integration Tests
@@ -28,7 +28,7 @@ import { encodeNonces, decodeNonces } from './utils/token-helpers';
  * 3. Ensure test accounts have sufficient balance for gas
  *
  * Run with:
- *   RPC_URL=http://localhost:8545 pnpm test:integration
+ *   pnpm test:integration
  */
 describe('Blockchain Integration Tests', () => {
   let app: INestApplication;
@@ -37,13 +37,15 @@ describe('Blockchain Integration Tests', () => {
   const API_KEY = process.env.RELAY_API_KEY || 'test-api-key';
 
   beforeAll(async () => {
-    // Check network availability first
+    // Check network availability - fail fast if not available
     networkAvailable = await isNetworkAvailable();
 
     if (!networkAvailable) {
-      console.warn('⚠️ Network unavailable - skipping integration tests');
-      console.warn('   Start a local Hardhat node or configure RPC_URL');
-      return;
+      throw new Error(
+        'Network unavailable. Integration tests require a running blockchain node.\n' +
+          'Start Hardhat node: cd docker && docker compose up hardhat-node\n' +
+          'Or configure RPC_URL environment variable.',
+      );
     }
 
     networkConfig = getNetworkConfig();
@@ -104,41 +106,34 @@ describe('Blockchain Integration Tests', () => {
     }
   });
 
-  // Helper to skip tests if network unavailable
-  const skipIfNoNetwork = () => {
-    if (!networkAvailable) {
-      console.log('   ⏭️ Skipped (network unavailable)');
-      return true;
-    }
-    return false;
-  };
-
   describe('Network Connectivity', () => {
     it('TC-INT-001: should connect to configured RPC endpoint', async () => {
-      if (skipIfNoNetwork()) return;
-
       const provider = createProvider();
-      const blockNumber = await provider.getBlockNumber();
+      try {
+        const blockNumber = await provider.getBlockNumber();
 
-      expect(blockNumber).toBeGreaterThanOrEqual(0);
-      console.log(`   ✅ Connected - Block #${blockNumber}`);
+        expect(blockNumber).toBeGreaterThanOrEqual(0);
+        console.log(`   ✅ Connected - Block #${blockNumber}`);
+      } finally {
+        provider.destroy();
+      }
     });
 
     it('TC-INT-002: should verify chain ID matches configuration', async () => {
-      if (skipIfNoNetwork()) return;
-
       const provider = createProvider();
-      const network = await provider.getNetwork();
+      try {
+        const network = await provider.getNetwork();
 
-      expect(Number(network.chainId)).toBe(networkConfig.chainId);
-      console.log(`   ✅ Chain ID: ${network.chainId}`);
+        expect(Number(network.chainId)).toBe(networkConfig.chainId);
+        console.log(`   ✅ Chain ID: ${network.chainId}`);
+      } finally {
+        provider.destroy();
+      }
     });
   });
 
   describe('Direct TX - Real Blockchain', () => {
     it('TC-INT-003: should query real balance from blockchain', async () => {
-      if (skipIfNoNetwork()) return;
-
       const balance = await getBalance(TEST_ADDRESSES.user);
 
       // Hardhat accounts should have 10000 ETH by default
@@ -148,8 +143,6 @@ describe('Blockchain Integration Tests', () => {
     });
 
     it('TC-INT-004: should accept Direct TX request (API level)', async () => {
-      if (skipIfNoNetwork()) return;
-
       // Note: This test verifies API acceptance, not blockchain execution
       // Full blockchain execution requires OZ Relayer configuration
       const payload = {
@@ -171,8 +164,6 @@ describe('Blockchain Integration Tests', () => {
 
   describe('Gasless TX - Real Blockchain', () => {
     it('TC-INT-005: should query real nonce from Forwarder contract', async () => {
-      if (skipIfNoNetwork()) return;
-
       const provider = createProvider();
       const nonceData = encodeNonces(TEST_ADDRESSES.user);
 
@@ -189,12 +180,12 @@ describe('Blockchain Integration Tests', () => {
         // Forwarder might not be deployed on some networks
         console.log(`   ⚠️ Forwarder not deployed at ${networkConfig.forwarderAddress}`);
         expect(error).toBeDefined();
+      } finally {
+        provider.destroy();
       }
     });
 
     it('TC-INT-006: should verify EIP-712 signature generation', async () => {
-      if (skipIfNoNetwork()) return;
-
       const forwardRequest = createForwardRequest(TEST_ADDRESSES.user, TEST_ADDRESSES.merchant, {
         nonce: 0,
       });
@@ -207,8 +198,6 @@ describe('Blockchain Integration Tests', () => {
     });
 
     it('TC-INT-007: should accept Gasless TX request via nonce endpoint', async () => {
-      if (skipIfNoNetwork()) return;
-
       const response = await request(app.getHttpServer())
         .get(`/api/v1/relay/gasless/nonce/${TEST_ADDRESSES.user}`)
         .set('x-api-key', API_KEY);
@@ -227,8 +216,6 @@ describe('Blockchain Integration Tests', () => {
 
   describe('Health & Status', () => {
     it('TC-INT-008: should return health status (200 or 503 if OZ Relayer unavailable)', async () => {
-      if (skipIfNoNetwork()) return;
-
       const response = await request(app.getHttpServer()).get('/api/v1/health');
 
       // 200 if all services healthy, 503 if OZ Relayer pool is down (expected in local dev)

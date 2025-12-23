@@ -55,12 +55,14 @@ export function createWallet(privateKey: string): Wallet {
  * @returns true if the network is reachable
  */
 export async function isNetworkAvailable(): Promise<boolean> {
+  const provider = createProvider();
   try {
-    const provider = createProvider();
     await provider.getBlockNumber();
     return true;
   } catch {
     return false;
+  } finally {
+    provider.destroy();
   }
 }
 
@@ -69,7 +71,11 @@ export async function isNetworkAvailable(): Promise<boolean> {
  */
 export async function getBlockNumber(): Promise<number> {
   const provider = createProvider();
-  return provider.getBlockNumber();
+  try {
+    return await provider.getBlockNumber();
+  } finally {
+    provider.destroy();
+  }
 }
 
 /**
@@ -78,7 +84,11 @@ export async function getBlockNumber(): Promise<number> {
  */
 export async function getBalance(address: string): Promise<bigint> {
   const provider = createProvider();
-  return provider.getBalance(address);
+  try {
+    return await provider.getBalance(address);
+  } finally {
+    provider.destroy();
+  }
 }
 
 /**
@@ -91,7 +101,11 @@ export async function waitForTransaction(
   confirmations = 1,
 ): Promise<ethers.TransactionReceipt | null> {
   const provider = createProvider();
-  return provider.waitForTransaction(txHash, confirmations);
+  try {
+    return await provider.waitForTransaction(txHash, confirmations);
+  } finally {
+    provider.destroy();
+  }
 }
 
 /**

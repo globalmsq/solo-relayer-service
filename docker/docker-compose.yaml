@@ -137,6 +137,29 @@ services:
       <<: *relayer-env
       API_KEY: oz-relayer-shared-api-key-local-dev
 
+  # === Integration Tests (profile: test) ===
+  # Run with: docker compose --profile test up integration-tests
+  integration-tests:
+    build:
+      context: ..
+      dockerfile: packages/integration-tests/Dockerfile
+    profiles: ["test"]
+    depends_on:
+      relay-api:
+        condition: service_started
+      oz-relayer-1:
+        condition: service_healthy
+    environment:
+      RPC_URL: http://hardhat-node:8545
+      CHAIN_ID: 31337
+      FORWARDER_ADDRESS: "0x5FbDB2315678afecb367f032d93F642f64180aa3"
+      RELAY_API_URL: http://relay-api:3000
+      RELAY_API_KEY: local-dev-api-key
+      OZ_RELAYER_URL: http://oz-relayer-1:8080
+      OZ_RELAYER_API_KEY: oz-relayer-shared-api-key-local-dev
+    networks:
+      - msq-relayer-network
+
   # === Phase 2+: Services (commented, enabled via profiles) ===
   # oz-monitor:
   #   image: openzeppelin/openzeppelin-monitor:latest

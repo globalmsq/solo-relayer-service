@@ -18,8 +18,6 @@
     "test:debug": "node --inspect-brk -r tsconfig-paths/register -r ts-node/register node_modules/.bin/jest --runInBand",
     "test:e2e": "jest --config ./test/jest-e2e.json",
     "test:e2e:cov": "jest --config ./test/jest-e2e.json --coverage",
-    "test:integration": "jest --config ./test/integration/jest-integration.json",
-    "test:integration:cov": "jest --config ./test/integration/jest-integration.json --coverage",
     "test:load": "artillery run ./test/load/artillery.yml"
   },
   "dependencies": {
