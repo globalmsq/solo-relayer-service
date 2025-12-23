@@ -4,23 +4,29 @@
 # ============================================================================
 # BASE STAGE: Common dependencies and setup
 # ============================================================================
-FROM node:22-alpine AS base
+# Note: Using node:22-slim (Debian/glibc) instead of alpine (musl) because
+# @nomicfoundation/solidity-analyzer requires glibc pre-built binaries
+FROM node:22-slim AS base
 
 WORKDIR /app
 
 # Install common dependencies and enable pnpm via corepack
-RUN apk add --no-cache \
+# Python3 and build-essential are required for native module compilation (keccak, secp256k1)
+RUN apt-get update && apt-get install -y --no-install-recommends \
     curl \
-    bash \
     ca-certificates \
+    python3 \
+    build-essential \
+    && rm -rf /var/lib/apt/lists/* \
     && corepack enable \
     && corepack prepare pnpm@9.15.1 --activate
 
 # Copy package files for pnpm workspace
 COPY package.json pnpm-workspace.yaml ./
 COPY pnpm-lock.yaml* ./
+COPY .npmrc* ./
 
-# Install dependencies using pnpm
+# Install dependencies using pnpm (optional=false skips playwright)
 RUN pnpm install --frozen-lockfile || pnpm install
 
 # ============================================================================
@@ -59,7 +65,9 @@ COPY packages/contracts ./packages/contracts
 WORKDIR /app/packages/contracts
 
 # Install package-specific dependencies
-RUN pnpm install
+# Enable optional deps for solidity-analyzer platform binaries (override root .npmrc)
+# Use --force to skip interactive prompts in Docker build
+RUN sed -i 's/optional=false/optional=true/' /app/.npmrc && pnpm install --force
 
 # Expose JSON-RPC port
 EXPOSE 8545
@@ -88,10 +96,34 @@ COPY packages/contracts ./packages/contracts
 WORKDIR /app/packages/contracts
 
 # Install package-specific dependencies and compile contracts
-RUN pnpm install && pnpm run compile
+# Enable optional deps for solidity-analyzer platform binaries (override root .npmrc)
+# Use --force to skip interactive prompts in Docker build
+RUN sed -i 's/optional=false/optional=true/' /app/.npmrc && pnpm install --force && pnpm run compile
 
-# Environment variables for deployment
-ENV LOCALHOST_RPC_URL=http://hardhat-node:8545
+# Environment variables for deployment (Network Agnostic)
+# These are defaults - override via docker-compose environment
+ENV RPC_URL=http://hardhat-node:8545
+ENV CHAIN_ID=31337
 
 # Deploy contracts to localhost
 CMD ["pnpm", "run", "deploy:local"]
+
+# ============================================================================
+# INTEGRATION-TESTS TARGET: Jest integration test runner
+# ============================================================================
+FROM base AS integration-tests
+
+# Copy relay-api for test imports
+COPY packages/relay-api ./packages/relay-api
+
+# Copy integration-tests package
+COPY packages/integration-tests ./packages/integration-tests
+
+# Set working directory
+WORKDIR /app/packages/integration-tests
+
+# Install package-specific dependencies
+RUN pnpm install
+
+# Default command: run tests
+CMD ["pnpm", "test"]

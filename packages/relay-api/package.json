@@ -17,7 +17,8 @@
     "test:cov": "jest --coverage",
     "test:debug": "node --inspect-brk -r tsconfig-paths/register -r ts-node/register node_modules/.bin/jest --runInBand",
     "test:e2e": "jest --config ./test/jest-e2e.json",
-    "test:e2e:cov": "jest --config ./test/jest-e2e.json --coverage"
+    "test:e2e:cov": "jest --config ./test/jest-e2e.json --coverage",
+    "test:load": "artillery run ./test/load/artillery.yml"
   },
   "dependencies": {
     "@nestjs/axios": "^3.0.0",
@@ -35,6 +36,7 @@
     "rxjs": "^7.8.0"
   },
   "devDependencies": {
+    "artillery": "^2.0.0",
     "@nestjs/cli": "^10.4.0",
     "@nestjs/schematics": "^10.1.0",
     "@nestjs/testing": "^10.4.0",

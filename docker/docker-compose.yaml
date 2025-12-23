@@ -21,9 +21,9 @@ x-relayer-common: &relayer-common
 
 x-relayer-env: &relayer-env
   RUST_LOG: info
-  RELAY_API_KEY: local-dev-api-key
-  KEYSTORE_PASSPHRASE: hardhat-test-passphrase
-  WEBHOOK_SIGNING_KEY: local-dev-webhook-signing-key-32ch
+  RELAY_API_KEY: ${RELAY_API_KEY:-local-dev-api-key}
+  KEYSTORE_PASSPHRASE: ${KEYSTORE_PASSPHRASE:-hardhat-test-passphrase}
+  WEBHOOK_SIGNING_KEY: ${WEBHOOK_SIGNING_KEY:-local-dev-webhook-signing-key-32ch}
   RPC_URL: http://hardhat-node:8545
   REDIS_URL: redis://redis:6379
 
@@ -62,7 +62,10 @@ services:
       hardhat-node:
         condition: service_healthy
     environment:
-      LOCALHOST_RPC_URL: http://hardhat-node:8545
+      RPC_URL: http://hardhat-node:8545
+      CHAIN_ID: 31337
+      # Hardhat Account #0 (well-known test key, no real funds)
+      PRIVATE_KEY: "0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80"
     networks:
       - msq-relayer-network
     restart: "no"
@@ -108,13 +111,13 @@ services:
       NODE_ENV: development
       REDIS_URL: redis://redis:6379
       RPC_URL: http://hardhat-node:8545
-      RELAY_API_KEY: local-dev-api-key
+      RELAY_API_KEY: ${RELAY_API_KEY:-local-dev-api-key}
       CHAIN_ID: 31337
       FORWARDER_ADDRESS: "0x5FbDB2315678afecb367f032d93F642f64180aa3"
       # Direct connection to single OZ Relayer for consistent relayer ID
       # (Load balancer causes ID mismatch between getRelayerId and sendTransaction)
       OZ_RELAYER_URL: http://oz-relayer-1:8080
-      OZ_RELAYER_API_KEY: oz-relayer-shared-api-key-local-dev
+      OZ_RELAYER_API_KEY: ${OZ_RELAYER_API_KEY:-oz-relayer-shared-api-key-local-dev}
     networks:
       - msq-relayer-network
     restart: unless-stopped
@@ -132,7 +135,31 @@ services:
       - ./keys/relayer-1:/app/config/keys:ro
     environment:
       <<: *relayer-env
-      API_KEY: oz-relayer-shared-api-key-local-dev
+      API_KEY: ${OZ_RELAYER_API_KEY:-oz-relayer-shared-api-key-local-dev}
+
+  # === Integration Tests (profile: manual) ===
+  # Run with: docker compose run --rm integration-tests
+  integration-tests:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile.packages
+      target: integration-tests
+    profiles: ["manual"]
+    depends_on:
+      relay-api:
+        condition: service_healthy
+      oz-relayer-1:
+        condition: service_healthy
+    environment:
+      RPC_URL: http://hardhat-node:8545
+      CHAIN_ID: 31337
+      FORWARDER_ADDRESS: "0x5FbDB2315678afecb367f032d93F642f64180aa3"
+      RELAY_API_URL: http://relay-api:3000
+      RELAY_API_KEY: ${RELAY_API_KEY:-local-dev-api-key}
+      OZ_RELAYER_URL: http://oz-relayer-1:8080
+      OZ_RELAYER_API_KEY: ${OZ_RELAYER_API_KEY:-oz-relayer-shared-api-key-local-dev}
+    networks:
+      - msq-relayer-network
 
   # === Phase 2+: Services (commented, enabled via profiles) ===
   # oz-monitor:

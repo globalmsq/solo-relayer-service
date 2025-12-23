@@ -1,6 +1,5 @@
-version: '3.8'
-
-# === Polygon Amoy Testnet Configuration ===
+# === YAML Anchors Definition (Top-level, outside services block) ===
+# Polygon Amoy Testnet Configuration
 # Same infrastructure as docker-compose.yaml but with Amoy RPC endpoints
 # No Hardhat Node (uses Polygon Amoy RPC)
 
@@ -13,7 +12,7 @@ x-relayer-common: &relayer-common
   networks:
     - msq-relayer-network
   healthcheck:
-    test: ["CMD", "curl", "-f", "http://localhost:8080/api/v1/health"]
+    test: ["CMD-SHELL", "cat /proc/net/tcp | grep ':1F90' || exit 1"]
     interval: 10s
     timeout: 5s
     retries: 3
@@ -21,13 +20,15 @@ x-relayer-common: &relayer-common
 
 x-relayer-env: &relayer-env
   RUST_LOG: info
-  RELAY_API_KEY: amoy-dev-api-key
-  KEYSTORE_PASSPHRASE: amoy-test-passphrase
+  RELAY_API_KEY: ${RELAY_API_KEY:-amoy-dev-api-key}
+  KEYSTORE_PASSPHRASE: ${KEYSTORE_PASSPHRASE:-amoy-test-passphrase}
+  WEBHOOK_SIGNING_KEY: ${WEBHOOK_SIGNING_KEY:-amoy-dev-webhook-signing-key-32ch}
   RPC_URL: https://rpc-amoy.polygon.technology
   REDIS_URL: redis://redis:6379
 
+# === Services Block (after anchors definition) ===
 services:
-  # === Redis Cache & Queue (same as local) ===
+  # === Redis Cache & Queue ===
   redis:
     image: redis/redis-stack:latest
     ports:
@@ -52,22 +53,31 @@ services:
       context: ..
       dockerfile: docker/Dockerfile.packages
       target: relay-api
+    command: ["pnpm", "run", "start"]
     ports:
       - "3000:3000"
     depends_on:
       redis:
         condition: service_healthy
+      oz-relayer-1:
+        condition: service_healthy
     environment:
       NODE_ENV: staging
       REDIS_URL: redis://redis:6379
       RPC_URL: https://rpc-amoy.polygon.technology
-      RELAY_API_KEY: amoy-dev-api-key
-      NETWORK: amoy
+      RELAY_API_KEY: ${RELAY_API_KEY:-amoy-dev-api-key}
+      CHAIN_ID: 80002
+      FORWARDER_ADDRESS: "0xF034a404241707F347A952Cd4095f9035AF877Bf"
+      # Direct connection to single OZ Relayer for consistent relayer ID
+      # (Load balancer causes ID mismatch between getRelayerId and sendTransaction)
+      OZ_RELAYER_URL: http://oz-relayer-1:8080
+      OZ_RELAYER_API_KEY: ${OZ_RELAYER_API_KEY:-amoy-oz-relayer-shared-api-key-32ch}
     networks:
       - msq-relayer-network
     restart: unless-stopped
 
-  # === OZ Relayer Pool for Amoy ===
+  # === OZ Relayer (Single Instance - Phase 1 MVP) ===
+  # Phase 2+: Queue system (BullMQ/SQS) with multiple instances
   oz-relayer-1:
     <<: *relayer-common
     container_name: oz-relayer-amoy-1
@@ -75,37 +85,35 @@ services:
       - "8081:8080"
       - "8091:8081"
     volumes:
-      - ./config/oz-relayer/relayer-1.json:/app/config/config.json:ro
+      - ./config/oz-relayer/relayer-1-amoy.json:/app/config/config.json:ro
       - ./keys/relayer-1:/app/config/keys:ro
     environment:
       <<: *relayer-env
-      API_KEY: test-api-key-relayer-amoy-1-staging-32ch
+      API_KEY: ${OZ_RELAYER_API_KEY:-amoy-oz-relayer-shared-api-key-32ch}
 
-  oz-relayer-2:
-    <<: *relayer-common
-    container_name: oz-relayer-amoy-2
-    ports:
-      - "8082:8080"
-      - "8092:8081"
-    volumes:
-      - ./config/oz-relayer/relayer-2.json:/app/config/config.json:ro
-      - ./keys/relayer-2:/app/config/keys:ro
+  # === Integration Tests (profile: manual) ===
+  # Run with: docker compose -f docker-compose-amoy.yaml run --rm integration-tests
+  integration-tests:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile.packages
+      target: integration-tests
+    profiles: ["manual"]
+    depends_on:
+      relay-api:
+        condition: service_healthy
+      oz-relayer-1:
+        condition: service_healthy
     environment:
-      <<: *relayer-env
-      API_KEY: test-api-key-relayer-amoy-2-staging-32ch
-
-  oz-relayer-3:
-    <<: *relayer-common
-    container_name: oz-relayer-amoy-3
-    ports:
-      - "8083:8080"
-      - "8093:8081"
-    volumes:
-      - ./config/oz-relayer/relayer-3.json:/app/config/config.json:ro
-      - ./keys/relayer-3:/app/config/keys:ro
-    environment:
-      <<: *relayer-env
-      API_KEY: test-api-key-relayer-amoy-3-staging-32ch
+      RPC_URL: https://rpc-amoy.polygon.technology
+      CHAIN_ID: 80002
+      FORWARDER_ADDRESS: "0xF034a404241707F347A952Cd4095f9035AF877Bf"
+      RELAY_API_URL: http://relay-api:3000
+      RELAY_API_KEY: ${RELAY_API_KEY:-amoy-dev-api-key}
+      OZ_RELAYER_URL: http://oz-relayer-1:8080
+      OZ_RELAYER_API_KEY: ${OZ_RELAYER_API_KEY:-amoy-oz-relayer-shared-api-key-32ch}
+    networks:
+      - msq-relayer-network
 
 networks:
   msq-relayer-network:

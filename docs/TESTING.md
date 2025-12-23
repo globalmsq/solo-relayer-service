@@ -1,19 +1,21 @@
 # Testing Guide
 
-**Version**: 1.0.0
+**Version**: 1.1.0
 **Last Updated**: 2025-12-23
-**Status**: E2E Test Infrastructure Complete
+**Status**: Complete with Integration & Load Tests
 
 ---
 
 ## Overview
 
-This document covers the testing infrastructure for MSQ Relayer Service, including unit tests and E2E (End-to-End) tests.
+This document covers the testing infrastructure for MSQ Relayer Service, including unit tests, E2E tests, integration tests, and load tests.
 
 | Test Type | Purpose | Scope | Command |
 |-----------|---------|-------|---------|
 | **Unit Tests** | Function and component verification | Individual services, utilities | `pnpm test` |
-| **E2E Tests** | Integration and API endpoint verification | HTTP endpoints, complete flows | `pnpm test:e2e` |
+| **E2E Tests** | Integration and API endpoint verification | HTTP endpoints, complete flows (Mock) | `pnpm test:e2e` |
+| **Integration Tests** | Real blockchain verification | Actual RPC calls, network agnostic | `pnpm test:integration` |
+| **Load Tests** | Performance and stress testing | API throughput, response times | `pnpm test:load` |
 
 ---
 
@@ -350,6 +352,154 @@ pnpm test:e2e --verbose
 
 ---
 
+## Integration Tests (Network Agnostic)
+
+Integration tests verify API behavior against real blockchain networks. The tests are **network agnostic** - the same code works on Hardhat, Polygon Amoy, or Mainnet.
+
+### Network Agnostic Architecture
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│                    RPC_URL Environment Variable              │
+├─────────────────────────────────────────────────────────────┤
+│ Hardhat:  http://localhost:8545           (fast, free)      │
+│ Amoy:     https://rpc-amoy.polygon.technology (testnet)     │
+│ Mainnet:  https://polygon-mainnet.infura.io/v3/... (prod)   │
+└─────────────────────────────────────────────────────────────┘
+                              ↓
+              Same test code runs on all networks
+```
+
+### Running Integration Tests
+
+```bash
+# Option 1: Local Hardhat Node (Recommended for development)
+npx hardhat node &                                    # Start local node
+RPC_URL=http://localhost:8545 pnpm test:integration   # Run tests
+
+# Option 2: Polygon Amoy Testnet
+RPC_URL=https://rpc-amoy.polygon.technology pnpm test:integration
+
+# Option 3: With all environment variables
+RPC_URL=http://localhost:8545 \
+CHAIN_ID=31337 \
+FORWARDER_ADDRESS=0xCf7Ed3AccA5a467e9e704C703E8D87F634fB0Fc9 \
+pnpm test:integration
+```
+
+### Integration Test Files
+
+```
+packages/relay-api/test/integration/
+├── blockchain.integration-spec.ts   # Main integration tests (8 tests)
+├── utils/
+│   ├── network-helpers.ts           # RPC connection utilities
+│   └── token-helpers.ts             # Token encoding utilities
+└── jest-integration.json            # Jest config (60s timeout)
+```
+
+### Integration Test Cases
+
+| Test ID | Description | Verifies |
+|---------|-------------|----------|
+| TC-INT-001 | Connect to RPC endpoint | Network connectivity |
+| TC-INT-002 | Verify chain ID | Network configuration |
+| TC-INT-003 | Query real balance | Blockchain data access |
+| TC-INT-004 | Direct TX API acceptance | API layer integration |
+| TC-INT-005 | Query Forwarder nonce | Contract interaction |
+| TC-INT-006 | EIP-712 signature generation | Crypto utilities |
+| TC-INT-007 | Gasless nonce endpoint | End-to-end nonce flow |
+| TC-INT-008 | Health endpoint | Service availability |
+
+### Benefits of Network Agnostic Design
+
+- **No Code Duplication**: Single test file for all networks
+- **Easy Environment Switching**: Just change `RPC_URL`
+- **CI/CD Friendly**: Use Hardhat node in CI, testnet for staging
+- **Production Validation**: Same tests can verify mainnet (read-only)
+
+---
+
+## Load Tests (Artillery)
+
+Load tests verify API performance under various traffic patterns using Artillery.
+
+### Running Load Tests
+
+```bash
+# Prerequisites
+pnpm add -D artillery   # Already added in devDependencies
+
+# Run load tests against local server
+pnpm dev &              # Start the API server
+pnpm test:load          # Run Artillery
+
+# Run against custom endpoint
+API_URL=https://api.example.com API_KEY=your-key pnpm test:load
+```
+
+### Load Test Configuration
+
+**File**: `test/load/artillery.yml`
+
+```yaml
+config:
+  target: "{{ $processEnvironment.API_URL || 'http://localhost:3000' }}"
+  phases:
+    - duration: 10, arrivalRate: 2    # Warm up
+    - duration: 30, arrivalRate: 5-15 # Ramp up
+    - duration: 60, arrivalRate: 15   # Sustained load
+    - duration: 10, arrivalRate: 30   # Spike test
+```
+
+### Load Test Scenarios
+
+| Scenario | Weight | Flow |
+|----------|--------|------|
+| Health Check | 10% | GET /api/v1/health |
+| Direct TX Submission | 40% | POST /api/v1/relay/direct → GET /status |
+| Gasless Nonce Query | 30% | GET /api/v1/relay/gasless/nonce/:address |
+| Status Polling | 20% | GET /api/v1/relay/status/:txId |
+
+### Performance Thresholds
+
+| Metric | Target |
+|--------|--------|
+| p95 Response Time | < 500ms |
+| p99 Response Time | < 1000ms |
+| Error Rate | < 5% |
+
+---
+
+## Error Scenarios E2E
+
+Additional E2E tests focusing on failure conditions and error handling.
+
+**File**: `test/e2e/error-scenarios.e2e-spec.ts`
+
+### Error Test Categories
+
+| Category | Test Count | Covers |
+|----------|------------|--------|
+| Relayer Pool Failures | 3 | 503, network errors, timeouts |
+| RPC Failures | 2 | Nonce query failures, invalid responses |
+| Input Validation | 3 | Malformed addresses, missing fields, invalid enums |
+| Authentication | 2 | Missing/invalid API keys |
+| Gasless TX Errors | 2 | Service failures, replay attacks |
+| Status Endpoint | 2 | Non-existent IDs, invalid formats |
+
+### Running Error Scenario Tests
+
+```bash
+# Run all E2E tests (includes error scenarios)
+pnpm test:e2e
+
+# Run only error scenarios
+pnpm test:e2e -- error-scenarios
+```
+
+---
+
 ## Mock OZ Relayer Strategy
 
 E2E tests **do not call actual OZ Relayer API or RPC endpoints**. Instead, they use service-level mocking:
@@ -544,7 +694,7 @@ name: Tests
 on: [push, pull_request]
 
 jobs:
-  test:
+  unit-and-e2e:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v3
@@ -556,8 +706,39 @@ jobs:
 
       - run: pnpm install
       - run: pnpm test              # Unit tests
-      - run: pnpm test:e2e          # E2E tests
+      - run: pnpm test:e2e          # E2E tests (mock-based)
       - run: pnpm test --coverage   # Coverage report
+
+  integration:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+      - uses: pnpm/action-setup@v2
+      - uses: actions/setup-node@v3
+        with:
+          node-version: 20
+          cache: 'pnpm'
+
+      - run: pnpm install
+      - run: npx hardhat node &     # Start local Hardhat node
+      - run: sleep 5                # Wait for node to start
+      - run: RPC_URL=http://localhost:8545 pnpm test:integration
+
+  load:
+    runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/main'  # Only on main branch
+    steps:
+      - uses: actions/checkout@v3
+      - uses: pnpm/action-setup@v2
+      - uses: actions/setup-node@v3
+        with:
+          node-version: 20
+          cache: 'pnpm'
+
+      - run: pnpm install
+      - run: pnpm dev &             # Start API server
+      - run: sleep 10               # Wait for server to start
+      - run: pnpm test:load         # Run load tests
 ```
 
 ---
@@ -572,6 +753,6 @@ jobs:
 ---
 
 **Last Updated**: 2025-12-23
-**Version**: 1.0.0
+**Version**: 1.1.0
 **Author**: Harry
-**Status**: Complete ✅
+**Status**: Complete ✅ (includes Integration & Load Tests)

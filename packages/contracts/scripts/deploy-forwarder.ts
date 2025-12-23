@@ -14,19 +14,24 @@ async function main() {
   console.log(`Balance: ${ethers.formatEther(balance)} ETH`);
   console.log("=".repeat(60));
 
-  // Note: ERC2771Forwarder can be deployed on any network (localhost, amoy, mainnet, etc.)
-  // This is the trusted forwarder contract that handles meta-transactions
-  console.log("\nERC2771 Forwarder deployment script");
-  console.log("- This contract should be deployed once per network");
-  console.log("- It handles meta-transaction forwarding for gasless transactions");
-  console.log("- Smart contracts (SampleToken, SampleNFT) should be initialized with this address");
-  console.log("\nExample usage:");
-  console.log("1. Deploy this forwarder");
-  console.log("2. Get the forwarder address");
-  console.log("3. Deploy SampleToken and SampleNFT with the forwarder address");
-  console.log("4. Users can then use gasless transactions through this forwarder");
+  // Deploy ERC2771Forwarder
+  console.log("\nDeploying ERC2771Forwarder...");
+  const ForwarderFactory = await ethers.getContractFactory(
+    "contracts/ERC2771Forwarder.sol:ERC2771Forwarder"
+  );
+  const forwarder = await ForwarderFactory.deploy("MSQForwarder");
+  await forwarder.waitForDeployment();
+  const forwarderAddr = await forwarder.getAddress();
+  console.log(`ERC2771Forwarder deployed to: ${forwarderAddr}`);
 
-  console.log("\nDeployment completed!");
+  console.log("\n" + "=".repeat(60));
+  console.log("Deployment Summary");
+  console.log("=".repeat(60));
+  console.log(`ERC2771Forwarder: ${forwarderAddr}`);
+  console.log("\nDeployment completed successfully!");
+  console.log("\nNext steps:");
+  console.log(`1. Add to .env: FORWARDER_ADDRESS=${forwarderAddr}`);
+  console.log("2. Use this address when deploying contracts that need meta-transaction support");
 }
 
 main()

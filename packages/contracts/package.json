@@ -8,10 +8,9 @@
     "test": "hardhat test",
     "test:coverage": "hardhat coverage",
     "node": "hardhat node --hostname 0.0.0.0",
-    "deploy:local": "hardhat run scripts/deploy-samples.ts --network localhost",
-    "deploy:amoy": "hardhat run scripts/deploy-forwarder.ts --network amoy",
-    "deploy:all": "hardhat run scripts/deploy-forwarder.ts --network amoy && hardhat run scripts/deploy-samples.ts --network localhost",
-    "verify": "hardhat verify --network amoy",
+    "deploy:local": "hardhat run scripts/deploy-samples.ts --network external",
+    "deploy:forwarder": "hardhat run scripts/deploy-forwarder.ts --network external",
+    "verify": "hardhat verify --network external",
     "clean": "hardhat clean",
     "typechain": "hardhat typechain"
   },

@@ -30,15 +30,48 @@ pnpm node
 pnpm deploy:local
 ```
 
-### Deployment
+### Deployment to Testnet (Polygon Amoy)
+
+**Step 1: Configure `.env`**
 
 ```bash
-# Deploy to Polygon Amoy testnet
-pnpm deploy:amoy
+# Network configuration
+RPC_URL=https://rpc-amoy.polygon.technology
+CHAIN_ID=80002
+PRIVATE_KEY=your_private_key_here
 
-# Verify contracts on Polygonscan
-pnpm verify --network amoy <CONTRACT_ADDRESS> "<CONSTRUCTOR_ARGS>"
+# For contract verification (get from https://etherscan.io/myapikey)
+ETHERSCAN_API_KEY=your_etherscan_api_key
 ```
+
+**Step 2: Deploy ERC2771Forwarder**
+
+```bash
+pnpm deploy:forwarder
+```
+
+Output:
+```
+Deploying ERC2771Forwarder...
+ERC2771Forwarder deployed to: 0x...
+```
+
+**Step 3: Verify Contract**
+
+```bash
+pnpm verify --contract contracts/ERC2771Forwarder.sol:ERC2771Forwarder <FORWARDER_ADDRESS> "MSQForwarder"
+```
+
+Example:
+```bash
+pnpm verify --contract contracts/ERC2771Forwarder.sol:ERC2771Forwarder 0xF034a404241707F347A952Cd4095f9035AF877Bf "MSQForwarder"
+```
+
+**Deployed Contracts (Polygon Amoy)**
+
+| Contract | Address |
+|----------|---------|
+| ERC2771Forwarder | `0xF034a404241707F347A952Cd4095f9035AF877Bf` |
 
 ## Contract Architecture
 
@@ -118,19 +151,23 @@ pnpm test:coverage
 | `pnpm test` | Run tests (27 passing tests covering all functionality) |
 | `pnpm test:coverage` | Run tests with coverage report |
 | `pnpm node` | Start local Hardhat node |
-| `pnpm deploy:local` | Deploy to localhost (SampleToken + SampleNFT) |
-| `pnpm deploy:amoy` | Deploy forwarder to Polygon Amoy |
-| `pnpm verify` | Verify contract on Polygonscan |
+| `pnpm deploy:local` | Deploy sample contracts (SampleToken + SampleNFT) |
+| `pnpm deploy:forwarder` | Deploy ERC2771Forwarder |
+| `pnpm verify` | Verify contract on block explorer |
 | `pnpm clean` | Clean artifacts |
 | `pnpm typechain` | Generate TypeChain types |
 
 ## Networks
 
-| Network | Chain ID | RPC URL |
+Network configuration is now **network agnostic**. Set `RPC_URL` and `CHAIN_ID` for any network:
+
+| Network | CHAIN_ID | RPC_URL |
 |---------|----------|---------|
-| Hardhat | 31337 | In-memory |
-| Localhost | 31337 | http://localhost:8545 |
+| Hardhat (in-memory) | 31337 | N/A (default test network) |
+| Hardhat node (local) | 31337 | http://localhost:8545 |
+| Hardhat node (Docker) | 31337 | http://hardhat-node:8545 |
 | Polygon Amoy | 80002 | https://rpc-amoy.polygon.technology |
+| Polygon Mainnet | 137 | https://polygon-rpc.com |
 
 ## Project Structure
 
@@ -156,8 +193,8 @@ typechain-types/        # TypeScript types (generated)
 2. Write tests in `test/`
 3. Run tests: `pnpm test`
 4. Deploy locally: `pnpm node` + `pnpm deploy:local`
-5. Deploy to testnet: `pnpm deploy:amoy`
-6. Verify: `pnpm verify --network amoy <contract-address> "<args>"`
+5. Deploy to testnet: Configure `.env` with RPC_URL/CHAIN_ID, then `pnpm deploy:forwarder`
+6. Verify: `pnpm verify --contract <path:Contract> <address> "<args>"`
 
 ## Configuration
 
@@ -166,17 +203,26 @@ typechain-types/        # TypeScript types (generated)
 Networks configured in `hardhat.config.ts`:
 
 - **hardhat**: In-memory test network (ChainID: 31337)
-- **localhost**: Local Hardhat node (ChainID: 31337)
-- **amoy**: Polygon Amoy testnet (ChainID: 80002)
+- **external**: Network agnostic external connection (uses RPC_URL + CHAIN_ID)
 
 ### Environment Variables
 
-Create `.env` file with:
+Create `.env` file with (network agnostic configuration):
 
-```
+```bash
+# Private key for deployments
 PRIVATE_KEY=<your_private_key>
-AMOY_RPC_URL=<amoy_rpc_url>
-POLYGONSCAN_API_KEY=<your_api_key>
+
+# Network Agnostic RPC Configuration
+# Set these for any network:
+# - Hardhat node: RPC_URL=http://localhost:8545 CHAIN_ID=31337
+# - Amoy testnet: RPC_URL=https://rpc-amoy.polygon.technology CHAIN_ID=80002
+RPC_URL=http://localhost:8545
+CHAIN_ID=31337
+
+# Contract verification (Etherscan V2 API - works for all networks)
+# Get your API key from: https://etherscan.io/myapikey
+ETHERSCAN_API_KEY=<your_api_key>
 ```
 
 ## Key Safety Considerations
