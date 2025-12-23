@@ -11,9 +11,12 @@ FROM node:22-slim AS base
 WORKDIR /app
 
 # Install common dependencies and enable pnpm via corepack
+# Python3 and build-essential are required for native module compilation (keccak, secp256k1)
 RUN apt-get update && apt-get install -y --no-install-recommends \
     curl \
     ca-certificates \
+    python3 \
+    build-essential \
     && rm -rf /var/lib/apt/lists/* \
     && corepack enable \
     && corepack prepare pnpm@9.15.1 --activate
@@ -62,7 +65,9 @@ COPY packages/contracts ./packages/contracts
 WORKDIR /app/packages/contracts
 
 # Install package-specific dependencies
-RUN pnpm install
+# Enable optional deps for solidity-analyzer platform binaries (override root .npmrc)
+# Use --force to skip interactive prompts in Docker build
+RUN sed -i 's/optional=false/optional=true/' /app/.npmrc && pnpm install --force
 
 # Expose JSON-RPC port
 EXPOSE 8545
@@ -91,7 +96,9 @@ COPY packages/contracts ./packages/contracts
 WORKDIR /app/packages/contracts
 
 # Install package-specific dependencies and compile contracts
-RUN pnpm install && pnpm run compile
+# Enable optional deps for solidity-analyzer platform binaries (override root .npmrc)
+# Use --force to skip interactive prompts in Docker build
+RUN sed -i 's/optional=false/optional=true/' /app/.npmrc && pnpm install --force && pnpm run compile
 
 # Environment variables for deployment (Network Agnostic)
 # These are defaults - override via docker-compose environment
