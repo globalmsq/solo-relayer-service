@@ -39,15 +39,16 @@ export const DEFAULT_POLLING_CONFIG: PollingConfig = {
 
 /**
  * Optimized polling config for Hardhat local network
- * Configured per SPEC-TEST-001 acceptance criteria for fast test execution:
- * - maxAttempts: 10 (reduced from 20)
- * - initialDelayMs: 200ms (reduced from 500ms)
- * - backoffMultiplier: 1.2 (reduced from 1.3)
+ * Balanced for Docker Compose environment:
+ * - maxAttempts: 20 (allows ~12 seconds total polling time)
+ * - initialDelayMs: 200ms (fast initial check)
+ * - backoffMultiplier: 1.2 (gradual backoff)
  *
- * Expected confirmation time: ~2-3 seconds on Hardhat
+ * Note: SPEC-TEST-001 assumed 2-3 second confirmation, but Docker/OZ Relayer
+ * chain typically takes 5-10 seconds in practice.
  */
 export const HARDHAT_POLLING_CONFIG: PollingConfig = {
-  maxAttempts: 10,
+  maxAttempts: 20,
   initialDelayMs: 200,
   maxDelayMs: 2000,
   backoffMultiplier: 1.2,
