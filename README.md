@@ -127,9 +127,17 @@ curl -X POST http://localhost:3000/api/v1/relay/direct \
 See [docs/TESTING.md](./docs/TESTING.md) for comprehensive testing guide including:
 - Unit test setup and execution
 - E2E test architecture (mock vs real)
+- **Transaction Lifecycle Tests** (real blockchain verification via Docker Compose)
 - Test fixtures and utilities
 - Troubleshooting guide
 - CI/CD integration examples
+
+**Transaction Lifecycle Tests** (SPEC-TEST-001):
+```bash
+# Verify real transaction flow (requires Docker Compose)
+docker compose -f docker/docker-compose.yaml up -d
+pnpm --filter @msq-relayer/integration-tests test:lifecycle
+```
 
 #### Transaction Status Query API
 

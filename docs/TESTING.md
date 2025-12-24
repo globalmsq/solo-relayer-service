@@ -420,6 +420,84 @@ packages/relay-api/test/integration/
 
 ---
 
+## Transaction Lifecycle Tests (SPEC-TEST-001)
+
+Real transaction lifecycle verification on live blockchain (not mocked). Tests the complete flow: Submit → OZ Relayer → Blockchain → Mining → Confirmation.
+
+### Overview
+
+| Feature | Description |
+|---------|-------------|
+| Purpose | End-to-end transaction verification |
+| Scope | Submit → OZ Relayer → Blockchain → Mining → Confirmation |
+| Network | Hardhat local node (Docker Compose) |
+| TC Prefix | TC-TXL-xxx |
+| Package | `@msq-relayer/integration-tests` |
+
+### Test Cases
+
+| ID | Category | Description |
+|----|----------|-------------|
+| TC-TXL-001 | Contract | ERC2771Forwarder deployment verification |
+| TC-TXL-002 | Contract | SampleToken trustedForwarder validation |
+| TC-TXL-003 | Contract | SampleNFT trustedForwarder validation |
+| TC-TXL-004 | Contract | EIP-712 domain configuration |
+| TC-TXL-100 | Direct TX | Submit → Poll → Confirm flow |
+| TC-TXL-101 | Direct TX | ERC20 transfer via direct TX |
+| TC-TXL-200 | Gasless TX | Nonce query from API |
+| TC-TXL-201 | Gasless TX | EIP-712 signature generation |
+| TC-TXL-202 | Gasless TX | Full gasless TX flow (nonce → sign → submit → confirm) |
+
+### Running Lifecycle Tests
+
+```bash
+# Prerequisites: Docker Compose stack running
+docker compose -f docker/docker-compose.yaml up -d
+
+# Run lifecycle tests only
+pnpm --filter @msq-relayer/integration-tests test:lifecycle
+
+# Run all integration tests
+pnpm --filter @msq-relayer/integration-tests test
+```
+
+### Test Files
+
+```
+packages/integration-tests/
+├── src/helpers/
+│   ├── polling.ts       # Exponential backoff polling
+│   └── contracts.ts     # Contract verification utilities
+└── tests/
+    └── transaction-lifecycle.integration-spec.ts  # 9 test cases
+```
+
+### Helper Utilities
+
+| File | Purpose |
+|------|---------|
+| `polling.ts` | Exponential backoff polling with HARDHAT_POLLING_CONFIG (10 attempts, 200ms initial, 1.2x multiplier) |
+| `contracts.ts` | Contract verification, ABI definitions (Forwarder, Token, NFT), encoding utilities |
+
+### Environment Variables
+
+```env
+FORWARDER_ADDRESS=0x5FbDB2315678afecb367f032d93F642f64180aa3
+SAMPLE_TOKEN_ADDRESS=0xe7f1725E7734CE288F8367e1Bb143E90bb3F0512
+SAMPLE_NFT_ADDRESS=0x9fE46736679d2D9a65F0992F2272dE9f3c7fa6e0
+```
+
+### Difference from Other Tests
+
+| Test Type | Blockchain | OZ Relayer | Purpose |
+|-----------|------------|------------|---------|
+| Unit Tests | Mock | Mock | Function logic |
+| E2E Tests | Mock | Mock | API layer validation |
+| Integration Tests (TC-INT) | Real (read-only) | Mock | Network connectivity |
+| **Lifecycle Tests (TC-TXL)** | **Real (write)** | **Real** | **Transaction execution** |
+
+---
+
 ## Load Tests (Artillery)
 
 Load tests verify API performance under various traffic patterns using Artillery.

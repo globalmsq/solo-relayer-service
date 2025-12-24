@@ -2696,6 +2696,63 @@ E2E tests use Jest Spy to mock OZ Relayer HTTP responses (no actual blockchain c
 | [SPEC-E2E-001 Acceptance](../.moai/specs/SPEC-E2E-001/acceptance.md) | Acceptance Criteria and Test Scenarios |
 | [docs/TESTING.md](./TESTING.md) | Comprehensive Testing Guide |
 
+### 8.9 Transaction Lifecycle Tests (SPEC-TEST-001)
+
+Real blockchain transaction verification tests that execute actual transactions through the complete flow.
+
+#### 8.9.1 Architecture
+
+```
+API Gateway → OZ Relayer Pool → Hardhat Node
+     ↓              ↓              ↓
+  Submit TX    Relay to Chain   Mine Block
+     ↓              ↓              ↓
+  Poll Status   Return Hash    Confirm TX
+```
+
+#### 8.9.2 Key Components
+
+| Component | File | Purpose |
+|-----------|------|---------|
+| Polling | `packages/integration-tests/src/helpers/polling.ts` | Exponential backoff with HARDHAT_POLLING_CONFIG |
+| Contracts | `packages/integration-tests/src/helpers/contracts.ts` | ABI definitions, verification utilities |
+| Tests | `packages/integration-tests/tests/transaction-lifecycle.integration-spec.ts` | 9 test cases |
+
+#### 8.9.3 Test Categories
+
+| Category | Test IDs | Description |
+|----------|----------|-------------|
+| Contract Verification | TC-TXL-001~004 | Deployment and configuration checks |
+| Direct Transaction | TC-TXL-100~101 | Standard TX lifecycle |
+| Gasless Transaction | TC-TXL-200~202 | EIP-712 meta-transaction flow |
+
+#### 8.9.4 Environment Variables
+
+```env
+FORWARDER_ADDRESS=0x5FbDB2315678afecb367f032d93F642f64180aa3
+SAMPLE_TOKEN_ADDRESS=0xe7f1725E7734CE288F8367e1Bb143E90bb3F0512
+SAMPLE_NFT_ADDRESS=0x9fE46736679d2D9a65F0992F2272dE9f3c7fa6e0
+```
+
+#### 8.9.5 Execution
+
+```bash
+# Prerequisites: Docker Compose stack running
+docker compose -f docker/docker-compose.yaml up -d
+
+# Run lifecycle tests only
+pnpm --filter @msq-relayer/integration-tests test:lifecycle
+```
+
+#### 8.9.6 Difference from E2E Tests
+
+| Aspect | E2E Tests (SPEC-E2E-001) | Lifecycle Tests (SPEC-TEST-001) |
+|--------|--------------------------|----------------------------------|
+| Blockchain | Mock | Real (Hardhat) |
+| OZ Relayer | Mock | Real |
+| Transaction | Simulated | Actually mined |
+| Purpose | API validation | Transaction verification |
+
 ---
 
 ## Related Document References
