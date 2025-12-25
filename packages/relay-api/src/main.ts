@@ -6,7 +6,7 @@ import { AppModule } from "./app.module";
  * Validate required environment variables for production deployment
  */
 function validateEnvironmentVariables(): void {
-  const requiredVars = ["NODE_ENV", "PORT", "RELAY_API_KEY"];
+  const requiredVars = ["RELAY_API_KEY"];
   const missingVars = requiredVars.filter((v) => !process.env[v]);
 
   if (missingVars.length > 0) {

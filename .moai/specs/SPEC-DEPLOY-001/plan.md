@@ -1,29 +1,29 @@
-# SPEC-DEPLOY-001 구현 계획
+# SPEC-DEPLOY-001 Implementation Plan
 
-## 개요
+## Overview
 
-이 문서는 SPEC-DEPLOY-001(API 문서화 및 운영 가이드)의 구체적인 구현 계획을 정의합니다.
+This document defines the specific implementation plan for SPEC-DEPLOY-001 (API Documentation and Operations Guide).
 
-**목표:**
-- Swagger/OpenAPI 기반 자동 API 문서 생성
-- 환경별 설정 파일 구성
-- 운영 가이드 작성
+**Goals:**
+- Swagger/OpenAPI-based automatic API document generation
+- Environment-specific configuration file setup
+- Operations guide creation
 
-**구현 순서:**
-1. Swagger/OpenAPI 통합 (우선순위: High) - ✅ 완료
-2. 환경별 설정 파일 (우선순위: Medium) - ✅ 완료
-3. Operations Guide (우선순위: Medium) - ✅ 완료
+**Implementation Order:**
+1. Swagger/OpenAPI Integration (Priority: High) - ✅ Completed
+2. Environment-Specific Configuration Files (Priority: Medium) - ✅ Completed
+3. Operations Guide (Priority: Medium) - ✅ Completed
 
 ---
 
-## Phase 1: Swagger/OpenAPI 통합 (우선순위: High)
+## Phase 1: Swagger/OpenAPI Integration (Priority: High)
 
-### 1.1 SwaggerModule 설정
+### 1.1 SwaggerModule Configuration
 
-**작업:**
-- `packages/relay-api/src/main.ts`에 SwaggerModule 설정 추가
+**Task:**
+- Add SwaggerModule configuration to `packages/relay-api/src/main.ts`
 
-**구현 내용:**
+**Implementation:**
 ```typescript
 import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
 
@@ -58,18 +58,18 @@ async function bootstrap() {
 bootstrap();
 ```
 
-**검증:**
-- 서비스 시작 후 `http://localhost:3000/api/docs` 접근 확인
-- `http://localhost:3000/api/docs-json` 다운로드 및 스키마 검증
+**Verification:**
+- Access `http://localhost:3000/api/docs` after service startup
+- Download and validate schema from `http://localhost:3000/api/docs-json`
 
 ---
 
-### 1.2 컨트롤러 문서화
+### 1.2 Controller Documentation
 
-**작업:**
-- 모든 컨트롤러에 `@ApiOperation`, `@ApiResponse` 데코레이터 추가
+**Task:**
+- Add `@ApiOperation`, `@ApiResponse` decorators to all controllers
 
-**예시: HealthController**
+**Example: HealthController**
 ```typescript
 import { Controller, Get } from '@nestjs/common';
 import { ApiOperation, ApiResponse, ApiTags } from '@nestjs/swagger';
@@ -80,11 +80,11 @@ export class HealthController {
   @Get()
   @ApiOperation({
     summary: 'Health Check',
-    description: '서비스 상태를 확인합니다. 모든 의존 서비스(Redis, Relayers)의 연결 상태를 포함합니다.',
+    description: 'Checks service status. Includes connection status of all dependent services (Redis, Relayers).',
   })
   @ApiResponse({
     status: 200,
-    description: '서비스가 정상적으로 작동 중입니다.',
+    description: 'Service is running normally.',
     schema: {
       example: {
         status: 'ok',
@@ -98,7 +98,7 @@ export class HealthController {
   })
   @ApiResponse({
     status: 503,
-    description: '하나 이상의 의존 서비스가 실패했습니다.',
+    description: 'One or more dependent services have failed.',
   })
   healthCheck() {
     return {
@@ -109,32 +109,32 @@ export class HealthController {
 }
 ```
 
-**문서화 대상 컨트롤러:**
+**Controllers to Document:**
 - HealthController
 - RelayController (Direct TX)
 - GaslessController (Gasless TX)
 - StatusController (TX Status)
-- 기타 모든 컨트롤러
+- All other controllers
 
-**검증:**
-- Swagger UI에서 각 엔드포인트의 문서 확인
-- "Try it out" 기능으로 API 테스트
+**Verification:**
+- Verify documentation for each endpoint in Swagger UI
+- Test API with "Try it out" feature
 
 ---
 
-### 1.3 DTO 문서화
+### 1.3 DTO Documentation
 
-**작업:**
-- 모든 DTO에 `@ApiProperty` 데코레이터 추가
+**Task:**
+- Add `@ApiProperty` decorator to all DTOs
 
-**예시: CreateRelayRequestDto**
+**Example: CreateRelayRequestDto**
 ```typescript
 import { ApiProperty } from '@nestjs/swagger';
 import { IsString, IsNotEmpty, IsNumber } from 'class-validator';
 
 export class CreateRelayRequestDto {
   @ApiProperty({
-    description: '메타 트랜잭션 요청자의 지갑 주소',
+    description: 'Wallet address of the meta-transaction requester',
     example: '0x742d35Cc6634C0532925a3b844Bc9e7595f0bEb1',
   })
   @IsString()
@@ -142,7 +142,7 @@ export class CreateRelayRequestDto {
   from: string;
 
   @ApiProperty({
-    description: '트랜잭션 수신자 주소',
+    description: 'Transaction recipient address',
     example: '0x8626f6940E2eb28930eFb4CeF49B2d1F2C9C1199',
   })
   @IsString()
@@ -150,7 +150,7 @@ export class CreateRelayRequestDto {
   to: string;
 
   @ApiProperty({
-    description: '트랜잭션 데이터 (hex 인코딩)',
+    description: 'Transaction data (hex encoded)',
     example: '0xa9059cbb000000000000000000000000...',
   })
   @IsString()
@@ -166,25 +166,25 @@ export class CreateRelayRequestDto {
 }
 ```
 
-**문서화 대상 DTO:**
+**DTOs to Document:**
 - CreateRelayRequestDto
 - CreateGaslessRequestDto
 - RelayResponseDto
 - TxStatusResponseDto
-- 기타 모든 요청/응답 DTO
+- All other request/response DTOs
 
-**검증:**
-- Swagger UI에서 각 DTO의 스키마 확인
-- 예제 값이 올바르게 표시되는지 확인
+**Verification:**
+- Verify schema for each DTO in Swagger UI
+- Confirm example values display correctly
 
 ---
 
-### 1.4 API Key 인증 문서화
+### 1.4 API Key Authentication Documentation
 
-**작업:**
-- Swagger UI에서 API Key 입력 UI 활성화
+**Task:**
+- Enable API Key input UI in Swagger UI
 
-**구현 내용:**
+**Implementation:**
 ```typescript
 // main.ts
 const config = new DocumentBuilder()
@@ -192,7 +192,7 @@ const config = new DocumentBuilder()
   .build();
 ```
 
-**컨트롤러에 보안 적용:**
+**Apply Security to Controllers:**
 ```typescript
 import { ApiBearerAuth, ApiSecurity } from '@nestjs/swagger';
 
@@ -203,23 +203,23 @@ export class RelayController {
 }
 ```
 
-**검증:**
-- Swagger UI 상단에 "Authorize" 버튼 확인
-- API Key 입력 후 인증된 요청 테스트
+**Verification:**
+- Verify "Authorize" button at top of Swagger UI
+- Test authenticated requests after entering API Key
 
 ---
 
-## Phase 2: 환경별 설정 파일 (우선순위: Medium)
+## Phase 2: Environment-Specific Configuration Files (Priority: Medium)
 
-### 2.1 환경 파일 생성
+### 2.1 Environment File Creation
 
-**파일 목록:**
+**File List:**
 - `.env.development`
 - `.env.staging`
 - `.env.production`
 - `.env.example`
 
-**`.env.development` (로컬 개발):**
+**`.env.development` (Local Development):**
 ```env
 NODE_ENV=development
 PORT=3000
@@ -229,7 +229,7 @@ REDIS_PORT=6379
 RPC_URL=http://localhost:8545
 ```
 
-**`.env.staging` (스테이징 환경):**
+**`.env.staging` (Staging Environment):**
 ```env
 NODE_ENV=staging
 PORT=3000
@@ -239,7 +239,7 @@ REDIS_PORT=6379
 RPC_URL=https://rpc-amoy.polygon.technology
 ```
 
-**`.env.production` (프로덕션 환경):**
+**`.env.production` (Production Environment):**
 ```env
 NODE_ENV=production
 PORT=3000
@@ -249,7 +249,7 @@ REDIS_PORT=6379
 RPC_URL=https://polygon-rpc.com
 ```
 
-**`.env.example` (템플릿, Git 포함):**
+**`.env.example` (Template, included in Git):**
 ```env
 NODE_ENV=development
 PORT=3000
@@ -259,7 +259,7 @@ REDIS_PORT=6379
 RPC_URL=http://localhost:8545
 ```
 
-**`.gitignore` 업데이트:**
+**`.gitignore` Update:**
 ```gitignore
 # Environment files (exclude production secrets)
 .env.development
@@ -270,50 +270,50 @@ RPC_URL=http://localhost:8545
 !.env.example
 ```
 
-**검증:**
-- `.env.example`만 Git에 포함되는지 확인
-- 각 환경 파일로 서비스 시작 테스트
+**Verification:**
+- Confirm only `.env.example` is included in Git
+- Test service startup with each environment file
 
 ---
 
-## Phase 3: Operations Guide (우선순위: Medium)
+## Phase 3: Operations Guide (Priority: Medium)
 
-### 3.1 docs/operations.md 작성
+### 3.1 Create docs/operations.md
 
-**파일 위치:**
+**File Location:**
 - `docs/operations.md`
 
-**문서 구조:**
+**Document Structure:**
 
-#### 1. 서비스 시작/중지 절차
+#### 1. Service Start/Stop Procedures
 
-**서비스 시작:**
+**Start Service:**
 ```bash
-# 개발 환경 시작
+# Start development environment
 cd packages/relay-api
 pnpm run start:dev
 
-# 또는 Docker 개발 환경
+# Or Docker development environment
 docker compose -f docker/docker-compose.yaml up -d
 ```
 
-**서비스 중지:**
+**Stop Service:**
 ```bash
-# Docker 개발 환경 중지
+# Stop Docker development environment
 docker compose -f docker/docker-compose.yaml down
 ```
 
-**서비스 상태 확인:**
+**Check Service Status:**
 ```bash
 # Health Check
 curl http://localhost:3000/api/v1/health
 
-# 또는
+# Or
 curl http://localhost:3001/api/v1/health
 curl http://localhost:3002/api/v1/health
 ```
 
-#### 2. API 문서 접근 방법
+#### 2. API Documentation Access
 
 **Swagger UI:**
 - relay-api-1: http://localhost:3001/api/docs
@@ -323,24 +323,24 @@ curl http://localhost:3002/api/v1/health
 - relay-api-1: http://localhost:3001/api/docs-json
 - relay-api-2: http://localhost:3002/api/docs-json
 
-**API Key 인증:**
-1. Swagger UI에서 "Authorize" 버튼 클릭
-2. `x-api-key` 값 입력
-3. "Authorize" 클릭하여 인증 활성화
+**API Key Authentication:**
+1. Click "Authorize" button in Swagger UI
+2. Enter `x-api-key` value
+3. Click "Authorize" to enable authentication
 
-#### 3. Client SDK 생성 가이드
+#### 3. Client SDK Generation Guide
 
-**OpenAPI JSON 추출:**
+**Extract OpenAPI JSON:**
 ```bash
 make api-docs
 ```
 
-**TypeScript Client SDK 생성:**
+**Generate TypeScript Client SDK:**
 ```bash
 make generate-client
 ```
 
-**생성된 SDK 사용:**
+**Using Generated SDK:**
 ```typescript
 import { DefaultApi } from './generated/client';
 
@@ -353,95 +353,95 @@ const response = await api.healthCheck();
 console.log(response.data);
 ```
 
-#### 4. 모니터링 및 트러블슈팅
+#### 4. Monitoring and Troubleshooting
 
-**로그 확인:**
+**Check Logs:**
 ```bash
-# relay-api-1 로그
+# relay-api-1 logs
 docker logs msq-relay-api-1
 
-# relay-api-2 로그
+# relay-api-2 logs
 docker logs msq-relay-api-2
 
-# 실시간 로그 추적
+# Real-time log tracking
 docker logs -f msq-relay-api-1
 ```
 
-**일반적인 트러블슈팅 시나리오:**
+**Common Troubleshooting Scenarios:**
 
-**시나리오 1: Health Check 실패**
-- 증상: Health Check 엔드포인트가 503 에러 반환
-- 원인: Redis 연결 실패 또는 Relayer 연결 실패
-- 해결:
+**Scenario 1: Health Check Failure**
+- Symptom: Health Check endpoint returns 503 error
+- Cause: Redis connection failure or Relayer connection failure
+- Solution:
   ```bash
-  # Redis 상태 확인
+  # Check Redis status
   docker logs msq-redis-prod
 
-  # Relayer 상태 확인
+  # Check Relayer status
   docker logs msq-oz-relayer-1-prod
   ```
 
-**시나리오 2: 환경 변수 누락**
-- 증상: 서비스 시작 시 에러 로그 출력
-- 원인: 필수 환경 변수 미설정
-- 해결:
+**Scenario 2: Missing Environment Variables**
+- Symptom: Error log output at service startup
+- Cause: Required environment variable not set
+- Solution:
   ```bash
-  # .env.production 파일 확인
+  # Check .env.production file
   cat .env.production
 
-  # 누락된 환경 변수 추가
+  # Add missing environment variable
   ```
 
-**시나리오 3: 포트 충돌**
-- 증상: `bind: address already in use` 에러
-- 원인: 3001 또는 3002 포트가 이미 사용 중
-- 해결:
+**Scenario 3: Port Conflict**
+- Symptom: `bind: address already in use` error
+- Cause: Port 3001 or 3002 already in use
+- Solution:
   ```bash
-  # 포트 사용 중인 프로세스 확인
+  # Check process using port
   lsof -i :3001
   lsof -i :3002
 
-  # 또는 docker-compose.prod.yml에서 포트 변경
+  # Or change port in docker-compose.prod.yml
   ```
 
-**검증:**
-- `docs/operations.md` 파일 생성 확인
-- 신규 인력이 문서만 보고 서비스 운영 가능한지 검토
+**Verification:**
+- Confirm `docs/operations.md` file creation
+- Review if new team members can operate service using only the documentation
 
 ---
 
-## 구현 우선순위 요약
+## Implementation Priority Summary
 
-| Phase | 우선순위 | 상태 |
-|-------|---------|------|
-| Phase 1: Swagger/OpenAPI 통합 | High | ✅ 완료 |
-| Phase 2: 환경별 설정 파일 | Medium | ✅ 완료 |
-| Phase 3: Operations Guide | Medium | ✅ 완료 |
-
----
-
-## 리스크 및 대응 방안
-
-### 리스크 1: Swagger UI 접근 제한 설정 누락
-- **영향:** 외부에서 API 문서 노출
-- **대응:** Swagger UI는 내부 네트워크에서만 접근 가능하도록 설정 또는 API Key 인증 추가
-
-### 리스크 2: 환경 변수 파일 Git 커밋
-- **영향:** 프로덕션 API Key 유출
-- **대응:** `.gitignore`에 명시적으로 추가, Pre-commit Hook 설정 (선택 사항)
+| Phase | Priority | Status |
+|-------|---------|--------|
+| Phase 1: Swagger/OpenAPI Integration | High | ✅ Completed |
+| Phase 2: Environment-Specific Configuration Files | Medium | ✅ Completed |
+| Phase 3: Operations Guide | Medium | ✅ Completed |
 
 ---
 
-## 구현 완료
+## Risks and Mitigation
 
-모든 Phase가 완료되었습니다:
+### Risk 1: Missing Swagger UI Access Restriction
+- **Impact:** API documentation exposed externally
+- **Mitigation:** Configure Swagger UI to be accessible only from internal network or add API Key authentication
 
-1. ✅ **Phase 1**: Swagger/OpenAPI 통합 완료
-2. ✅ **Phase 2**: 환경별 설정 파일 생성 완료
-3. ✅ **Phase 3**: 운영 가이드 작성 완료
+### Risk 2: Environment Variable File Git Commit
+- **Impact:** Production API Key leak
+- **Mitigation:** Explicitly add to `.gitignore`, set up Pre-commit Hook (optional)
 
 ---
 
-**마지막 업데이트:** 2024-12-25
-**작성자:** @user
-**SPEC 버전:** 2.0.0
+## Implementation Complete
+
+All Phases have been completed:
+
+1. ✅ **Phase 1**: Swagger/OpenAPI integration completed
+2. ✅ **Phase 2**: Environment-specific configuration files created
+3. ✅ **Phase 3**: Operations guide created
+
+---
+
+**Last Updated:** 2024-12-25
+**Author:** @user
+**SPEC Version:** 2.0.0

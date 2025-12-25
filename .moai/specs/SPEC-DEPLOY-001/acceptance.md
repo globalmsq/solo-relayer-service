@@ -1,315 +1,315 @@
-# SPEC-DEPLOY-001 인수 기준 (Acceptance Criteria)
+# SPEC-DEPLOY-001 Acceptance Criteria
 
-## 개요
+## Overview
 
-이 문서는 SPEC-DEPLOY-001(API 문서화 및 운영 가이드)의 완료 여부를 검증하기 위한 인수 기준을 정의합니다.
+This document defines the acceptance criteria for verifying completion of SPEC-DEPLOY-001 (API Documentation and Operations Guide).
 
-**검증 방법:** Given-When-Then 형식의 시나리오 기반 테스트
+**Verification Method:** Scenario-based testing in Given-When-Then format
 
-**검증 환경:**
-- 로컬 개발 환경 (Docker Desktop)
-- 프로덕션 유사 환경 (docker-compose.prod.yml)
+**Verification Environment:**
+- Local development environment (Docker Desktop)
+- Production-like environment (docker-compose.prod.yml)
 
 ---
 
-## 시나리오 1: Swagger UI 접근 및 API 문서 검증
+## Scenario 1: Swagger UI Access and API Documentation Verification
 
-### Given (사전 조건)
-- relay-api 서비스가 정상적으로 실행 중
-- 포트 3000(개발) 또는 3001/3002(프로덕션)이 열려 있음
+### Given (Preconditions)
+- relay-api service is running normally
+- Port 3000 (development) or 3001/3002 (production) is open
 
-### When (실행 동작)
-1. 웹 브라우저에서 `http://localhost:3000/api/docs` 접근 (개발 환경)
-2. 또는 `http://localhost:3001/api/docs` 접근 (프로덕션 환경)
+### When (Actions)
+1. Access `http://localhost:3000/api/docs` in web browser (development environment)
+2. Or access `http://localhost:3001/api/docs` (production environment)
 
-### Then (예상 결과)
-1. **Swagger UI가 정상적으로 표시됨**
-   - 페이지 제목: "MSQ Relayer Service API"
-   - 버전 정보: "1.0.0"
+### Then (Expected Results)
+1. **Swagger UI displays normally**
+   - Page title: "MSQ Relayer Service API"
+   - Version info: "1.0.0"
 
-2. **모든 API 엔드포인트가 문서화되어 있음**
+2. **All API endpoints are documented**
    - `/api/v1/health` (Health Check)
    - `/api/v1/relay` (Direct TX)
    - `/api/v1/gasless` (Gasless TX)
    - `/api/v1/status/{txId}` (TX Status)
-   - 기타 모든 구현된 엔드포인트
+   - All other implemented endpoints
 
-3. **각 엔드포인트에 다음 정보가 포함됨**
-   - Summary (요약)
-   - Description (상세 설명)
-   - Request Body Schema (요청 스키마)
-   - Response Schema (응답 스키마)
-   - Example Values (예제 값)
+3. **Each endpoint contains the following information**
+   - Summary
+   - Description (detailed explanation)
+   - Request Body Schema
+   - Response Schema
+   - Example Values
 
-4. **API Key 인증 UI가 활성화됨**
-   - Swagger UI 상단에 "Authorize" 버튼 표시
-   - 클릭 시 `x-api-key` 입력 필드 표시
+4. **API Key authentication UI is enabled**
+   - "Authorize" button displayed at top of Swagger UI
+   - `x-api-key` input field displayed when clicked
 
-### 검증 명령
+### Verification Commands
 ```bash
-# Swagger UI 접근 가능 여부 확인
+# Check Swagger UI accessibility
 curl -I http://localhost:3000/api/docs
 
-# 예상 결과: HTTP/1.1 200 OK
+# Expected result: HTTP/1.1 200 OK
 ```
 
 ---
 
-## 시나리오 2: OpenAPI JSON 다운로드 및 스키마 검증
+## Scenario 2: OpenAPI JSON Download and Schema Validation
 
-### Given (사전 조건)
-- relay-api 서비스가 정상적으로 실행 중
-- Swagger UI가 정상적으로 작동 중
+### Given (Preconditions)
+- relay-api service is running normally
+- Swagger UI is working correctly
 
-### When (실행 동작)
-1. `http://localhost:3000/api/docs-json` 접근
-2. 또는 curl로 직접 다운로드: `curl http://localhost:3000/api/docs-json > openapi.json`
+### When (Actions)
+1. Access `http://localhost:3000/api/docs-json`
+2. Or download directly with curl: `curl http://localhost:3000/api/docs-json > openapi.json`
 
-### Then (예상 결과)
-1. **OpenAPI JSON이 다운로드됨**
+### Then (Expected Results)
+1. **OpenAPI JSON is downloaded**
    - Content-Type: `application/json`
-   - 파일 크기: > 0 bytes
+   - File size: > 0 bytes
 
-2. **유효한 OpenAPI 3.0 스키마**
-   - `openapi: "3.0.0"` 필드 존재
-   - `info.title: "MSQ Relayer Service API"` 존재
-   - `info.version: "1.0.0"` 존재
-   - `paths` 객체에 모든 엔드포인트 정의됨
+2. **Valid OpenAPI 3.0 schema**
+   - `openapi: "3.0.0"` field exists
+   - `info.title: "MSQ Relayer Service API"` exists
+   - `info.version: "1.0.0"` exists
+   - All endpoints defined in `paths` object
 
-3. **스키마 검증 통과**
-   - OpenAPI 3.0 스펙 준수
-   - 필수 필드 모두 존재
-   - 스키마 구조 유효성 검증 통과
+3. **Schema validation passes**
+   - OpenAPI 3.0 spec compliant
+   - All required fields present
+   - Schema structure validity verified
 
-### 검증 명령
+### Verification Commands
 ```bash
-# OpenAPI JSON 다운로드
+# Download OpenAPI JSON
 curl -o openapi.json http://localhost:3000/api/docs-json
 
-# JSON 파일 유효성 검증
+# Validate JSON file
 jq . openapi.json > /dev/null && echo "Valid JSON" || echo "Invalid JSON"
 
-# OpenAPI 버전 확인
+# Check OpenAPI version
 jq '.openapi' openapi.json
-# 예상 결과: "3.0.0"
+# Expected result: "3.0.0"
 
-# API 제목 확인
+# Check API title
 jq '.info.title' openapi.json
-# 예상 결과: "MSQ Relayer Service API"
+# Expected result: "MSQ Relayer Service API"
 
-# 엔드포인트 목록 확인
+# Check endpoint list
 jq '.paths | keys' openapi.json
-# 예상 결과: ["/api/v1/health", "/api/v1/relay", ...]
+# Expected result: ["/api/v1/health", "/api/v1/relay", ...]
 ```
 
 ---
 
-## 시나리오 3: 환경별 설정 파일 검증
+## Scenario 3: Environment-Specific Configuration File Verification
 
-### Given (사전 조건)
-- 환경별 설정 파일이 생성됨
+### Given (Preconditions)
+- Environment-specific configuration files are created
   - `.env.development`
   - `.env.staging`
   - `.env.production`
   - `.env.example`
 
-### When (실행 동작)
-1. `.env.example` 파일을 `.env.production`으로 복사
-2. 필수 환경 변수 값 설정
-3. 환경 변수 설정이 올바르게 적용되었는지 확인
+### When (Actions)
+1. Copy `.env.example` file to `.env.production`
+2. Set required environment variable values
+3. Verify environment variable settings are correctly applied
 
-### Then (예상 결과)
-1. **`.env.example`이 Git에 포함됨**
-   - `git ls-files .env.example` → 파일 존재
+### Then (Expected Results)
+1. **`.env.example` is included in Git**
+   - `git ls-files .env.example` → File exists
 
-2. **민감 정보 파일이 Git에서 제외됨**
-   - `git ls-files .env.production` → 파일 없음
-   - `.gitignore`에 `.env.production` 추가됨
+2. **Sensitive information files are excluded from Git**
+   - `git ls-files .env.production` → No file
+   - `.env.production` added to `.gitignore`
 
-3. **환경 변수가 올바르게 로드됨**
+3. **Environment variables are correctly loaded**
    - `NODE_ENV=production`
-   - `RELAY_API_KEY`가 설정됨
-   - `RPC_URL`이 설정됨
+   - `RELAY_API_KEY` is set
+   - `RPC_URL` is set
 
-4. **필수 환경 변수 누락 시 서비스 시작 실패**
-   - `RELAY_API_KEY` 누락 시 에러 로그 출력
-   - 서비스가 시작되지 않음
+4. **Service startup fails on missing required environment variables**
+   - Error log output when `RELAY_API_KEY` is missing
+   - Service does not start
 
-### 검증 명령
+### Verification Commands
 ```bash
-# .env.example이 Git에 포함되는지 확인
+# Check if .env.example is included in Git
 git ls-files .env.example
-# 예상 결과: .env.example
+# Expected result: .env.example
 
-# .env.production이 Git에서 제외되는지 확인
+# Check if .env.production is excluded from Git
 git ls-files .env.production
-# 예상 결과: (출력 없음)
+# Expected result: (no output)
 
-# .gitignore 확인
+# Check .gitignore
 grep ".env.production" .gitignore
-# 예상 결과: .env.production
+# Expected result: .env.production
 
-# 환경 변수 로드 확인 (서비스 실행 중)
+# Check environment variable loading (while service is running)
 docker exec msq-relay-api-1 printenv NODE_ENV
-# 예상 결과: production
+# Expected result: production
 
 docker exec msq-relay-api-1 printenv RELAY_API_KEY
-# 예상 결과: (설정한 API Key 값)
+# Expected result: (set API Key value)
 
-# 필수 환경 변수 누락 시 시작 실패 확인 (테스트)
-# 1. .env.production에서 RELAY_API_KEY 제거
-# 2. make prod-up 실행
-# 3. 에러 로그 확인
-# 예상 결과: "RELAY_API_KEY is required" 에러 출력
+# Verify startup failure on missing required environment variable (test)
+# 1. Remove RELAY_API_KEY from .env.production
+# 2. Run make prod-up
+# 3. Check error logs
+# Expected result: "RELAY_API_KEY is required" error output
 ```
 
 ---
 
-## 시나리오 4: Operations Guide 문서 접근성 검증
+## Scenario 4: Operations Guide Document Accessibility Verification
 
-### Given (사전 조건)
-- `docs/operations.md` 파일이 생성됨
-- 신규 인력이 문서를 참조하여 서비스 운영을 수행한다고 가정
+### Given (Preconditions)
+- `docs/operations.md` file is created
+- Assume new team members will reference the document for service operations
 
-### When (실행 동작)
-1. `docs/operations.md` 파일 열기
-2. 문서에 명시된 절차대로 서비스 시작
-3. 문서에 명시된 절차대로 API 문서 접근
-4. 문서에 명시된 절차대로 트러블슈팅 수행
+### When (Actions)
+1. Open `docs/operations.md` file
+2. Start service following documented procedures
+3. Access API documentation following documented procedures
+4. Perform troubleshooting following documented procedures
 
-### Then (예상 결과)
-1. **서비스 시작/중지 절차가 명확히 기술됨**
-   - `make prod-up` 명령어 명시
-   - 또는 `docker-compose -f docker-compose.prod.yml up -d` 명시
-   - 예상 결과 및 확인 방법 기술
+### Then (Expected Results)
+1. **Service start/stop procedures are clearly documented**
+   - `make prod-up` command specified
+   - Or `docker-compose -f docker-compose.prod.yml up -d` specified
+   - Expected results and verification methods documented
 
-2. **API 문서 접근 방법이 명확히 기술됨**
+2. **API documentation access method is clearly documented**
    - Swagger UI URL: `http://localhost:3001/api/docs`
    - OpenAPI JSON URL: `http://localhost:3001/api/docs-json`
-   - API Key 인증 방법 기술
+   - API Key authentication method documented
 
-3. **Client SDK 생성 가이드가 포함됨**
-   - `make api-docs` 명령어 명시
-   - `make generate-client` 명령어 명시 (선택 사항)
-   - 생성된 SDK 사용 예제 코드 포함
+3. **Client SDK generation guide is included**
+   - `make api-docs` command specified
+   - `make generate-client` command specified (optional)
+   - Generated SDK usage example code included
 
-4. **트러블슈팅 시나리오가 포함됨**
-   - 시나리오 1: Health Check 실패
-   - 시나리오 2: 환경 변수 누락
-   - 시나리오 3: 포트 충돌
-   - 각 시나리오별 증상, 원인, 해결 방법 기술
+4. **Troubleshooting scenarios are included**
+   - Scenario 1: Health Check failure
+   - Scenario 2: Missing environment variables
+   - Scenario 3: Port conflict
+   - Each scenario includes symptom, cause, and solution
 
-### 검증 명령
+### Verification Commands
 ```bash
-# operations.md 파일 존재 확인
+# Verify operations.md file exists
 ls -lh docs/operations.md
-# 예상 결과: 파일 존재
+# Expected result: File exists
 
-# 문서 내용 확인
-cat docs/operations.md | grep "서비스 시작"
-# 예상 결과: 서비스 시작 절차 섹션 존재
+# Check document content
+cat docs/operations.md | grep "Service Start"
+# Expected result: Service start procedure section exists
 
-cat docs/operations.md | grep "API 문서 접근"
-# 예상 결과: API 문서 접근 방법 섹션 존재
+cat docs/operations.md | grep "API Documentation"
+# Expected result: API documentation access method section exists
 
 cat docs/operations.md | grep "Client SDK"
-# 예상 결과: Client SDK 생성 가이드 섹션 존재
+# Expected result: Client SDK generation guide section exists
 
-cat docs/operations.md | grep "트러블슈팅"
-# 예상 결과: 트러블슈팅 시나리오 섹션 존재
+cat docs/operations.md | grep "Troubleshooting"
+# Expected result: Troubleshooting scenario section exists
 
-# 신규 인력 온보딩 시뮬레이션 (수동 검증)
-# 1. operations.md 문서만 보고 서비스 시작 가능한지 확인
-# 2. operations.md 문서만 보고 API 문서 접근 가능한지 확인
-# 3. operations.md 문서만 보고 트러블슈팅 수행 가능한지 확인
+# New team member onboarding simulation (manual verification)
+# 1. Can start service using only operations.md document
+# 2. Can access API documentation using only operations.md document
+# 3. Can perform troubleshooting using only operations.md document
 ```
 
 ---
 
-## 시나리오 5: TypeScript Client SDK 생성 검증 (선택 사항)
+## Scenario 5: TypeScript Client SDK Generation Verification (Optional)
 
-### Given (사전 조건)
-- `openapi.json` 파일이 생성됨 (`make api-docs` 실행 완료)
-- OpenAPI Generator CLI 설치 가능
+### Given (Preconditions)
+- `openapi.json` file is generated (`make api-docs` execution completed)
+- OpenAPI Generator CLI installable
 
-### When (실행 동작)
-1. `make generate-client` 실행
+### When (Actions)
+1. Execute `make generate-client`
 
-### Then (예상 결과)
-1. **TypeScript Client SDK가 생성됨**
-   - 출력 디렉토리: `./generated/client`
-   - 생성된 파일: `api.ts`, `base.ts`, `configuration.ts`, etc.
+### Then (Expected Results)
+1. **TypeScript Client SDK is generated**
+   - Output directory: `./generated/client`
+   - Generated files: `api.ts`, `base.ts`, `configuration.ts`, etc.
 
-2. **생성된 SDK가 사용 가능함**
-   - TypeScript 컴파일 통과
-   - API 호출 코드 작성 가능
+2. **Generated SDK is usable**
+   - TypeScript compilation passes
+   - API call code can be written
 
-### 검증 명령
+### Verification Commands
 ```bash
-# Client SDK 생성
+# Generate Client SDK
 make generate-client
-# 예상 출력:
+# Expected output:
 # Generating TypeScript Client SDK...
 # Client SDK generated in ./generated/client
 
-# 생성된 파일 확인
+# Check generated files
 ls -lh ./generated/client
-# 예상 결과: api.ts, base.ts, configuration.ts 등 파일 존재
+# Expected result: api.ts, base.ts, configuration.ts etc. files exist
 
-# TypeScript 컴파일 확인 (선택 사항)
+# TypeScript compilation check (optional)
 cd ./generated/client
 npm install
 npx tsc --noEmit
-# 예상 결과: 컴파일 에러 없음
+# Expected result: No compilation errors
 ```
 
 ---
 
-## 전체 인수 체크리스트
+## Complete Acceptance Checklist
 
-### Swagger/OpenAPI 통합
-- [x] Swagger UI 접근 가능 (`http://localhost:3000/api/docs`)
-- [x] 모든 API 엔드포인트 문서화 완료
-- [x] OpenAPI JSON 다운로드 가능 (`http://localhost:3000/api/docs-json`)
-- [x] OpenAPI 3.0 스키마 검증 통과
-- [x] API Key 인증 UI 활성화
+### Swagger/OpenAPI Integration
+- [x] Swagger UI accessible (`http://localhost:3000/api/docs`)
+- [x] All API endpoints documented
+- [x] OpenAPI JSON downloadable (`http://localhost:3000/api/docs-json`)
+- [x] OpenAPI 3.0 schema validation passes
+- [x] API Key authentication UI enabled
 
-### 환경별 설정 파일
-- [x] .env.development 생성
-- [x] .env.staging 생성
-- [x] .env.production 생성
-- [x] .env.example 생성 및 Git 포함
-- [x] .gitignore에 민감 정보 파일 추가
+### Environment-Specific Configuration Files
+- [x] .env.development created
+- [x] .env.staging created
+- [x] .env.production created
+- [x] .env.example created and included in Git
+- [x] Sensitive information files added to .gitignore
 
 ### Operations Guide
-- [x] docs/operations.md 생성
-- [x] 서비스 시작/중지 절차 기술
-- [x] API 문서 접근 방법 기술
-- [x] Client SDK 생성 가이드 기술
-- [x] 트러블슈팅 시나리오 기술
+- [x] docs/operations.md created
+- [x] Service start/stop procedures documented
+- [x] API documentation access method documented
+- [x] Client SDK generation guide documented
+- [x] Troubleshooting scenarios documented
 
-### 선택 사항
-- [ ] TypeScript Client SDK 생성 성공 (OpenAPI Generator 사용)
-- [ ] Swagger UI Try it out 기능 활성화
-- [ ] 트러블슈팅 시나리오 추가 (3개 이상)
-
----
-
-## 인수 기준 통과 조건
-
-**필수 조건 (4개 시나리오 모두 통과):**
-1. ✅ 시나리오 1: Swagger UI 접근 및 API 문서 검증
-2. ✅ 시나리오 2: OpenAPI JSON 다운로드 및 스키마 검증
-3. ✅ 시나리오 3: 환경별 설정 파일 검증
-4. ✅ 시나리오 4: Operations Guide 문서 접근성 검증
-
-**권장 조건 (선택 사항):**
-5. ⭕ 시나리오 5: TypeScript Client SDK 생성 검증
-
-**최종 인수:** 필수 조건 4개 모두 통과 시 SPEC-DEPLOY-001 완료로 간주
+### Optional
+- [ ] TypeScript Client SDK generation success (using OpenAPI Generator)
+- [ ] Swagger UI Try it out feature enabled
+- [ ] Additional troubleshooting scenarios (3 or more)
 
 ---
 
-**마지막 업데이트:** 2024-12-25
-**작성자:** @user
-**SPEC 버전:** 2.0.0
+## Acceptance Pass Criteria
+
+**Required Conditions (All 4 scenarios must pass):**
+1. ✅ Scenario 1: Swagger UI Access and API Documentation Verification
+2. ✅ Scenario 2: OpenAPI JSON Download and Schema Validation
+3. ✅ Scenario 3: Environment-Specific Configuration File Verification
+4. ✅ Scenario 4: Operations Guide Document Accessibility Verification
+
+**Recommended Conditions (Optional):**
+5. ⭕ Scenario 5: TypeScript Client SDK Generation Verification
+
+**Final Acceptance:** SPEC-DEPLOY-001 is considered complete when all 4 required conditions pass
+
+---
+
+**Last Updated:** 2024-12-25
+**Author:** @user
+**SPEC Version:** 2.0.0
