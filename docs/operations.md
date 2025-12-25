@@ -227,7 +227,7 @@ docker inspect msq-relay-api
 
 **Symptom**: Error message on startup:
 ```
-[ERROR] Missing required environment variables: RELAY_API_KEY, NODE_ENV
+[ERROR] Missing required environment variables: RELAY_API_KEY
 ```
 
 **Resolution**:
