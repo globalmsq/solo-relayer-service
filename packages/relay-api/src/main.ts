@@ -15,6 +15,15 @@ function validateEnvironmentVariables(): void {
     );
     process.exit(1);
   }
+
+  // Reject weak placeholder values
+  const weakPlaceholders = ["your-api-key-here", "your-api-key"];
+  if (weakPlaceholders.includes(process.env.RELAY_API_KEY || "")) {
+    console.error(
+      "[ERROR] Insecure RELAY_API_KEY detected. Please generate a secure API key."
+    );
+    process.exit(1);
+  }
 }
 
 async function bootstrap() {

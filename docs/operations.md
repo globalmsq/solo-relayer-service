@@ -29,15 +29,16 @@ pnpm run start:prod
 ```
 
 **Environment variables**:
-Ensure `.env` file exists with required variables:
+Copy `.env.example` to create your local environment file:
 ```bash
-NODE_ENV=development
-PORT=3000
-RELAY_API_KEY=your-api-key
-REDIS_HOST=localhost
-REDIS_PORT=6379
-RPC_URL=your-rpc-url
+cp .env.example .env
+# Or for specific environments:
+# cp .env.example .env.development
 ```
+
+Then edit the file and set secure values for sensitive variables:
+- `RELAY_API_KEY` - Generate a secure random key (never use placeholder values)
+- `KEYSTORE_PASSPHRASE` - Use a strong, unique passphrase
 
 ### Docker Development Environment
 
@@ -236,14 +237,10 @@ docker inspect msq-relay-api
    cat packages/relay-api/.env
    ```
 
-2. Add missing variables:
-   ```
-   NODE_ENV=development
-   PORT=3000
-   RELAY_API_KEY=your-api-key
-   REDIS_HOST=localhost
-   REDIS_PORT=6379
-   RPC_URL=your-rpc-url
+2. Copy `.env.example` and set required values:
+   ```bash
+   cp .env.example .env
+   # Edit .env and set RELAY_API_KEY with a secure value
    ```
 
 3. Restart service
