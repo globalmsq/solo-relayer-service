@@ -287,7 +287,7 @@ See [SPEC-PROXY-001](./docs/SPEC-PROXY-001.md) for detailed architecture.
 
 ---
 
-## Production Deployment (SPEC-DEPLOY-001)
+## API Documentation (SPEC-DEPLOY-001)
 
 ### Swagger UI & OpenAPI Documentation
 
@@ -298,52 +298,21 @@ All API endpoints are documented with Swagger/OpenAPI 3.0:
 http://localhost:3000/api/docs
 ```
 
-**Production Environment**:
-```
-http://localhost:3001/api/docs  (Replica 1)
-http://localhost:3002/api/docs  (Replica 2)
-```
-
 **OpenAPI JSON** (for Client SDK generation):
 ```bash
 # Extract OpenAPI JSON
-make api-docs
+curl http://localhost:3000/api/docs-json > openapi.json
 
 # Generate TypeScript Client SDK (optional)
-make generate-client
-```
-
-### Production Deployment
-
-**Start Production Environment** (2 replicas + OZ Relayers + Redis):
-```bash
-# Using Makefile (recommended)
-make prod-up
-
-# Or using Docker Compose
-cd docker && docker-compose -f docker-compose.prod.yml up -d
-```
-
-**Check Service Health**:
-```bash
-make health-check
-
-# Or manually
-curl http://localhost:3001/api/v1/health | jq
-curl http://localhost:3002/api/v1/health | jq
-```
-
-**Stop Production Environment**:
-```bash
-make prod-down
-
-# Or using Docker Compose
-cd docker && docker-compose -f docker-compose.prod.yml down
+npx @openapitools/openapi-generator-cli generate \
+  -i openapi.json \
+  -g typescript-axios \
+  -o ./generated/client
 ```
 
 ### Environment Configuration
 
-Production environment uses environment-specific configuration files:
+Environment-specific configuration files:
 
 ```
 .env.development  # Local development
@@ -361,19 +330,6 @@ Production environment uses environment-specific configuration files:
 - `RPC_URL` - Blockchain RPC URL
 - `KEYSTORE_PASSPHRASE` - Relayer keystore passphrase
 
-### Makefile Commands
-
-Available deployment commands:
-
-```bash
-make prod-up              # Start production environment
-make prod-down            # Stop production environment
-make api-docs             # Extract OpenAPI JSON
-make health-check         # Check service health
-make generate-client      # Generate TypeScript Client SDK
-make help                 # Show all available commands
-```
-
 ### Operations Guide
 
 Complete operations guide is available at:
@@ -385,8 +341,6 @@ Topics covered:
 - API documentation access
 - Client SDK generation
 - Monitoring & troubleshooting
-- Emergency procedures
-- New team member onboarding
 
 ---
 
@@ -403,7 +357,6 @@ Topics covered:
 - ✅ Health check endpoint functional
 - ✅ API Key authentication enforced
 - ✅ Swagger/OpenAPI documentation complete
-- ✅ Production deployment configuration ready
 
 ---
 
