@@ -55,13 +55,14 @@ services:
       target: relay-api
     command: ["pnpm", "run", "start"]
     ports:
-      - "3000:3000"
+      - "8080:8080"
     depends_on:
       redis:
         condition: service_healthy
       oz-relayer-1:
         condition: service_healthy
     environment:
+      PORT: 8080
       NODE_ENV: staging
       REDIS_URL: redis://redis:6379
       RPC_URL: https://rpc-amoy.polygon.technology
@@ -75,6 +76,12 @@ services:
     networks:
       - msq-relayer-network
     restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/api/v1/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 30s
 
   # === OZ Relayer (Single Instance - Phase 1 MVP) ===
   # Phase 2+: Queue system (BullMQ/SQS) with multiple instances
@@ -108,7 +115,7 @@ services:
       RPC_URL: https://rpc-amoy.polygon.technology
       CHAIN_ID: 80002
       FORWARDER_ADDRESS: "0xF034a404241707F347A952Cd4095f9035AF877Bf"
-      RELAY_API_URL: http://relay-api:3000
+      RELAY_API_URL: http://relay-api:8080
       RELAY_API_KEY: ${RELAY_API_KEY:-amoy-dev-api-key}
       OZ_RELAYER_URL: http://oz-relayer-1:8080
       OZ_RELAYER_API_KEY: ${OZ_RELAYER_API_KEY:-amoy-oz-relayer-shared-api-key-32ch}

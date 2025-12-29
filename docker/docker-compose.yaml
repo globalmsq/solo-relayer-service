@@ -1,3 +1,5 @@
+name: relayer
+
 # === YAML Anchors Definition (Top-level, outside services block) ===
 # Note: Each Relayer needs unique Private Key to prevent Nonce collision
 # YAML Anchors reuse common configuration to minimize duplication
@@ -7,11 +9,10 @@ x-relayer-common: &relayer-common
   depends_on:
     redis:
       condition: service_healthy
-    hardhat-node:
-      condition: service_healthy
   restart: unless-stopped
   networks:
     - msq-relayer-network
+    - msq-network
   healthcheck:
     test: ["CMD-SHELL", "cat /proc/net/tcp | grep ':1F90' || exit 1"]
     interval: 10s
@@ -24,12 +25,15 @@ x-relayer-env: &relayer-env
   RELAY_API_KEY: ${RELAY_API_KEY:-local-dev-api-key}
   KEYSTORE_PASSPHRASE: ${KEYSTORE_PASSPHRASE:-hardhat-test-passphrase}
   WEBHOOK_SIGNING_KEY: ${WEBHOOK_SIGNING_KEY:-local-dev-webhook-signing-key-32ch}
-  RPC_URL: http://hardhat-node:8545
+  # Uses local hardhat-node (shared with msqpay-monorepo via msq-network)
+  RPC_URL: ${RPC_URL:-http://hardhat-node:8545}
   REDIS_URL: redis://redis:6379
 
 # === Services Block (after anchors definition) ===
 services:
-  # === Local Blockchain (Phase 1 Required) ===
+  # === Local Blockchain (Standalone mode only) ===
+  # Use profile "standalone" to run with local hardhat
+  # Default: uses external hardhat from msqpay-monorepo via shared network
   hardhat-node:
     build:
       context: ..
@@ -49,10 +53,12 @@ services:
       start_period: 10s
     networks:
       - msq-relayer-network
+      - msq-network
     restart: unless-stopped
 
-  # === Contracts Deployment (Init Service) ===
-  # Runs once after hardhat-node is healthy, deploys contracts, then exits
+  # === Contracts Deployment (Standalone mode only) ===
+  # Use profile "standalone" to deploy own contracts
+  # Default: uses contracts deployed by msqpay-monorepo
   contracts-init:
     build:
       context: ..
@@ -97,30 +103,36 @@ services:
       target: relay-api
     command: ["pnpm", "run", "start"]
     ports:
-      - "3000:3000"
+      - "8080:8080"
     depends_on:
-      hardhat-node:
-        condition: service_healthy
       redis:
         condition: service_healthy
-      contracts-init:
-        condition: service_completed_successfully
       oz-relayer-1:
         condition: service_healthy
     environment:
+      PORT: 8080
       NODE_ENV: development
       REDIS_URL: redis://redis:6379
-      RPC_URL: http://hardhat-node:8545
+      # Uses local hardhat-node (shared with msqpay-monorepo via msq-network)
+      RPC_URL: ${RPC_URL:-http://hardhat-node:8545}
       RELAY_API_KEY: ${RELAY_API_KEY:-local-dev-api-key}
       CHAIN_ID: 31337
-      FORWARDER_ADDRESS: "0x5FbDB2315678afecb367f032d93F642f64180aa3"
+      # Forwarder address from msqpay-monorepo (deployed after MockERC20)
+      FORWARDER_ADDRESS: ${FORWARDER_ADDRESS:-0x5FbDB2315678afecb367f032d93F642f64180aa3}
       # Direct connection to single OZ Relayer for consistent relayer ID
       # (Load balancer causes ID mismatch between getRelayerId and sendTransaction)
       OZ_RELAYER_URL: http://oz-relayer-1:8080
       OZ_RELAYER_API_KEY: ${OZ_RELAYER_API_KEY:-oz-relayer-shared-api-key-local-dev}
     networks:
       - msq-relayer-network
+      - msq-network
     restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/api/v1/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 30s
 
   # === OZ Relayer (Single Instance - Phase 1 MVP) ===
   # Phase 2+: Queue system (BullMQ/SQS) with multiple instances
@@ -151,15 +163,18 @@ services:
       oz-relayer-1:
         condition: service_healthy
     environment:
-      RPC_URL: http://hardhat-node:8545
+      # Uses local hardhat-node (shared with msqpay-monorepo via msq-network)
+      RPC_URL: ${RPC_URL:-http://hardhat-node:8545}
       CHAIN_ID: 31337
-      FORWARDER_ADDRESS: "0x5FbDB2315678afecb367f032d93F642f64180aa3"
-      RELAY_API_URL: http://relay-api:3000
+      # Forwarder address from msqpay-monorepo
+      FORWARDER_ADDRESS: ${FORWARDER_ADDRESS:-0x5FbDB2315678afecb367f032d93F642f64180aa3}
+      RELAY_API_URL: http://relay-api:8080
       RELAY_API_KEY: ${RELAY_API_KEY:-local-dev-api-key}
       OZ_RELAYER_URL: http://oz-relayer-1:8080
       OZ_RELAYER_API_KEY: ${OZ_RELAYER_API_KEY:-oz-relayer-shared-api-key-local-dev}
     networks:
       - msq-relayer-network
+      - msq-network
 
   # === Phase 2+: Services (commented, enabled via profiles) ===
   # oz-monitor:
@@ -173,6 +188,8 @@ services:
 networks:
   msq-relayer-network:
     driver: bridge
+  msq-network:
+    external: true
 
 volumes:
   msq-relayer-redis-data:
