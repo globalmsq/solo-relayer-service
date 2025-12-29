@@ -122,14 +122,17 @@ export class SignatureVerifierService {
    * Uses server time (Date.now() / 1000) for comparison
    * Note: Final on-chain validation uses block.timestamp in ERC2771Forwarder contract
    *
-   * @param deadline - Unix timestamp (uint48) when transaction expires
+   * @param deadline - Unix timestamp (uint48) as string when transaction expires
    * @returns true if deadline is in the future (or equal to current time), false if expired
    */
-  validateDeadline(deadline: number): boolean {
+  validateDeadline(deadline: string): boolean {
     // Get current server time in seconds
     const currentTime = Math.floor(Date.now() / 1000);
 
+    // Parse deadline string to number
+    const deadlineNum = parseInt(deadline, 10);
+
     // Accept if deadline >= current time (allows exact match for current timestamp)
-    return currentTime <= deadline;
+    return currentTime <= deadlineNum;
   }
 }

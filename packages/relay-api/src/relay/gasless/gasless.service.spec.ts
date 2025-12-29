@@ -83,7 +83,7 @@ describe("GaslessService", () => {
         value: "0",
         gas: "100000",
         nonce: "0",
-        deadline: Math.floor(Date.now() / 1000) + 3600,
+        deadline: String(Math.floor(Date.now() / 1000) + 3600),
         data: "0xabcdef",
       },
       signature: "0x" + "12".repeat(65),
@@ -109,7 +109,7 @@ describe("GaslessService", () => {
     it("TC-009: Expired deadline should throw BadRequestException", async () => {
       // Arrange
       const request = createValidRequest();
-      request.request.deadline = Math.floor(Date.now() / 1000) - 1; // Expired
+      request.request.deadline = String(Math.floor(Date.now() / 1000) - 1); // Expired
 
       jest
         .spyOn(signatureVerifier, "validateDeadline")
@@ -230,7 +230,7 @@ describe("GaslessService", () => {
           value: "1000000000000000000", // 1 ETH
           gas: "100000",
           nonce: "1",
-          deadline: Math.floor(Date.now() / 1000) + 3600,
+          deadline: String(Math.floor(Date.now() / 1000) + 3600),
           data: "0xabcdef1234",
         },
         signature: "0x" + "ab".repeat(65),
@@ -264,7 +264,7 @@ describe("GaslessService", () => {
         value: "0",
         gas: "100000",
         nonce: "0",
-        deadline: Math.floor(Date.now() / 1000) + 3600,
+        deadline: String(Math.floor(Date.now() / 1000) + 3600),
         data: "0xabcdef",
       };
 
@@ -303,7 +303,7 @@ describe("GaslessService", () => {
         value: "0",
         gas: "100000",
         nonce: "0",
-        deadline: Math.floor(Date.now() / 1000) + 3600,
+        deadline: String(Math.floor(Date.now() / 1000) + 3600),
         data: "0xabcdef",
       };
 

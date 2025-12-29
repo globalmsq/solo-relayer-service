@@ -36,7 +36,7 @@ export interface ForwardRequest {
   value: string;
   gas: string;
   nonce: string;
-  deadline: number;
+  deadline: string;
   data: string;
 }
 
@@ -82,7 +82,7 @@ export function createForwardRequest(
     value: '0',
     gas: '150000', // Higher default gas for Forwarder overhead
     nonce: String(nonce),
-    deadline: Math.floor(Date.now() / 1000) + 3600, // 1 hour from now
+    deadline: String(Math.floor(Date.now() / 1000) + 3600), // 1 hour from now
     data: '0x00', // Empty call data (just transfer ETH or test call)
     ...restOptions,
   };

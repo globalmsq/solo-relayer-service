@@ -41,7 +41,7 @@ describe("SignatureVerifierService", () => {
         value: "0",
         gas: "100000",
         nonce: "0",
-        deadline: Math.floor(Date.now() / 1000) + 3600,
+        deadline: String(Math.floor(Date.now() / 1000) + 3600),
         data: "0xabcdef",
       };
 
@@ -65,7 +65,7 @@ describe("SignatureVerifierService", () => {
         value: "0",
         gas: "100000",
         nonce: "0",
-        deadline: Math.floor(Date.now() / 1000) + 3600,
+        deadline: String(Math.floor(Date.now() / 1000) + 3600),
         data: "0xabcdef",
       };
 
@@ -86,7 +86,7 @@ describe("SignatureVerifierService", () => {
         value: "0",
         gas: "100000",
         nonce: "0",
-        deadline: Math.floor(Date.now() / 1000) + 3600,
+        deadline: String(Math.floor(Date.now() / 1000) + 3600),
         data: "0xabcdef",
       };
 
@@ -108,7 +108,7 @@ describe("SignatureVerifierService", () => {
         value: "0",
         gas: "100000",
         nonce: "0",
-        deadline: Math.floor(Date.now() / 1000) + 3600,
+        deadline: String(Math.floor(Date.now() / 1000) + 3600),
         data: "0xabcdef",
       };
 
@@ -124,7 +124,7 @@ describe("SignatureVerifierService", () => {
   describe("validateDeadline", () => {
     it("TC-005: Future deadline should be valid", () => {
       // Arrange
-      const futureTimestamp = Math.floor(Date.now() / 1000) + 3600; // 1 hour from now
+      const futureTimestamp = String(Math.floor(Date.now() / 1000) + 3600); // 1 hour from now
 
       // Act
       const result = service.validateDeadline(futureTimestamp);
@@ -135,7 +135,7 @@ describe("SignatureVerifierService", () => {
 
     it("TC-006: Expired deadline should be invalid", () => {
       // Arrange
-      const expiredTimestamp = Math.floor(Date.now() / 1000) - 1; // 1 second ago
+      const expiredTimestamp = String(Math.floor(Date.now() / 1000) - 1); // 1 second ago
 
       // Act
       const result = service.validateDeadline(expiredTimestamp);
@@ -146,7 +146,7 @@ describe("SignatureVerifierService", () => {
 
     it("TC-007: Exact current timestamp should be valid", () => {
       // Arrange
-      const currentTimestamp = Math.floor(Date.now() / 1000);
+      const currentTimestamp = String(Math.floor(Date.now() / 1000));
 
       // Act
       const result = service.validateDeadline(currentTimestamp);

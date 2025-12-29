@@ -3,7 +3,6 @@ import {
   IsEthereumAddress,
   IsHexadecimal,
   IsNumberString,
-  IsNumber,
 } from "class-validator";
 
 /**
@@ -76,14 +75,14 @@ export class ForwardRequestDto {
   /**
    * Deadline as Unix timestamp (uint48)
    * Transaction will be rejected after this time
-   * Example: 1703001000 (valid deadline in future)
+   * Example: "1703001000" (valid deadline in future)
    */
   @ApiProperty({
     description: "Deadline as Unix timestamp (uint48)",
-    example: 1703001000,
+    example: "1703001000",
   })
-  @IsNumber()
-  deadline: number;
+  @IsNumberString()
+  deadline: string;
 
   /**
    * Encoded function call data (bytes)
