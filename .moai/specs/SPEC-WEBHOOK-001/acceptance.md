@@ -1,7 +1,7 @@
 ---
 id: SPEC-WEBHOOK-001
-title: TX History & Webhook System - Acceptance Criteria
-version: 1.0.0
+title: TX History & Webhook System - Acceptance Criteria (Redis L1 + MySQL L2)
+version: 1.1.0
 status: draft
 created: 2025-12-30
 updated: 2025-12-30
@@ -13,19 +13,20 @@ updated: 2025-12-30
 
 **목적**: SPEC-WEBHOOK-001의 수락 기준을 Given-When-Then 형식으로 정의
 
-**범위**: MySQL 트랜잭션 이력 저장, OZ Relayer Webhook 처리, 클라이언트 알림, 이중화된 상태 조회
+**범위**: Redis L1 캐시 + MySQL L2 영구 저장, OZ Relayer Webhook 처리, 3-Tier 상태 조회, 클라이언트 알림
 
-**테스트 전략**: Unit Tests (18개) + E2E Tests (6개) ≥ 85% 커버리지
+**테스트 전략**: Unit Tests (24개) + E2E Tests (9개) ≥ 85% 커버리지
 
 ---
 
-## 🧪 AC-1: MySQL 트랜잭션 이력 저장
+## 🧪 AC-1: Redis L1 + MySQL L2 트랜잭션 저장
 
-### AC-1.1: Direct Transaction 생성 시 MySQL 저장
+### AC-1.1: Direct Transaction 생성 시 Redis + MySQL 저장
 
 **Given**: 클라이언트가 Direct Transaction을 제출할 때
 **When**: POST /api/v1/relay/direct 요청이 성공적으로 처리될 때
 **Then**:
+- Redis에 `tx:status:{txId}` 키로 캐싱 (TTL: 600초)
 - MySQL `transactions` 테이블에 새로운 레코드 생성
 - `id`, `status`, `to`, `value`, `data`, `createdAt` 필드 저장
 - `status`는 `pending` 상태
@@ -45,8 +46,15 @@ const response = await request(app.getHttpServer())
   .expect(202);
 
 const txId = response.body.transactionId;
-const stored = await prisma.transaction.findUnique({ where: { id: txId } });
 
+// Verify Redis (L1) cache
+const cached = await redis.get(`tx:status:${txId}`);
+expect(cached).toBeDefined();
+const cachedData = JSON.parse(cached);
+expect(cachedData.status).toBe('pending');
+
+// Verify MySQL (L2) storage
+const stored = await prisma.transaction.findUnique({ where: { id: txId } });
 expect(stored).toBeDefined();
 expect(stored.status).toBe('pending');
 expect(stored.to).toBe('0x1234567890123456789012345678901234567890');
@@ -54,11 +62,12 @@ expect(stored.to).toBe('0x1234567890123456789012345678901234567890');
 
 ---
 
-### AC-1.2: Gasless Transaction 생성 시 MySQL 저장
+### AC-1.2: Gasless Transaction 생성 시 Redis + MySQL 저장
 
 **Given**: 클라이언트가 Gasless Transaction을 제출할 때
 **When**: POST /api/v1/relay/gasless 요청이 성공적으로 처리될 때
 **Then**:
+- Redis에 `tx:status:{txId}` 키로 캐싱 (TTL: 600초)
 - MySQL `transactions` 테이블에 새로운 레코드 생성
 - `to` 필드는 `FORWARDER_ADDRESS` (ERC2771Forwarder 주소)
 - `value` 필드는 `0` (Gasless 특성)
@@ -75,8 +84,13 @@ const response = await request(app.getHttpServer())
   .expect(202);
 
 const txId = response.body.transactionId;
-const stored = await prisma.transaction.findUnique({ where: { id: txId } });
 
+// Verify Redis (L1) cache
+const cached = await redis.get(`tx:status:${txId}`);
+expect(cached).toBeDefined();
+
+// Verify MySQL (L2) storage
+const stored = await prisma.transaction.findUnique({ where: { id: txId } });
 expect(stored).toBeDefined();
 expect(stored.status).toBe('pending');
 expect(stored.to).toBe(process.env.FORWARDER_ADDRESS);
@@ -116,6 +130,7 @@ it('should throw InternalServerErrorException if MySQL fails', async () => {
 **When**: POST /api/v1/webhooks/oz-relayer 요청에 유효한 HMAC-SHA256 서명 포함
 **Then**:
 - HTTP 200 OK 반환
+- Redis `tx:status:{txId}` 키 업데이트 및 TTL 리셋 (600초)
 - MySQL `transactions` 테이블의 해당 레코드 업데이트
 - `status`, `hash`, `confirmedAt` 필드 업데이트
 - `updatedAt` 필드 현재 시각으로 갱신
@@ -142,6 +157,13 @@ await request(app.getHttpServer())
   .send(webhookPayload)
   .expect(200);
 
+// Verify Redis (L1) updated with TTL reset
+const cached = JSON.parse(await redis.get(`tx:status:${txId}`));
+expect(cached.status).toBe('confirmed');
+const ttl = await redis.ttl(`tx:status:${txId}`);
+expect(ttl).toBeGreaterThan(595); // Close to 600 (just set)
+
+// Verify MySQL (L2) updated
 const updated = await prisma.transaction.findUnique({ where: { id: txId } });
 expect(updated.status).toBe('confirmed');
 expect(updated.hash).toBe('0xabcd1234...');
@@ -156,6 +178,7 @@ expect(updated.confirmedAt).toEqual(new Date('2025-12-30T10:00:00Z'));
 **When**: POST /api/v1/webhooks/oz-relayer 요청에 잘못된 HMAC 서명 포함
 **Then**:
 - HTTP 401 Unauthorized 반환
+- Redis 데이터 변경 없음 (보안 보장)
 - MySQL 데이터 변경 없음 (보안 보장)
 - Error response 메시지: "Invalid webhook signature"
 
@@ -168,6 +191,11 @@ await request(app.getHttpServer())
   .send(webhookPayload)
   .expect(401);
 
+// Verify Redis (L1) not updated
+const cached = await redis.get(`tx:status:${txId}`);
+// If exists, status should not match webhook payload
+
+// Verify MySQL (L2) not updated
 const tx = await prisma.transaction.findUnique({ where: { id: txId } });
 expect(tx.status).not.toBe(webhookPayload.status); // 변경되지 않음
 ```
@@ -341,153 +369,301 @@ it('should log error if client service fails', async () => {
 
 ---
 
-## 🔍 AC-4: 이중화된 상태 조회 (MySQL + OZ Relayer Fallback)
+## 🔍 AC-4: 3-Tier 상태 조회 (Redis L1 → MySQL L2 → OZ Relayer)
 
-### AC-4.1: MySQL 캐시 히트 (Fresh Cache)
+### AC-4.1: Redis 캐시 히트 (L1 Cache Hit)
 
-**Given**: MySQL에 트랜잭션 데이터가 저장되어 있을 때
-**When**: GET /api/v1/relay/status/:txId 요청이 들어오고, `updatedAt`이 5초 이내일 때
+**Given**: Redis에 트랜잭션 데이터가 캐싱되어 있을 때
+**When**: GET /api/v1/relay/status/:txId 요청이 들어올 때
 **Then**:
-- MySQL에서 데이터 반환 (OZ Relayer API 호출 없음)
+- Redis에서 데이터 반환 (MySQL, OZ Relayer API 호출 없음)
 - Response에 `transactionId`, `status`, `hash`, `createdAt`, `confirmedAt` 포함
-- 응답 시간 < 100ms (캐시 히트)
+- 응답 시간 < 5ms (Redis 캐시 히트)
 
 **검증 방법**:
 ```typescript
-// E2E Test
+// E2E Test: Redis Cache Hit
+const txId = 'test-tx-id';
+const statusData = {
+  status: 'confirmed',
+  hash: '0xabcd...',
+  createdAt: '2025-12-30T10:00:00Z',
+  confirmedAt: '2025-12-30T10:05:00Z'
+};
+
+// Pre-populate Redis cache
+await redis.setex(`tx:status:${txId}`, 600, JSON.stringify(statusData));
+
+const start = Date.now();
+const response = await request(app.getHttpServer())
+  .get(`/api/v1/relay/status/${txId}`)
+  .expect(200);
+const duration = Date.now() - start;
+
+expect(response.body.status).toBe('confirmed');
+expect(response.body.hash).toBe('0xabcd...');
+expect(duration).toBeLessThan(5); // < 5ms for Redis hit
+```
+
+---
+
+### AC-4.2: Redis 미스, MySQL 히트 (L1 Miss, L2 Hit)
+
+**Given**: Redis에 데이터가 없고, MySQL에 트랜잭션 데이터가 저장되어 있을 때
+**When**: GET /api/v1/relay/status/:txId 요청이 들어올 때
+**Then**:
+- Redis 조회 실패 (캐시 미스)
+- MySQL에서 데이터 조회
+- Redis에 데이터 백필 (TTL: 600초)
+- Response에 MySQL 데이터 반환
+- 응답 시간 < 50ms (MySQL 조회)
+
+**검증 방법**:
+```typescript
+// E2E Test: Redis Miss, MySQL Hit with Backfill
+const txId = 'test-tx-id';
+
+// Ensure Redis cache is empty
+await redis.del(`tx:status:${txId}`);
+
+// MySQL has the data
 const tx = await prisma.transaction.create({
   data: {
-    id: 'test-tx-id',
+    id: txId,
     status: 'confirmed',
     hash: '0xabcd...',
     createdAt: new Date(),
-    updatedAt: new Date(), // Fresh (now)
+    updatedAt: new Date(),
   }
 });
 
 const start = Date.now();
 const response = await request(app.getHttpServer())
-  .get('/api/v1/relay/status/test-tx-id')
+  .get(`/api/v1/relay/status/${txId}`)
   .expect(200);
 const duration = Date.now() - start;
 
 expect(response.body.status).toBe('confirmed');
-expect(duration).toBeLessThan(100); // Fast response
+expect(duration).toBeLessThan(50); // < 50ms for MySQL hit
+
+// Verify Redis backfill
+const cached = await redis.get(`tx:status:${txId}`);
+expect(cached).toBeDefined();
+const cachedData = JSON.parse(cached);
+expect(cachedData.status).toBe('confirmed');
+
+const ttl = await redis.ttl(`tx:status:${txId}`);
+expect(ttl).toBeGreaterThan(595); // Close to 600 (just backfilled)
 ```
 
 ---
 
-### AC-4.2: Stale Cache → OZ Relayer Fallback
+### AC-4.3: Redis + MySQL 미스 → OZ Relayer 조회 후 양쪽 저장
 
-**Given**: MySQL에 트랜잭션 데이터가 있지만 `updatedAt`이 5초 이상 오래되었을 때
+**Given**: Redis, MySQL 모두 해당 트랜잭션 데이터가 없을 때
 **When**: GET /api/v1/relay/status/:txId 요청이 들어올 때
 **Then**:
-- OZ Relayer API 호출하여 최신 데이터 조회
-- MySQL `transactions` 테이블 업데이트 (upsert)
-- 최신 데이터를 Response로 반환
+- Redis 조회 실패 (캐시 미스)
+- MySQL 조회 실패 (캐시 미스)
+- OZ Relayer API 호출하여 데이터 조회
+- Redis에 캐싱 (TTL: 600초)
+- MySQL에 새로운 레코드 생성
+- OZ Relayer 데이터를 Response로 반환
+- 응답 시간 < 200ms (OZ Relayer API 호출)
 
 **검증 방법**:
 ```typescript
-// E2E Test
-const staleTime = new Date(Date.now() - 10000); // 10 seconds ago
-const tx = await prisma.transaction.create({
-  data: {
-    id: 'test-tx-id',
-    status: 'pending',
-    updatedAt: staleTime, // Stale cache
-  }
+// E2E Test: Full 3-Tier Miss → OZ Relayer Fallback
+const txId = 'new-tx-id';
+
+// Ensure Redis and MySQL are empty
+await redis.del(`tx:status:${txId}`);
+await prisma.transaction.deleteMany({ where: { id: txId } });
+
+// Mock OZ Relayer response
+mockOzRelayerApi({
+  transactionId: txId,
+  status: 'confirmed',
+  hash: '0xabcd...',
+  createdAt: '2025-12-30T10:00:00Z',
+  confirmedAt: '2025-12-30T10:05:00Z'
 });
 
-// Mock OZ Relayer response (status = confirmed)
-mockOzRelayerApi({ status: 'confirmed', hash: '0xabcd...' });
-
+const start = Date.now();
 const response = await request(app.getHttpServer())
-  .get('/api/v1/relay/status/test-tx-id')
+  .get(`/api/v1/relay/status/${txId}`)
   .expect(200);
-
-expect(response.body.status).toBe('confirmed'); // Fresh data from OZ Relayer
-
-const updated = await prisma.transaction.findUnique({ where: { id: 'test-tx-id' } });
-expect(updated.status).toBe('confirmed'); // MySQL updated
-```
-
----
-
-### AC-4.3: MySQL 캐시 미스 → OZ Relayer 조회 후 MySQL 저장
-
-**Given**: MySQL에 해당 트랜잭션 데이터가 없을 때
-**When**: GET /api/v1/relay/status/:txId 요청이 들어올 때
-**Then**:
-- OZ Relayer API 호출하여 데이터 조회
-- MySQL `transactions` 테이블에 새로운 레코드 생성 (create)
-- OZ Relayer 데이터를 Response로 반환
-
-**검증 방법**:
-```typescript
-// E2E Test
-mockOzRelayerApi({ transactionId: 'new-tx-id', status: 'confirmed', hash: '0xabcd...' });
-
-const response = await request(app.getHttpServer())
-  .get('/api/v1/relay/status/new-tx-id')
-  .expect(200);
+const duration = Date.now() - start;
 
 expect(response.body.status).toBe('confirmed');
+expect(duration).toBeLessThan(200); // < 200ms for OZ Relayer
 
-const stored = await prisma.transaction.findUnique({ where: { id: 'new-tx-id' } });
-expect(stored).toBeDefined(); // Created in MySQL
+// Verify Redis cached
+const cached = await redis.get(`tx:status:${txId}`);
+expect(cached).toBeDefined();
+expect(JSON.parse(cached).status).toBe('confirmed');
+
+// Verify MySQL stored
+const stored = await prisma.transaction.findUnique({ where: { id: txId } });
+expect(stored).toBeDefined();
 expect(stored.status).toBe('confirmed');
 ```
 
 ---
 
-### AC-4.4: Degraded Mode (OZ Relayer 실패 시 Stale Cache 반환)
+### AC-4.4: Webhook 수신 시 Redis TTL 리셋
 
-**Given**: MySQL에 Stale 데이터가 있고, OZ Relayer API가 응답하지 않을 때
-**When**: GET /api/v1/relay/status/:txId 요청이 들어올 때
+**Given**: OZ Relayer Webhook이 수신될 때
+**When**: POST /api/v1/webhooks/oz-relayer 요청 처리
 **Then**:
-- OZ Relayer API 호출 실패 (timeout or error)
-- MySQL의 Stale 데이터 반환 (degraded mode)
-- Warning 로그 출력: "OZ Relayer unavailable, returning stale cache"
+- Redis `tx:status:{txId}` 키 업데이트
+- Redis TTL 리셋 (600초)
+- MySQL 업데이트
+- Response 200 OK
 
 **검증 방법**:
 ```typescript
-// E2E Test
-const staleTime = new Date(Date.now() - 10000); // 10 seconds ago
-const tx = await prisma.transaction.create({
-  data: {
-    id: 'test-tx-id',
-    status: 'pending',
-    updatedAt: staleTime, // Stale cache
-  }
+// E2E Test: Webhook Updates Redis with TTL Reset
+const txId = 'test-tx-id';
+
+// Create initial transaction
+await redis.setex(`tx:status:${txId}`, 600, JSON.stringify({ status: 'pending' }));
+await prisma.transaction.create({
+  data: { id: txId, status: 'pending', createdAt: new Date() }
 });
 
-// Mock OZ Relayer timeout
-mockOzRelayerApi({ timeout: true });
+// Wait 5 seconds to reduce TTL
+await new Promise(resolve => setTimeout(resolve, 5000));
 
-const response = await request(app.getHttpServer())
-  .get('/api/v1/relay/status/test-tx-id')
+// Check TTL before webhook
+const ttlBefore = await redis.ttl(`tx:status:${txId}`);
+expect(ttlBefore).toBeLessThan(596); // Less than initial
+
+// Send webhook
+const webhookPayload = {
+  transactionId: txId,
+  status: 'confirmed',
+  hash: '0xabcd...',
+  confirmedAt: '2025-12-30T10:05:00Z'
+};
+const signature = generateHmac(webhookPayload);
+
+await request(app.getHttpServer())
+  .post('/api/v1/webhooks/oz-relayer')
+  .set('X-OZ-Signature', signature)
+  .send(webhookPayload)
   .expect(200);
 
-expect(response.body.status).toBe('pending'); // Stale data returned
+// Verify Redis updated and TTL reset
+const cached = JSON.parse(await redis.get(`tx:status:${txId}`));
+expect(cached.status).toBe('confirmed');
+
+const ttlAfter = await redis.ttl(`tx:status:${txId}`);
+expect(ttlAfter).toBeGreaterThan(595); // Reset to ~600 seconds
 ```
 
 ---
 
-### AC-4.5: 완전 실패 (MySQL + OZ Relayer 모두 실패)
+### AC-4.5: Degraded Mode - Redis 실패 시 MySQL Fallback
 
-**Given**: MySQL에 데이터가 없고, OZ Relayer API도 응답하지 않을 때
+**Given**: Redis 서비스가 응답하지 않을 때
 **When**: GET /api/v1/relay/status/:txId 요청이 들어올 때
 **Then**:
-- HTTP 503 Service Unavailable 반환
-- Error response 메시지: "OZ Relayer service unavailable"
+- Redis 조회 실패 (연결 에러)
+- MySQL에서 데이터 조회 (L2 fallback)
+- Warning 로그 출력: "Redis unavailable, falling back to MySQL"
+- Response에 MySQL 데이터 반환
 
 **검증 방법**:
 ```typescript
-// E2E Test
+// E2E Test: Redis Failure → MySQL Fallback
+const txId = 'test-tx-id';
+
+// MySQL has the data
+await prisma.transaction.create({
+  data: {
+    id: txId,
+    status: 'confirmed',
+    hash: '0xabcd...',
+    createdAt: new Date(),
+  }
+});
+
+// Simulate Redis failure
+jest.spyOn(redis, 'get').mockRejectedValue(new Error('Redis connection refused'));
+const loggerSpy = jest.spyOn(logger, 'warn');
+
+const response = await request(app.getHttpServer())
+  .get(`/api/v1/relay/status/${txId}`)
+  .expect(200);
+
+expect(response.body.status).toBe('confirmed');
+expect(loggerSpy).toHaveBeenCalledWith('Redis unavailable, falling back to MySQL');
+```
+
+---
+
+### AC-4.6: Degraded Mode - Redis + MySQL 실패 시 OZ Relayer Fallback
+
+**Given**: Redis와 MySQL 모두 응답하지 않을 때
+**When**: GET /api/v1/relay/status/:txId 요청이 들어올 때
+**Then**:
+- Redis 조회 실패 (연결 에러)
+- MySQL 조회 실패 (연결 에러)
+- OZ Relayer API 호출하여 데이터 조회
+- Warning 로그 출력: "Redis and MySQL unavailable, falling back to OZ Relayer"
+- Response에 OZ Relayer 데이터 반환
+
+**검증 방법**:
+```typescript
+// E2E Test: Redis + MySQL Failure → OZ Relayer Fallback
+const txId = 'test-tx-id';
+
+// Simulate Redis failure
+jest.spyOn(redis, 'get').mockRejectedValue(new Error('Redis connection refused'));
+
+// Simulate MySQL failure
+jest.spyOn(prisma.transaction, 'findUnique').mockRejectedValue(new Error('MySQL connection refused'));
+
+// Mock OZ Relayer response
+mockOzRelayerApi({ status: 'confirmed', hash: '0xabcd...' });
+
+const loggerSpy = jest.spyOn(logger, 'warn');
+
+const response = await request(app.getHttpServer())
+  .get(`/api/v1/relay/status/${txId}`)
+  .expect(200);
+
+expect(response.body.status).toBe('confirmed');
+expect(loggerSpy).toHaveBeenCalledWith('Redis and MySQL unavailable, falling back to OZ Relayer');
+```
+
+---
+
+### AC-4.7: 완전 실패 (Redis + MySQL + OZ Relayer 모두 실패)
+
+**Given**: Redis, MySQL, OZ Relayer API 모두 응답하지 않을 때
+**When**: GET /api/v1/relay/status/:txId 요청이 들어올 때
+**Then**:
+- HTTP 503 Service Unavailable 반환
+- Error response 메시지: "All status lookup services unavailable"
+
+**검증 방법**:
+```typescript
+// E2E Test: Complete Failure
+const txId = 'non-existent-tx-id';
+
+// Simulate Redis failure
+jest.spyOn(redis, 'get').mockRejectedValue(new Error('Redis connection refused'));
+
+// Ensure MySQL has no data
+await prisma.transaction.deleteMany({ where: { id: txId } });
+
+// Mock OZ Relayer failure
 mockOzRelayerApi({ error: true });
 
 await request(app.getHttpServer())
-  .get('/api/v1/relay/status/non-existent-tx-id')
+  .get(`/api/v1/relay/status/${txId}`)
   .expect(503);
 ```
 
@@ -551,6 +727,8 @@ docker exec -it msq-relayer-mysql mysql -u relayer_user -p msq_relayer -e "DESCR
 **When**: `.env` 파일 생성 및 값 설정
 **Then**:
 - `DATABASE_URL` 값 유효 (MySQL 연결 가능)
+- `REDIS_URL` 값 유효 (Redis 연결 가능, 기본값: `redis://localhost:6379`)
+- `REDIS_STATUS_TTL_SECONDS` 값 유효 (기본값: 600)
 - `WEBHOOK_SIGNING_KEY` 32자 이상
 - `CLIENT_WEBHOOK_URL` 유효한 URL 형식
 - NestJS 애플리케이션 시작 시 환경변수 로드 성공
@@ -564,6 +742,32 @@ cp .env.example .env
 # 환경변수 검증
 pnpm --filter relay-api start:dev
 # Expected: No configuration errors
+
+# Redis 연결 확인
+docker exec -it oz-relayer-redis redis-cli ping
+# Expected: PONG
+```
+
+---
+
+### AC-5.4: Redis 연결 정상 (기존 OZ Relayer Redis 재사용)
+
+**Given**: OZ Relayer의 Redis 서비스가 실행 중일 때
+**When**: NestJS 애플리케이션이 시작될 때
+**Then**:
+- Redis 연결 성공 (기존 OZ Relayer Redis 재사용)
+- 새로운 Redis 컨테이너 생성 없음
+- Health check에서 Redis status "up" 확인
+
+**검증 방법**:
+```bash
+# 기존 Redis 확인
+docker ps | grep redis
+# Expected: oz-relayer-redis (or similar)
+
+# Health check 확인
+curl http://localhost:8080/api/v1/health
+# Expected: {"status":"ok","info":{"mysql":{"status":"up"},"redis":{"status":"up"}}}
 ```
 
 ---
@@ -600,31 +804,37 @@ pnpm --filter relay-api test:cov
 **Given**: E2E 테스트 시나리오가 작성되었을 때
 **When**: `pnpm test:e2e` 명령어 실행
 **Then**:
-- 6개 E2E 시나리오 모두 통과
-- 총 실행 시간 < 30초
+- 9개 E2E 시나리오 모두 통과
+- 총 실행 시간 < 45초
 - 테스트 간 격리 (각 테스트는 독립적으로 실행)
 
 **시나리오 리스트**:
-1. Transaction creation → MySQL storage
-2. Webhook reception → MySQL update
-3. Invalid HMAC signature → 401 Unauthorized
-4. MySQL cache hit → Fast response
-5. Stale cache → OZ Relayer fallback
-6. Client notification sent after webhook
+1. Transaction creation → Redis + MySQL storage (write-through)
+2. Webhook reception → Redis TTL reset + MySQL update
+3. Invalid HMAC signature → 401 Unauthorized (Redis/MySQL untouched)
+4. Redis cache hit → Fast response (<5ms)
+5. Redis miss, MySQL hit → MySQL data + Redis backfill
+6. Full miss → OZ Relayer fallback + Redis/MySQL storage
+7. Redis failure → MySQL fallback (degraded mode)
+8. Redis + MySQL failure → OZ Relayer fallback (degraded mode)
+9. Client notification sent after webhook
 
 **검증 방법**:
 ```bash
 pnpm --filter relay-api test:e2e
 
 # Expected output:
-# ✓ Scenario 1: Transaction creation → MySQL storage
-# ✓ Scenario 2: Webhook reception → MySQL update
+# ✓ Scenario 1: Transaction creation → Redis + MySQL storage
+# ✓ Scenario 2: Webhook reception → Redis TTL reset + MySQL update
 # ✓ Scenario 3: Invalid HMAC signature → 401 Unauthorized
-# ✓ Scenario 4: MySQL cache hit → Fast response
-# ✓ Scenario 5: Stale cache → OZ Relayer fallback
-# ✓ Scenario 6: Client notification sent after webhook
+# ✓ Scenario 4: Redis cache hit → Fast response (<5ms)
+# ✓ Scenario 5: Redis miss, MySQL hit → Redis backfill
+# ✓ Scenario 6: Full miss → OZ Relayer fallback
+# ✓ Scenario 7: Redis failure → MySQL fallback
+# ✓ Scenario 8: Redis + MySQL failure → OZ Relayer fallback
+# ✓ Scenario 9: Client notification sent after webhook
 # Test Suites: 1 passed, 1 total
-# Tests: 6 passed, 6 total
+# Tests: 9 passed, 9 total
 ```
 
 ---
@@ -735,47 +945,57 @@ docker compose --profile phase2 logs -f relay-api
 
 ### Infrastructure
 - [ ] MySQL 서비스 정상 실행 (Docker Compose)
+- [ ] Redis 연결 정상 (기존 OZ Relayer Redis 재사용)
 - [ ] Prisma Migration 적용 완료
-- [ ] 환경변수 설정 및 검증 완료
+- [ ] RedisModule 생성 및 DI 설정 완료
+- [ ] 환경변수 설정 및 검증 완료 (REDIS_URL, REDIS_STATUS_TTL_SECONDS 포함)
 
 ### API Endpoints
-- [ ] POST /api/v1/relay/direct → MySQL 저장 확인
-- [ ] POST /api/v1/relay/gasless → MySQL 저장 확인
-- [ ] POST /api/v1/webhooks/oz-relayer → Webhook 수신 성공
-- [ ] GET /api/v1/relay/status/:txId → MySQL 캐시 우선 조회
+- [ ] POST /api/v1/relay/direct → Redis + MySQL 저장 확인 (write-through)
+- [ ] POST /api/v1/relay/gasless → Redis + MySQL 저장 확인 (write-through)
+- [ ] POST /api/v1/webhooks/oz-relayer → Webhook 수신 + Redis TTL 리셋
+- [ ] GET /api/v1/relay/status/:txId → 3-Tier 조회 (Redis → MySQL → OZ Relayer)
 
 ### Security
 - [ ] HMAC-SHA256 서명 검증 동작
-- [ ] 유효하지 않은 서명 거부 (401 Unauthorized)
+- [ ] 유효하지 않은 서명 거부 (401 Unauthorized, Redis/MySQL 변경 없음)
 - [ ] 서명 헤더 누락 시 거부 (401 Unauthorized)
 
-### Functionality
-- [ ] Webhook 수신 → MySQL 업데이트
-- [ ] MySQL 캐시 히트 (Fresh Cache)
-- [ ] Stale Cache → OZ Relayer Fallback
-- [ ] Degraded Mode (OZ Relayer 실패 시 Stale Cache 반환)
+### Functionality - 3-Tier Cache
+- [ ] Redis 캐시 히트 (L1) → 응답 시간 < 5ms
+- [ ] Redis 미스, MySQL 히트 (L2) → Redis 백필 + 응답 시간 < 50ms
+- [ ] Full 미스 → OZ Relayer 조회 + Redis/MySQL 저장
+- [ ] Webhook 수신 → Redis TTL 리셋 (600초) + MySQL 업데이트
+
+### Functionality - Degraded Mode
+- [ ] Redis 실패 시 MySQL Fallback (L2)
+- [ ] Redis + MySQL 실패 시 OZ Relayer Fallback
+- [ ] 전체 실패 시 503 Service Unavailable
+
+### Functionality - Notification
 - [ ] Client Notification 전송 성공
 - [ ] Notification 실패 시 Non-blocking 처리
 
 ### Quality
 - [ ] Unit Test Coverage ≥ 85%
-- [ ] E2E Test 6개 시나리오 모두 통과
+- [ ] E2E Test 9개 시나리오 모두 통과
 - [ ] ESLint 0개 에러
 - [ ] Prettier 포맷 규칙 준수
 
 ### Documentation
 - [ ] Swagger/OpenAPI 문서 완성
-- [ ] README.md 업데이트 (Phase 2 안내)
-- [ ] .env.example 업데이트 (모든 새 환경변수 포함)
+- [ ] README.md 업데이트 (Phase 2 + Redis 안내)
+- [ ] .env.example 업데이트 (REDIS_URL, REDIS_STATUS_TTL_SECONDS 포함)
 
 ### Deployment
 - [ ] Production 배포 성공
-- [ ] Health check 엔드포인트 정상 응답
+- [ ] Health check 엔드포인트 정상 응답 (MySQL + Redis status "up")
 - [ ] Webhook 엔드포인트 Production 검증
 - [ ] 로그 및 모니터링 정상 동작
 
 ---
 
-**Version**: 1.0.0
+**Version**: 1.1.0
 **Status**: Draft
 **Last Updated**: 2025-12-30
+**Change**: Added Redis L1 cache layer (3-Tier architecture)

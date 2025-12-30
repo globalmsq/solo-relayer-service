@@ -1,7 +1,7 @@
 ---
 id: SPEC-WEBHOOK-001
-title: TX History & Webhook System - MySQL + OZ Relayer Webhook
-version: 1.0.0
+title: TX History & Webhook System - Redis L1 + MySQL L2 + OZ Relayer Webhook
+version: 1.1.0
 status: draft
 author: "@user"
 created: 2025-12-30
@@ -26,13 +26,14 @@ tags:
 | Version | Date | Author | Changes |
 |---------|------|--------|---------|
 | 1.0.0 | 2025-12-30 | @user | Initial SPEC creation - MySQL + Webhook architecture |
+| 1.1.0 | 2025-12-30 | @user | Redis L1 cache addition - 3-Tier architecture (Redis -> MySQL -> OZ Relayer), env var REDIS_STATUS_TTL_SECONDS, performance optimization (cache hit response time <5ms) |
 
 ## Overview
 
 | Field | Value |
 |-------|-------|
 | **SPEC ID** | SPEC-WEBHOOK-001 |
-| **Title** | TX History & Webhook System - MySQL + OZ Relayer Webhook |
+| **Title** | TX History & Webhook System - Redis L1 + MySQL L2 + OZ Relayer Webhook |
 | **Status** | Draft |
 | **Created** | 2025-12-30 |
 | **Updated** | 2025-12-30 |
@@ -55,31 +56,62 @@ Phase 1에서는 트랜잭션 상태를 OZ Relayer API를 통해 폴링 방식�
 
 ## 솔루션
 
-### 핵심 아키텍처
+### 핵심 아키텍처 (3-Tier Cache)
 
 ```
-OZ Relayer → Webhook (HMAC verify) → MySQL (Prisma) → Notification → Client Services
+┌─────────────┐    webhook     ┌──────────────────────┐
+│ OZ Relayer  │ ─────────────► │ WebhookController    │
+└─────────────┘                └──────────┬───────────┘
+                                          │
+                               ┌──────────┴───────────┐
+                               │  WebhookService      │
+                               └──────────┬───────────┘
+                                          │
+                      ┌───────────────────┼───────────────────┐
+                      ▼                   ▼                   ▼
+           ┌─────────────────┐ ┌─────────────────┐ ┌─────────────────┐
+           │   Redis (L1)    │ │   MySQL (L2)    │ │  Notification   │
+           │  10min TTL      │ │  Permanent      │ │  Service        │
+           └────────┬────────┘ └─────────────────┘ └─────────────────┘
+                    │
+           ┌────────┴────────┐
+           │  StatusService  │ ◄── 3-Tier Lookup
+           │  Redis→MySQL→OZ │
+           └─────────────────┘
+```
+
+**Data Flow**:
+```
+StatusService → Redis (10min TTL, L1) → MySQL (L2, Permanent) → OZ Relayer API (Fallback)
 ```
 
 ### 주요 컴포넌트
 
-**1. MySQL + Prisma ORM**
+**1. Redis (L1 Cache)**
+- 빠른 상태 조회 (응답시간 <5ms)
+- 10분 TTL (환경변수로 설정 가능)
+- Key pattern: `tx:status:{txId}`
+- 기존 OZ Relayer용 Redis 인스턴스 공유
+
+**2. MySQL + Prisma ORM (L2 Persistent Storage)**
 - 트랜잭션 이력 영구 저장
 - 트랜잭션 상태 변경 추적
 - 검색 및 분석을 위한 인덱스 최적화
 
-**2. Webhook Module**
+**3. Webhook Module**
 - OZ Relayer로부터 상태 변경 수신
 - HMAC-SHA256 서명 검증 (보안)
-- 트랜잭션 상태 업데이트
+- Redis + MySQL 동시 업데이트
+- TTL 리셋 on every status update
 
-**3. Notification Service**
+**4. Notification Service**
 - 상태 변경 이벤트를 클라이언트 서비스에 전달
 - 비동기 알림 처리 (Phase 2: HTTP, Phase 3+: Queue)
 
-**4. StatusService 확장**
-- MySQL 우선 조회 (성능 최적화)
-- OZ Relayer API fallback (데이터 일관성 보장)
+**5. StatusService 확장 (3-Tier Lookup)**
+- Tier 1: Redis 조회 (L1 Cache, ~1-5ms)
+- Tier 2: MySQL 조회 (L2 Persistent, ~50ms)
+- Tier 3: OZ Relayer API fallback (~200ms)
 
 ## 기능 요구사항 (EARS Format)
 
@@ -95,9 +127,20 @@ OZ Relayer → Webhook (HMAC verify) → MySQL (Prisma) → Notification → Cli
 **조건**: MySQL의 트랜잭션 상태가 업데이트될 때
 **시스템은**: 등록된 클라이언트 서비스에 상태 변경 알림을 전송해야 한다
 
-### S-WEBHOOK-004: 상태 조회 이중화 (State-driven)
+### S-WEBHOOK-004: 상태 조회 3-Tier Lookup (State-driven)
 **조건**: StatusService가 트랜잭션 상태 조회 요청을 받을 때
-**시스템은**: MySQL을 우선 조회하고, 데이터가 없거나 오래된 경우 OZ Relayer API로 fallback해야 한다
+**시스템은**: Redis(L1)를 우선 조회하고, 캐시 미스 시 MySQL(L2)을 조회하며, MySQL에도 없는 경우 OZ Relayer API로 fallback해야 한다
+
+### NFR-PERF-001: Redis L1 Cache Performance (Non-Functional)
+**조건**: Redis 캐시 히트 시
+**시스템은**: 응답 시간 5ms 미만으로 트랜잭션 상태를 반환해야 한다
+- Redis TTL: 600초 (10분, 환경변수 `REDIS_STATUS_TTL_SECONDS`로 설정 가능)
+- Expected cache hit rate: hot window 내 95% 이상
+- Key pattern: `tx:status:{txId}`
+
+### NFR-PERF-002: Cache Write-Through (Non-Functional)
+**조건**: Webhook을 통해 상태 업데이트가 수신될 때
+**시스템은**: Redis(L1)와 MySQL(L2)을 동시에 업데이트하고, Redis TTL을 리셋해야 한다
 
 ### U-WEBHOOK-005: HMAC 서명 검증 (Unwanted)
 **조건**: Webhook 요청이 수신될 때
@@ -179,7 +222,7 @@ OZ Relayer → Webhook (HMAC verify) → MySQL (Prisma) → Notification → Cli
   }
   ```
 
-### T-WEBHOOK-005: StatusService 확장
+### T-WEBHOOK-005: StatusService 확장 (3-Tier Lookup)
 **기존 동작** (Phase 1):
 ```typescript
 // Direct HTTP call to OZ Relayer
@@ -187,24 +230,57 @@ const response = await this.httpService.get(ozRelayerUrl);
 return response.data;
 ```
 
-**새로운 동작** (Phase 2):
+**새로운 동작** (Phase 2 - 3-Tier Lookup):
 ```typescript
 async getTransactionStatus(txId: string): Promise<TxStatusResponseDto> {
-  // 1. MySQL 우선 조회
-  const cached = await this.prisma.transaction.findUnique({ where: { id: txId } });
-
-  // 2. 데이터가 최신이면 반환 (5초 이내 업데이트)
-  if (cached && (Date.now() - cached.updatedAt.getTime() < 5000)) {
-    return this.transformToDto(cached);
+  // Tier 1: Redis (L1) - ~1-5ms
+  const cached = await this.redis.get(`tx:status:${txId}`);
+  if (cached) {
+    return JSON.parse(cached);
   }
 
-  // 3. 캐시가 오래되었거나 없으면 OZ Relayer API fallback
+  // Tier 2: MySQL (L2) - ~50ms
+  const stored = await this.prisma.transaction.findUnique({ where: { id: txId } });
+  if (stored) {
+    await this.cacheToRedis(txId, stored);
+    return this.transformToDto(stored);
+  }
+
+  // Tier 3: OZ Relayer API - ~200ms
   const fresh = await this.fetchFromOzRelayer(txId);
 
-  // 4. MySQL 업데이트
-  await this.prisma.transaction.upsert({ where: { id: txId }, update: fresh, create: fresh });
+  // Save to both L1 (Redis) and L2 (MySQL)
+  await Promise.all([
+    this.cacheToRedis(txId, fresh),
+    this.prisma.transaction.create({ data: fresh })
+  ]);
 
   return fresh;
+}
+
+private async cacheToRedis(txId: string, data: any): Promise<void> {
+  const ttl = this.configService.get('REDIS_STATUS_TTL_SECONDS', 600);
+  await this.redis.setex(`tx:status:${txId}`, ttl, JSON.stringify(data));
+}
+```
+
+### T-WEBHOOK-005a: Webhook Handler Redis Update
+**WebhookService의 handleWebhook 메서드**:
+```typescript
+async handleWebhook(event: WebhookEvent): Promise<void> {
+  const { txId, status, hash } = event;
+
+  // Update MySQL (L2 - permanent)
+  const updated = await this.prisma.transaction.update({
+    where: { id: txId },
+    data: { status, hash, updatedAt: new Date() },
+  });
+
+  // Update Redis (L1 - cache) with TTL reset
+  await this.cacheToRedis(txId, updated);
+
+  // Notify clients
+  await this.notificationService.notify(txId, status);
 }
 ```
 
@@ -244,6 +320,10 @@ DATABASE_URL="mysql://relayer_user:${MYSQL_PASSWORD}@mysql:3306/msq_relayer"
 MYSQL_ROOT_PASSWORD=secure-root-password
 MYSQL_PASSWORD=secure-user-password
 
+# Redis L1 Cache
+REDIS_URL=redis://redis:6379
+REDIS_STATUS_TTL_SECONDS=600
+
 # Webhook 서명 검증
 WEBHOOK_SIGNING_KEY=your-secure-signing-key-32-characters-long
 
@@ -251,11 +331,39 @@ WEBHOOK_SIGNING_KEY=your-secure-signing-key-32-characters-long
 CLIENT_WEBHOOK_URL=http://client-service:8080/webhooks/transaction-updates
 ```
 
+### T-WEBHOOK-008: Redis Module Configuration
+**relay-api에 RedisModule 설정**:
+```typescript
+// src/redis/redis.module.ts
+import { Module, Global } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
+import Redis from 'ioredis';
+
+@Global()
+@Module({
+  providers: [
+    {
+      provide: 'REDIS_CLIENT',
+      useFactory: (configService: ConfigService) => {
+        return new Redis(configService.get('REDIS_URL', 'redis://localhost:6379'));
+      },
+      inject: [ConfigService],
+    },
+  ],
+  exports: ['REDIS_CLIENT'],
+})
+export class RedisModule {}
+```
+
+**Note**: 기존 OZ Relayer용 Redis 인스턴스를 공유하므로 새로운 Redis 컨테이너는 필요하지 않습니다.
+
 ## 아키텍처 설계
 
 ### 모듈 구조
 ```
 packages/relay-api/src/
+├── redis/
+│   └── redis.module.ts                    # Redis (L1) Module
 ├── webhooks/
 │   ├── dto/
 │   │   ├── oz-relayer-webhook.dto.ts      # Webhook payload DTO
@@ -263,7 +371,7 @@ packages/relay-api/src/
 │   ├── guards/
 │   │   └── webhook-signature.guard.ts     # HMAC 서명 검증 Guard
 │   ├── webhooks.controller.ts             # POST /webhooks/oz-relayer
-│   ├── webhooks.service.ts                # Webhook 처리 로직
+│   ├── webhooks.service.ts                # Webhook 처리 로직 + Redis 업데이트
 │   ├── notification.service.ts            # 클라이언트 알림 전송
 │   ├── webhooks.module.ts                 # Webhook 모듈
 │   ├── webhooks.controller.spec.ts        # Controller 테스트
@@ -274,11 +382,11 @@ packages/relay-api/src/
 │   └── migrations/                        # Prisma 마이그레이션
 ├── relay/
 │   ├── status/
-│   │   └── status.service.ts              # MySQL + OZ Relayer fallback
+│   │   └── status.service.ts              # 3-Tier Lookup (Redis → MySQL → OZ Relayer)
 │   ├── direct/
-│   │   └── direct.service.ts              # 트랜잭션 생성 시 MySQL 저장
+│   │   └── direct.service.ts              # 트랜잭션 생성 시 Redis + MySQL 저장
 │   └── gasless/
-│       └── gasless.service.ts             # 트랜잭션 생성 시 MySQL 저장
+│       └── gasless.service.ts             # 트랜잭션 생성 시 Redis + MySQL 저장
 ```
 
 ### API 엔드포인트 변경사항
@@ -287,9 +395,9 @@ packages/relay-api/src/
 - `POST /api/v1/webhooks/oz-relayer` - OZ Relayer webhook 수신
 
 **기존 엔드포인트 동작 변경**:
-- `POST /api/v1/relay/direct` - MySQL에 트랜잭션 저장 추가
-- `POST /api/v1/relay/gasless` - MySQL에 트랜잭션 저장 추가
-- `GET /api/v1/relay/status/:txId` - MySQL 우선 조회, OZ Relayer fallback
+- `POST /api/v1/relay/direct` - Redis(L1) + MySQL(L2)에 트랜잭션 저장
+- `POST /api/v1/relay/gasless` - Redis(L1) + MySQL(L2)에 트랜잭션 저장
+- `GET /api/v1/relay/status/:txId` - 3-Tier Lookup (Redis → MySQL → OZ Relayer)
 
 ### 데이터 흐름
 
@@ -297,8 +405,9 @@ packages/relay-api/src/
 ```
 1. Client → POST /api/v1/relay/direct
 2. DirectService → OZ Relayer API (트랜잭션 제출)
-3. DirectService → MySQL (트랜잭션 메타데이터 저장)
-4. Client ← Response (transactionId, status: pending)
+3. DirectService → Redis (L1 캐시 저장, 10분 TTL)
+4. DirectService → MySQL (L2 영구 저장)
+5. Client ← Response (transactionId, status: pending)
 ```
 
 **Webhook 수신 흐름**:
@@ -306,27 +415,32 @@ packages/relay-api/src/
 1. OZ Relayer → POST /api/v1/webhooks/oz-relayer (HMAC 서명 포함)
 2. WebhookSignatureGuard → 서명 검증
 3. WebhooksService → MySQL 업데이트 (status, hash, confirmedAt)
-4. NotificationService → Client Service webhook (상태 변경 알림)
+4. WebhooksService → Redis 업데이트 (TTL 리셋)
+5. NotificationService → Client Service webhook (상태 변경 알림)
 ```
 
-**상태 조회 흐름**:
+**상태 조회 흐름 (3-Tier Lookup)**:
 ```
 1. Client → GET /api/v1/relay/status/:txId
-2. StatusService → MySQL 조회 (캐시)
-3. If fresh → Return from MySQL
-4. If stale → OZ Relayer API (fallback) → MySQL 업데이트 → Return
+2. StatusService → Redis 조회 (L1, ~1-5ms)
+3. If Redis hit → Return from Redis (fast path)
+4. If Redis miss → MySQL 조회 (L2, ~50ms)
+5. If MySQL hit → Cache to Redis → Return
+6. If MySQL miss → OZ Relayer API (fallback, ~200ms) → Save to Redis + MySQL → Return
 ```
 
 ## 테스트 전략
 
-### Unit Tests (약 18개 테스트)
+### Unit Tests (약 24개 테스트)
 
-**webhooks.service.spec.ts** (6 tests):
-- Webhook payload 처리 → MySQL 업데이트 성공
+**webhooks.service.spec.ts** (8 tests):
+- Webhook payload 처리 → Redis + MySQL 업데이트 성공
 - 유효하지 않은 서명 → UnauthorizedException
 - 존재하지 않는 트랜잭션 → NotFoundException
 - 중복 webhook 수신 → Idempotency 보장
 - MySQL 연결 실패 → InternalServerErrorException
+- Redis 업데이트 성공 (TTL 리셋 확인)
+- Redis 연결 실패 → MySQL만 업데이트 (graceful degradation)
 - Notification 전송 성공
 
 **webhooks.controller.spec.ts** (4 tests):
@@ -340,21 +454,28 @@ packages/relay-api/src/
 - 클라이언트 서비스 응답 실패 → 재시도 로직
 - 알림 payload 구조 검증
 
-**status.service.spec.ts** (Updated, 5 tests):
-- MySQL 캐시 히트 → OZ Relayer 호출 없이 반환
-- MySQL 캐시 미스 → OZ Relayer fallback → MySQL 업데이트
-- MySQL 캐시 stale → OZ Relayer fallback
-- OZ Relayer 실패 시 MySQL 데이터 반환 (degraded mode)
-- MySQL + OZ Relayer 모두 실패 → ServiceUnavailableException
+**status.service.spec.ts** (Updated, 9 tests - 3-Tier Lookup):
+- Redis 캐시 히트 → MySQL/OZ Relayer 호출 없이 반환 (<5ms)
+- Redis 캐시 미스 → MySQL 조회 → Redis 캐싱
+- Redis + MySQL 미스 → OZ Relayer fallback → Redis + MySQL 저장
+- Redis 실패 → MySQL fallback (graceful degradation)
+- MySQL 실패 → OZ Relayer fallback
+- OZ Relayer 실패 → MySQL 데이터 반환 (degraded mode)
+- Redis + MySQL + OZ Relayer 모두 실패 → ServiceUnavailableException
+- Redis TTL 설정 검증 (600초 기본값)
+- Redis key pattern 검증 (`tx:status:{txId}`)
 
-### Integration Tests (E2E, 약 6개 시나리오)
+### Integration Tests (E2E, 약 9개 시나리오)
 
 **시나리오 1: 트랜잭션 생성 및 Webhook 수신**
 ```typescript
 // 1. 트랜잭션 제출
 const tx = await POST('/api/v1/relay/direct', directTxDto);
 
-// 2. MySQL 저장 확인
+// 2. Redis + MySQL 저장 확인
+const redisCached = await redis.get(`tx:status:${tx.transactionId}`);
+expect(redisCached).toBeDefined();
+
 const stored = await prisma.transaction.findUnique({ where: { id: tx.transactionId } });
 expect(stored.status).toBe('pending');
 
@@ -365,23 +486,75 @@ await POST('/api/v1/webhooks/oz-relayer', {
   hash: '0xabcd...',
 }, { headers: { 'x-oz-signature': validSignature } });
 
-// 4. MySQL 업데이트 확인
+// 4. Redis + MySQL 업데이트 확인
+const redisUpdated = JSON.parse(await redis.get(`tx:status:${tx.transactionId}`));
+expect(redisUpdated.status).toBe('confirmed');
+
 const updated = await prisma.transaction.findUnique({ where: { id: tx.transactionId } });
 expect(updated.status).toBe('confirmed');
 expect(updated.hash).toBe('0xabcd...');
 ```
 
-**시나리오 2: MySQL 캐시 효과 검증**
+**시나리오 2: Redis 캐시 히트 (Fast Path)**
 ```typescript
-// 1. 트랜잭션 생성 및 Webhook 수신 (위와 동일)
+// Given: txId exists in Redis with valid TTL
+const txId = 'test-tx-id';
+await redis.setex(`tx:status:${txId}`, 600, JSON.stringify({ status: 'confirmed', hash: '0xabcd...' }));
 
-// 2. StatusService 조회 (MySQL 캐시 히트)
-const status = await GET('/api/v1/relay/status/' + tx.transactionId);
+// When: GET /api/v1/relay/status/{txId}
+const start = Date.now();
+const status = await GET('/api/v1/relay/status/' + txId);
+const responseTime = Date.now() - start;
+
+// Then: Response from Redis in <5ms
 expect(status.status).toBe('confirmed');
-// MySQL만 조회, OZ Relayer API 호출 없음 (성능 최적화)
+expect(responseTime).toBeLessThan(5);
+// MySQL NOT queried (verify with spy)
 ```
 
-**시나리오 3: HMAC 서명 검증**
+**시나리오 3: Redis 미스, MySQL 히트**
+```typescript
+// Given: txId NOT in Redis but EXISTS in MySQL
+await redis.del(`tx:status:${txId}`);
+await prisma.transaction.create({ data: { id: txId, status: 'confirmed', hash: '0xabcd...' } });
+
+// When: GET /api/v1/relay/status/{txId}
+const start = Date.now();
+const status = await GET('/api/v1/relay/status/' + txId);
+const responseTime = Date.now() - start;
+
+// Then: Response from MySQL in <50ms
+expect(status.status).toBe('confirmed');
+expect(responseTime).toBeLessThan(50);
+
+// And: Result cached to Redis with TTL
+const cached = await redis.get(`tx:status:${txId}`);
+expect(cached).toBeDefined();
+const ttl = await redis.ttl(`tx:status:${txId}`);
+expect(ttl).toBeGreaterThan(0);
+expect(ttl).toBeLessThanOrEqual(600);
+```
+
+**시나리오 4: Webhook이 Redis TTL 리셋**
+```typescript
+// Given: Webhook received with status change
+// When: WebhookService processes event
+// Then: Redis updated with new status
+// And: Redis TTL reset to configured value
+// And: MySQL updated for permanent storage
+
+await POST('/api/v1/webhooks/oz-relayer', {
+  transactionId: txId,
+  status: 'confirmed',
+  hash: '0xnew...',
+}, { headers: { 'x-oz-signature': validSignature } });
+
+// Verify TTL was reset
+const ttl = await redis.ttl(`tx:status:${txId}`);
+expect(ttl).toBeGreaterThan(595); // Close to 600 (just set)
+```
+
+**시나리오 5: HMAC 서명 검증**
 ```typescript
 // 1. 유효하지 않은 서명으로 Webhook 전송
 const response = await POST('/api/v1/webhooks/oz-relayer', payload, {
@@ -391,15 +564,17 @@ const response = await POST('/api/v1/webhooks/oz-relayer', payload, {
 // 2. 401 Unauthorized 반환
 expect(response.status).toBe(401);
 
-// 3. MySQL 업데이트 안 됨 (보안 보장)
+// 3. Redis + MySQL 업데이트 안 됨 (보안 보장)
 const tx = await prisma.transaction.findUnique({ where: { id: payload.transactionId } });
 expect(tx.status).not.toBe(payload.status); // 변경되지 않음
 ```
 
 ### Performance Tests (Optional, Artillery)
 - Webhook 동시 수신 처리 (100 TPS)
+- Redis 캐시 히트율 측정 (목표: 95% 이상)
+- Redis 캐시 히트 응답 시간 (목표: <5ms)
 - MySQL 쿼리 성능 (인덱스 효과 검증)
-- StatusService 캐시 히트율 측정
+- 3-Tier Lookup 전체 흐름 성능 측정
 
 ## 구현 단계
 
@@ -486,14 +661,16 @@ pnpm --filter relay-api test:cov
 
 ## 수락 기준
 
+✅ **Redis 연결**: 기존 Redis 인스턴스에 relay-api 연결 성공
 ✅ **MySQL 연결**: Docker Compose로 MySQL 서비스 실행 성공
 ✅ **Prisma Migration**: Transaction 모델 생성 및 마이그레이션 적용
 ✅ **Webhook 수신**: POST /webhooks/oz-relayer 엔드포인트 동작
 ✅ **HMAC 검증**: 유효하지 않은 서명 요청 거부 (401 Unauthorized)
-✅ **MySQL 저장**: 트랜잭션 생성 시 MySQL에 저장 확인
-✅ **MySQL 업데이트**: Webhook 수신 시 상태 업데이트 확인
+✅ **Redis + MySQL 저장**: 트랜잭션 생성 시 Redis(L1) + MySQL(L2) 동시 저장 확인
+✅ **Redis + MySQL 업데이트**: Webhook 수신 시 Redis + MySQL 상태 업데이트 및 TTL 리셋 확인
 ✅ **Notification 전송**: 클라이언트 서비스 알림 전송 성공
-✅ **StatusService Fallback**: MySQL 캐시 미스 시 OZ Relayer API 호출
+✅ **3-Tier Lookup**: Redis → MySQL → OZ Relayer 순서로 조회 확인
+✅ **Redis Cache Hit Performance**: 캐시 히트 시 응답 시간 <5ms 확인
 ✅ **Test Coverage**: Unit + E2E 테스트 ≥85% 커버리지
 ✅ **Documentation**: Swagger/OpenAPI 문서 업데이트
 
@@ -522,10 +699,10 @@ pnpm --filter relay-api test:cov
 
 ## 예상 작업량
 
-- **파일**: 24개 (18 new, 6 modified)
-- **코드 라인**: ~800 LOC
-- **테스트 케이스**: ~24 tests (18 unit + 6 E2E)
-- **구현 시간**: 4-6 hours
+- **파일**: 27개 (20 new, 7 modified)
+- **코드 라인**: ~950 LOC
+- **테스트 케이스**: ~33 tests (24 unit + 9 E2E)
+- **구현 시간**: 5-7 hours
 
 ## Phase 3+ 향후 작업 (Out of Scope)
 
@@ -549,6 +726,6 @@ pnpm --filter relay-api test:cov
 
 ---
 
-**Version**: 1.0.0
+**Version**: 1.1.0
 **Status**: Draft
 **Last Updated**: 2025-12-30

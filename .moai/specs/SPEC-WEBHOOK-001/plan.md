@@ -1,7 +1,7 @@
 ---
 id: SPEC-WEBHOOK-001
-title: TX History & Webhook System - Implementation Plan
-version: 1.0.0
+title: TX History & Webhook System - Implementation Plan (Redis L1 + MySQL L2)
+version: 1.1.0
 status: draft
 created: 2025-12-30
 updated: 2025-12-30
@@ -11,11 +11,11 @@ updated: 2025-12-30
 
 ## 📋 개요
 
-**목표**: MySQL + Prisma 기반 트랜잭션 이력 저장 및 OZ Relayer Webhook 시스템 구현
+**목표**: Redis L1 캐시 + MySQL L2 영구 저장 기반 트랜잭션 이력 관리 및 OZ Relayer Webhook 시스템 구현
 
-**범위**: Phase 2 - MySQL 저장, Webhook 수신, HTTP 기반 Notification
+**범위**: Phase 2 - 3-Tier Cache (Redis → MySQL → OZ Relayer), Webhook 수신, HTTP 기반 Notification
 
-**예상 시간**: 4-6시간 (24개 파일, ~800 LOC)
+**예상 시간**: 5-7시간 (27개 파일, ~950 LOC)
 
 ---
 
@@ -23,35 +23,48 @@ updated: 2025-12-30
 
 ### 핵심 설계 원칙
 
-**원칙 1: 이중화된 상태 관리**
-- MySQL: 1차 데이터 소스 (빠른 조회, 영구 저장)
-- OZ Relayer API: 2차 fallback (데이터 일관성 보장)
+**원칙 1: 3-Tier 캐시 아키텍처**
+- Redis (L1): 초고속 캐시 (응답시간 <5ms, 10분 TTL)
+- MySQL (L2): 영구 저장 (영구 보관, 검색 가능)
+- OZ Relayer API: 원본 데이터 소스 (fallback용)
 
-**원칙 2: HMAC 서명 기반 보안**
+**원칙 2: Write-Through 캐싱**
+- Webhook 수신 시 Redis + MySQL 동시 업데이트
+- 트랜잭션 생성 시 Redis + MySQL 동시 저장
+- TTL 리셋으로 hot data 캐시 유지
+
+**원칙 3: HMAC 서명 기반 보안**
 - Option B: OZ Relayer가 서명 → 우리가 검증
 - HMAC-SHA256 알고리즘 (3줄 코드 구현 가능)
 - NestJS Guard 패턴 활용
 
-**원칙 3: 단계적 확장성**
+**원칙 4: 단계적 확장성**
 - Phase 2: HTTP 기반 Notification (간단, 빠름)
 - Phase 3+: BullMQ/SQS Queue (확장성, 재시도)
 
 ### 주요 설계 결정사항
 
-**결정 1: Prisma ORM 선택**
+**결정 1: Redis L1 캐시 도입**
+- 기존 OZ Relayer용 Redis 인스턴스 공유 (새 컨테이너 불필요)
+- ioredis 라이브러리 사용 (NestJS 생태계 호환)
+- Key pattern: `tx:status:{txId}`
+- TTL: 600초 (환경변수 `REDIS_STATUS_TTL_SECONDS`로 설정 가능)
+
+**결정 2: Prisma ORM 선택**
 - TypeScript 타입 안전성 보장
 - 자동 마이그레이션 관리
 - NestJS 공식 권장 ORM
 
-**결정 2: Docker Compose Profile 전략**
+**결정 3: Docker Compose Profile 전략**
 - `profile: phase2` → MySQL 서비스 선택적 실행
 - Phase 1 유지 (MySQL 없이도 동작)
 - Phase 2+ 활성화 (`--profile phase2` 옵션)
 
-**결정 3: StatusService 확장 전략**
-- 기존 코드 최소 수정
-- MySQL 캐시 레이어 추가
-- 5초 캐시 TTL (실시간성 유지)
+**결정 4: StatusService 3-Tier Lookup 전략**
+- Tier 1: Redis 조회 (~1-5ms)
+- Tier 2: MySQL 조회 (~50ms) + Redis 캐싱
+- Tier 3: OZ Relayer API fallback (~200ms) + Redis + MySQL 저장
+- Graceful degradation: 상위 티어 실패 시 하위 티어로 fallback
 
 ---
 
@@ -86,7 +99,7 @@ grep -r "dependencies" .taskmaster/tasks/task-14.txt
 
 ## 📂 Phase 1: Infrastructure Setup (1-1.5시간)
 
-### 1.1 Prisma 의존성 설치
+### 1.1 Prisma + Redis 의존성 설치
 
 **파일**: `packages/relay-api/package.json`
 
@@ -94,10 +107,12 @@ grep -r "dependencies" .taskmaster/tasks/task-14.txt
 ```json
 {
   "dependencies": {
-    "@prisma/client": "^5.21.1"
+    "@prisma/client": "^5.21.1",
+    "ioredis": "^5.4.1"
   },
   "devDependencies": {
-    "prisma": "^5.21.1"
+    "prisma": "^5.21.1",
+    "@types/ioredis": "^5.0.0"
   }
 }
 ```
@@ -105,8 +120,8 @@ grep -r "dependencies" .taskmaster/tasks/task-14.txt
 **실행**:
 ```bash
 cd packages/relay-api
-pnpm add @prisma/client
-pnpm add -D prisma
+pnpm add @prisma/client ioredis
+pnpm add -D prisma @types/ioredis
 ```
 
 ---
@@ -223,6 +238,10 @@ DATABASE_URL="mysql://relayer_user:secure-user-password@localhost:3306/msq_relay
 MYSQL_ROOT_PASSWORD=secure-root-password
 MYSQL_PASSWORD=secure-user-password
 
+# === Phase 2: Redis L1 Cache ===
+REDIS_URL=redis://localhost:6379
+REDIS_STATUS_TTL_SECONDS=600
+
 # === Phase 2: Webhook Security ===
 WEBHOOK_SIGNING_KEY=your-secure-signing-key-must-be-32-characters-long
 
@@ -238,7 +257,39 @@ cp .env.example .env
 
 ---
 
-### 1.5 Prisma Migration 실행
+### 1.5 Redis Module 생성
+
+**파일**: `packages/relay-api/src/redis/redis.module.ts` (New)
+
+```typescript
+import { Module, Global } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
+import Redis from 'ioredis';
+
+export const REDIS_CLIENT = 'REDIS_CLIENT';
+
+@Global()
+@Module({
+  providers: [
+    {
+      provide: REDIS_CLIENT,
+      useFactory: (configService: ConfigService) => {
+        const redisUrl = configService.get('REDIS_URL', 'redis://localhost:6379');
+        return new Redis(redisUrl);
+      },
+      inject: [ConfigService],
+    },
+  ],
+  exports: [REDIS_CLIENT],
+})
+export class RedisModule {}
+```
+
+**Note**: 기존 OZ Relayer용 Redis 인스턴스를 공유하므로 새로운 Redis 컨테이너는 필요하지 않습니다.
+
+---
+
+### 1.6 Prisma Migration 실행
 
 **명령어**:
 ```bash
@@ -269,15 +320,17 @@ docker exec -it msq-relayer-mysql mysql -u relayer_user -p msq_relayer -e "DESCR
 
 ### Phase 1 체크리스트
 
-- [ ] Prisma 의존성 설치 완료 (`@prisma/client`, `prisma`)
+- [ ] Prisma + ioredis 의존성 설치 완료
 - [ ] `schema.prisma` 파일 생성 및 Transaction 모델 정의
 - [ ] Docker Compose에 MySQL 서비스 추가 (profile: phase2)
-- [ ] `.env.example` 업데이트 (DATABASE_URL, MYSQL_PASSWORD)
+- [ ] `.env.example` 업데이트 (DATABASE_URL, MYSQL_PASSWORD, REDIS_URL, REDIS_STATUS_TTL_SECONDS)
 - [ ] `.env` 파일 생성 (로컬 개발 환경)
+- [ ] RedisModule 생성 (`src/redis/redis.module.ts`)
 - [ ] MySQL 서비스 실행 성공
 - [ ] Prisma 마이그레이션 적용 (`pnpm prisma migrate dev`)
 - [ ] Prisma Client 생성 (`pnpm prisma generate`)
 - [ ] MySQL 테이블 생성 확인 (`transactions` 테이블 존재)
+- [ ] Redis 연결 확인 (기존 Redis 인스턴스 공유)
 
 ---
 
@@ -422,25 +475,34 @@ const expectedSignature = crypto
 **파일**: `packages/relay-api/src/webhooks/webhooks.service.ts` (New)
 
 ```typescript
-import { Injectable, NotFoundException, InternalServerErrorException } from '@nestjs/common';
+import { Injectable, Inject, NotFoundException, InternalServerErrorException, Logger } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
 import { PrismaClient } from '@prisma/client';
+import Redis from 'ioredis';
 import { OzRelayerWebhookDto } from './dto/oz-relayer-webhook.dto';
 import { NotificationService } from './notification.service';
+import { REDIS_CLIENT } from '../redis/redis.module';
 
 /**
  * WebhooksService
- * Handles OZ Relayer webhook requests and updates MySQL
+ * Handles OZ Relayer webhook requests and updates Redis (L1) + MySQL (L2)
  *
- * SPEC-WEBHOOK-001: Webhook processing with MySQL upsert
+ * SPEC-WEBHOOK-001 v1.1: Webhook processing with 3-Tier cache (write-through pattern)
  */
 @Injectable()
 export class WebhooksService {
+  private readonly logger = new Logger(WebhooksService.name);
   private readonly prisma = new PrismaClient();
 
-  constructor(private readonly notificationService: NotificationService) {}
+  constructor(
+    @Inject(REDIS_CLIENT) private readonly redis: Redis,
+    private readonly configService: ConfigService,
+    private readonly notificationService: NotificationService,
+  ) {}
 
   /**
    * Process OZ Relayer webhook and update transaction status
+   * Updates both Redis (L1) and MySQL (L2) with write-through pattern
    *
    * @param dto - Webhook payload from OZ Relayer
    * @throws NotFoundException if transaction does not exist
@@ -448,7 +510,7 @@ export class WebhooksService {
    */
   async handleWebhook(dto: OzRelayerWebhookDto): Promise<void> {
     try {
-      // Upsert transaction in MySQL (create if not exists, update otherwise)
+      // Upsert transaction in MySQL (L2 - permanent storage)
       const updated = await this.prisma.transaction.upsert({
         where: { id: dto.transactionId },
         update: {
@@ -472,6 +534,9 @@ export class WebhooksService {
         },
       });
 
+      // Update Redis (L1 - cache) with TTL reset
+      await this.cacheToRedis(dto.transactionId, updated);
+
       // Send notification to client services
       await this.notificationService.notifyClients({
         event: 'transaction.status.updated',
@@ -485,6 +550,22 @@ export class WebhooksService {
         throw new NotFoundException(`Transaction ${dto.transactionId} not found`);
       }
       throw new InternalServerErrorException('Failed to update transaction');
+    }
+  }
+
+  /**
+   * Cache transaction status to Redis (L1) with configurable TTL
+   * Key pattern: tx:status:{txId}
+   * Default TTL: 600 seconds (10 minutes)
+   */
+  private async cacheToRedis(txId: string, data: any): Promise<void> {
+    try {
+      const ttl = this.configService.get<number>('REDIS_STATUS_TTL_SECONDS', 600);
+      await this.redis.setex(`tx:status:${txId}`, ttl, JSON.stringify(data));
+      this.logger.debug(`Cached transaction ${txId} to Redis with TTL ${ttl}s`);
+    } catch (error) {
+      // Log error but don't throw - MySQL is the source of truth
+      this.logger.warn(`Failed to cache to Redis: ${error.message}`);
     }
   }
 }
@@ -703,9 +784,9 @@ services:
 
 ---
 
-## 🔄 Phase 4: StatusService + DirectService + GaslessService 통합 (1-1.5시간)
+## 🔄 Phase 4: StatusService + DirectService + GaslessService 통합 (1.5-2시간)
 
-### 4.1 StatusService 확장 (MySQL 캐시 추가)
+### 4.1 StatusService 확장 (3-Tier Lookup: Redis → MySQL → OZ Relayer)
 
 **파일**: `packages/relay-api/src/relay/status/status.service.ts` (Modified)
 
@@ -718,72 +799,102 @@ async getTransactionStatus(txId: string): Promise<TxStatusResponseDto> {
 }
 ```
 
-**변경 후** (Phase 2):
+**변경 후** (Phase 2 - 3-Tier Lookup):
 ```typescript
+import { Injectable, Inject, Logger } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
+import { HttpService } from '@nestjs/axios';
 import { PrismaClient } from '@prisma/client';
+import Redis from 'ioredis';
+import { firstValueFrom } from 'rxjs';
+import { REDIS_CLIENT } from '../../redis/redis.module';
 
 @Injectable()
 export class StatusService {
+  private readonly logger = new Logger(StatusService.name);
   private readonly prisma = new PrismaClient();
-  private readonly CACHE_TTL_MS = 5000; // 5초 캐시
 
   constructor(
+    @Inject(REDIS_CLIENT) private readonly redis: Redis,
     private readonly httpService: HttpService,
     private readonly configService: ConfigService,
     private readonly ozRelayerService: OzRelayerService,
   ) {}
 
   /**
-   * Query transaction status with MySQL cache + OZ Relayer fallback
+   * Query transaction status with 3-Tier lookup
+   * Tier 1: Redis (L1) - ~1-5ms
+   * Tier 2: MySQL (L2) - ~50ms
+   * Tier 3: OZ Relayer API - ~200ms
    *
-   * SPEC-WEBHOOK-001: MySQL first, OZ Relayer fallback
+   * SPEC-WEBHOOK-001 v1.1: 3-Tier cache architecture
    */
   async getTransactionStatus(txId: string): Promise<TxStatusResponseDto> {
-    // 1. Try MySQL cache first
-    const cached = await this.prisma.transaction.findUnique({
+    // Tier 1: Redis (L1 Cache) - ~1-5ms
+    try {
+      const cached = await this.redis.get(`tx:status:${txId}`);
+      if (cached) {
+        this.logger.debug(`Redis cache hit for transaction ${txId}`);
+        return JSON.parse(cached);
+      }
+    } catch (error) {
+      this.logger.warn(`Redis lookup failed: ${error.message}`);
+      // Continue to Tier 2
+    }
+
+    // Tier 2: MySQL (L2 Persistent) - ~50ms
+    const stored = await this.prisma.transaction.findUnique({
       where: { id: txId },
     });
 
-    // 2. If cache is fresh (updated within 5 seconds), return immediately
-    if (cached && (Date.now() - cached.updatedAt.getTime() < this.CACHE_TTL_MS)) {
-      return this.transformPrismaToDto(cached);
+    if (stored) {
+      this.logger.debug(`MySQL cache hit for transaction ${txId}`);
+      const dto = this.transformPrismaToDto(stored);
+      // Backfill Redis cache
+      await this.cacheToRedis(txId, dto);
+      return dto;
     }
 
-    // 3. Cache miss or stale → Fetch from OZ Relayer
+    // Tier 3: OZ Relayer API fallback - ~200ms
+    this.logger.debug(`Fetching transaction ${txId} from OZ Relayer`);
     try {
       const fresh = await this.fetchFromOzRelayer(txId);
 
-      // 4. Update MySQL cache
-      await this.prisma.transaction.upsert({
-        where: { id: txId },
-        update: {
-          hash: fresh.hash,
-          status: fresh.status,
-          from: fresh.from,
-          to: fresh.to,
-          value: fresh.value,
-          confirmedAt: fresh.confirmedAt ? new Date(fresh.confirmedAt) : null,
-          updatedAt: new Date(),
-        },
-        create: {
-          id: fresh.transactionId,
-          hash: fresh.hash,
-          status: fresh.status,
-          from: fresh.from,
-          to: fresh.to,
-          value: fresh.value,
-          createdAt: new Date(fresh.createdAt),
-          confirmedAt: fresh.confirmedAt ? new Date(fresh.confirmedAt) : null,
-        },
-      });
+      // Save to both L1 (Redis) and L2 (MySQL)
+      await Promise.all([
+        this.cacheToRedis(txId, fresh),
+        this.prisma.transaction.create({
+          data: {
+            id: fresh.transactionId,
+            hash: fresh.hash,
+            status: fresh.status,
+            from: fresh.from,
+            to: fresh.to,
+            value: fresh.value,
+            createdAt: new Date(fresh.createdAt),
+            confirmedAt: fresh.confirmedAt ? new Date(fresh.confirmedAt) : null,
+          },
+        }),
+      ]);
 
       return fresh;
     } catch (error) {
-      // 5. OZ Relayer failed → Return stale cache if available (degraded mode)
-      if (cached) {
-        return this.transformPrismaToDto(cached);
-      }
-      throw error; // Both MySQL and OZ Relayer failed
+      this.logger.error(`All tiers failed for transaction ${txId}: ${error.message}`);
+      throw error;
+    }
+  }
+
+  /**
+   * Cache transaction status to Redis (L1) with configurable TTL
+   * Key pattern: tx:status:{txId}
+   * Default TTL: 600 seconds (10 minutes)
+   */
+  private async cacheToRedis(txId: string, data: any): Promise<void> {
+    try {
+      const ttl = this.configService.get<number>('REDIS_STATUS_TTL_SECONDS', 600);
+      await this.redis.setex(`tx:status:${txId}`, ttl, JSON.stringify(data));
+    } catch (error) {
+      this.logger.warn(`Failed to cache to Redis: ${error.message}`);
     }
   }
 
@@ -842,28 +953,36 @@ export class StatusService {
 }
 ```
 
-**핵심 로직**:
-1. MySQL 우선 조회 (빠름)
-2. 5초 TTL 검증 (최신성 보장)
-3. Stale 시 OZ Relayer fallback
-4. OZ Relayer 응답으로 MySQL 업데이트
-5. 둘 다 실패 시 stale cache 반환 (degraded mode)
+**핵심 로직 (3-Tier Lookup)**:
+1. **Tier 1 (Redis)**: 초고속 조회 (~1-5ms), 캐시 히트 시 즉시 반환
+2. **Tier 2 (MySQL)**: 영구 저장소 조회 (~50ms), 히트 시 Redis에 backfill
+3. **Tier 3 (OZ Relayer)**: 원본 소스 fallback (~200ms), 결과를 Redis + MySQL에 저장
+4. **Graceful Degradation**: 상위 티어 실패 시 하위 티어로 자동 fallback
 
 ---
 
-### 4.2 DirectService 확장 (MySQL 저장 추가)
+### 4.2 DirectService 확장 (Redis + MySQL 저장)
 
 **파일**: `packages/relay-api/src/relay/direct/direct.service.ts` (Modified)
 
 **추가 코드** (sendTransaction 메서드 수정):
 ```typescript
+import { Injectable, Inject, Logger } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
 import { PrismaClient } from '@prisma/client';
+import Redis from 'ioredis';
+import { REDIS_CLIENT } from '../../redis/redis.module';
 
 @Injectable()
 export class DirectService {
+  private readonly logger = new Logger(DirectService.name);
   private readonly prisma = new PrismaClient();
 
-  // ... (existing code)
+  constructor(
+    @Inject(REDIS_CLIENT) private readonly redis: Redis,
+    private readonly configService: ConfigService,
+    // ... (existing dependencies)
+  ) {}
 
   async sendTransaction(dto: DirectTxDto): Promise<DirectTxResponseDto> {
     // 1. Send transaction to OZ Relayer (existing logic)
@@ -873,44 +992,72 @@ export class DirectService {
 
     const transactionId = ozResponse.data.data?.id || ozResponse.data.id;
 
-    // 2. Save to MySQL (NEW)
-    await this.prisma.transaction.create({
-      data: {
-        id: transactionId,
-        status: 'pending',
-        to: dto.to,
-        value: dto.value,
-        data: dto.data,
-        createdAt: new Date(),
-      },
-    });
-
-    // 3. Return response (existing)
-    return {
+    const txData = {
       transactionId,
       hash: ozResponse.data.data?.hash || null,
       status: 'pending',
+      to: dto.to,
+      value: dto.value,
       createdAt: new Date().toISOString(),
     };
+
+    // 2. Save to both Redis (L1) and MySQL (L2) - Write-through pattern
+    await Promise.all([
+      this.cacheToRedis(transactionId, txData),
+      this.prisma.transaction.create({
+        data: {
+          id: transactionId,
+          status: 'pending',
+          to: dto.to,
+          value: dto.value,
+          data: dto.data,
+          createdAt: new Date(),
+        },
+      }),
+    ]);
+
+    // 3. Return response (existing)
+    return txData;
+  }
+
+  /**
+   * Cache transaction to Redis (L1) with TTL
+   */
+  private async cacheToRedis(txId: string, data: any): Promise<void> {
+    try {
+      const ttl = this.configService.get<number>('REDIS_STATUS_TTL_SECONDS', 600);
+      await this.redis.setex(`tx:status:${txId}`, ttl, JSON.stringify(data));
+    } catch (error) {
+      this.logger.warn(`Failed to cache to Redis: ${error.message}`);
+    }
   }
 }
 ```
 
 ---
 
-### 4.3 GaslessService 확장 (MySQL 저장 추가)
+### 4.3 GaslessService 확장 (Redis + MySQL 저장)
 
 **파일**: `packages/relay-api/src/relay/gasless/gasless.service.ts` (Modified)
 
 **추가 코드** (동일한 패턴):
 ```typescript
+import { Injectable, Inject, Logger } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
 import { PrismaClient } from '@prisma/client';
+import Redis from 'ioredis';
+import { REDIS_CLIENT } from '../../redis/redis.module';
 
 @Injectable()
 export class GaslessService {
+  private readonly logger = new Logger(GaslessService.name);
   private readonly prisma = new PrismaClient();
 
-  // ... (existing code)
+  constructor(
+    @Inject(REDIS_CLIENT) private readonly redis: Redis,
+    private readonly configService: ConfigService,
+    // ... (existing dependencies)
+  ) {}
 
   async sendGaslessTransaction(dto: GaslessTxDto): Promise<GaslessTxResponseDto> {
     // 1. Forward to ERC2771 (existing logic)
@@ -920,25 +1067,44 @@ export class GaslessService {
 
     const transactionId = ozResponse.data.data?.id || ozResponse.data.id;
 
-    // 2. Save to MySQL (NEW)
-    await this.prisma.transaction.create({
-      data: {
-        id: transactionId,
-        status: 'pending',
-        to: this.configService.get<string>('FORWARDER_ADDRESS'), // Forwarder address
-        value: '0', // Gasless transactions have value=0
-        data: dto.data, // ABI-encoded forward request
-        createdAt: new Date(),
-      },
-    });
-
-    // 3. Return response (existing)
-    return {
+    const txData = {
       transactionId,
       hash: ozResponse.data.data?.hash || null,
       status: 'pending',
+      to: this.configService.get<string>('FORWARDER_ADDRESS'),
+      value: '0',
       createdAt: new Date().toISOString(),
     };
+
+    // 2. Save to both Redis (L1) and MySQL (L2) - Write-through pattern
+    await Promise.all([
+      this.cacheToRedis(transactionId, txData),
+      this.prisma.transaction.create({
+        data: {
+          id: transactionId,
+          status: 'pending',
+          to: this.configService.get<string>('FORWARDER_ADDRESS'),
+          value: '0',
+          data: dto.data,
+          createdAt: new Date(),
+        },
+      }),
+    ]);
+
+    // 3. Return response (existing)
+    return txData;
+  }
+
+  /**
+   * Cache transaction to Redis (L1) with TTL
+   */
+  private async cacheToRedis(txId: string, data: any): Promise<void> {
+    try {
+      const ttl = this.configService.get<number>('REDIS_STATUS_TTL_SECONDS', 600);
+      await this.redis.setex(`tx:status:${txId}`, ttl, JSON.stringify(data));
+    } catch (error) {
+      this.logger.warn(`Failed to cache to Redis: ${error.message}`);
+    }
   }
 }
 ```
@@ -947,10 +1113,12 @@ export class GaslessService {
 
 ### Phase 4 체크리스트
 
-- [ ] `StatusService` MySQL 캐시 로직 추가
-- [ ] `DirectService` MySQL 저장 로직 추가
-- [ ] `GaslessService` MySQL 저장 로직 추가
+- [ ] `StatusService` 3-Tier Lookup 로직 추가 (Redis → MySQL → OZ Relayer)
+- [ ] `DirectService` Redis + MySQL 저장 로직 추가
+- [ ] `GaslessService` Redis + MySQL 저장 로직 추가
+- [ ] Redis import 추가 (`ioredis`, `REDIS_CLIENT`)
 - [ ] Prisma import 추가 (`@prisma/client`)
+- [ ] Redis TTL 설정 확인 (`REDIS_STATUS_TTL_SECONDS`)
 - [ ] 빌드 성공 (`pnpm build`)
 - [ ] 기존 테스트 통과 (regression 방지)
 
@@ -1303,22 +1471,25 @@ SELECT * FROM transactions LIMIT 10;
 
 ### 기술적 검증
 
+- [ ] Redis 연결 성공 (기존 Redis 인스턴스 공유)
 - [ ] MySQL 서비스 정상 실행 (Docker Compose)
 - [ ] Prisma 마이그레이션 적용 완료
 - [ ] Webhook 엔드포인트 정상 응답 (POST /webhooks/oz-relayer)
 - [ ] HMAC 서명 검증 동작 (유효한 서명: 200, 무효: 401)
-- [ ] DirectService → MySQL 저장 확인
-- [ ] GaslessService → MySQL 저장 확인
-- [ ] StatusService MySQL 캐시 히트 확인
-- [ ] StatusService OZ Relayer fallback 확인
+- [ ] DirectService → Redis + MySQL 저장 확인
+- [ ] GaslessService → Redis + MySQL 저장 확인
+- [ ] StatusService Redis 캐시 히트 확인 (<5ms)
+- [ ] StatusService 3-Tier Lookup 확인 (Redis → MySQL → OZ Relayer)
+- [ ] Webhook → Redis + MySQL 업데이트 및 TTL 리셋 확인
 - [ ] Notification 전송 확인 (Mock Client)
 
 ### 기능적 검증
 
-- [ ] 트랜잭션 생성 → MySQL 저장
-- [ ] Webhook 수신 → MySQL 업데이트
-- [ ] 상태 조회 → MySQL 캐시 우선 조회
-- [ ] Stale 캐시 → OZ Relayer API fallback
+- [ ] 트랜잭션 생성 → Redis (L1) + MySQL (L2) 저장
+- [ ] Webhook 수신 → Redis + MySQL 업데이트
+- [ ] 상태 조회 → Redis 캐시 우선 조회 (Tier 1)
+- [ ] Redis 미스 → MySQL 조회 (Tier 2) + Redis backfill
+- [ ] MySQL 미스 → OZ Relayer API fallback (Tier 3)
 - [ ] Client 알림 전송 (상태 변경 시)
 
 ### 코드 품질
@@ -1356,6 +1527,8 @@ SELECT * FROM transactions LIMIT 10;
 ### Before PR Submission
 
 - [ ] HMAC 서명 검증 로직 정확성
+- [ ] Redis TTL 설정 정확성 (REDIS_STATUS_TTL_SECONDS)
+- [ ] Redis key pattern 일관성 (`tx:status:{txId}`)
 - [ ] Prisma schema 인덱스 최적화
 - [ ] MySQL 쿼리 성능 검증 (EXPLAIN)
 - [ ] Notification 실패 처리 (non-blocking)
@@ -1368,8 +1541,10 @@ SELECT * FROM transactions LIMIT 10;
 ### Reviewer Focus Areas
 
 - [ ] HMAC 알고리즘 구현 정확성 (crypto.timingSafeEqual)
+- [ ] Redis 3-Tier Lookup 로직 정확성
+- [ ] Redis TTL 리셋 동작 (Webhook 수신 시)
 - [ ] Prisma upsert 로직 (idempotency 보장)
-- [ ] StatusService fallback 전략 (degraded mode)
+- [ ] StatusService 3-Tier fallback 전략
 - [ ] MySQL 인덱스 효과 검증
 - [ ] Notification 비동기 처리 (Promise 관리)
 
@@ -1390,9 +1565,10 @@ SELECT * FROM transactions LIMIT 10;
 - HMAC-SHA256: https://nodejs.org/api/crypto.html#crypto_crypto_createhmac_algorithm_key_options
 - MySQL 8.0: https://dev.mysql.com/doc/refman/8.0/en/
 - OZ Relayer Webhooks: https://docs.openzeppelin.com/defender/relay#webhooks
+- ioredis: https://github.com/redis/ioredis
 
 ---
 
-**Version**: 1.0.0
+**Version**: 1.1.0
 **Status**: Draft
 **Last Updated**: 2025-12-30
