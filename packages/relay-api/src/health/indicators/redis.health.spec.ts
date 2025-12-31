@@ -45,7 +45,9 @@ describe("RedisHealthIndicator", () => {
     });
 
     it("should throw HealthCheckError when Redis throws error", async () => {
-      redisService.healthCheck.mockRejectedValue(new Error("Connection refused"));
+      redisService.healthCheck.mockRejectedValue(
+        new Error("Connection refused"),
+      );
 
       await expect(indicator.isHealthy("redis")).rejects.toThrow(
         HealthCheckError,
@@ -53,7 +55,9 @@ describe("RedisHealthIndicator", () => {
     });
 
     it("should include error message in HealthCheckError", async () => {
-      redisService.healthCheck.mockRejectedValue(new Error("Connection refused"));
+      redisService.healthCheck.mockRejectedValue(
+        new Error("Connection refused"),
+      );
 
       try {
         await indicator.isHealthy("redis");

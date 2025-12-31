@@ -99,12 +99,13 @@ services:
   mysql:
     image: mysql:8.0
     ports:
-      - "3306:3306"
+      - "3307:3306"
     environment:
       MYSQL_ROOT_PASSWORD: pass
       MYSQL_DATABASE: msq_relayer
     volumes:
       - msq-relayer-mysql-data:/var/lib/mysql
+      - ./init:/docker-entrypoint-initdb.d:ro
     healthcheck:
       test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-u", "root", "-ppass"]
       interval: 10s
@@ -126,6 +127,8 @@ services:
       - "8080:8080"
     depends_on:
       redis:
+        condition: service_healthy
+      mysql:
         condition: service_healthy
       oz-relayer-1:
         condition: service_healthy

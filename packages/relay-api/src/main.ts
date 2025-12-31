@@ -14,7 +14,7 @@ function validateEnvironmentVariables(): void {
 
   if (missingVars.length > 0) {
     logger.error(
-      `Missing required environment variables: ${missingVars.join(", ")}`
+      `Missing required environment variables: ${missingVars.join(", ")}`,
     );
     process.exit(1);
   }
@@ -23,7 +23,7 @@ function validateEnvironmentVariables(): void {
   const weakPlaceholders = ["your-api-key-here", "your-api-key"];
   if (weakPlaceholders.includes(process.env.RELAY_API_KEY || "")) {
     logger.error(
-      "Insecure RELAY_API_KEY detected. Please generate a secure API key."
+      "Insecure RELAY_API_KEY detected. Please generate a secure API key.",
     );
     process.exit(1);
   }
@@ -44,14 +44,9 @@ async function bootstrap() {
   // Swagger/OpenAPI configuration
   const swaggerConfig = new DocumentBuilder()
     .setTitle("MSQ Relayer Service API")
-    .setDescription(
-      "Meta Transaction Relay Infrastructure API Documentation"
-    )
+    .setDescription("Meta Transaction Relay Infrastructure API Documentation")
     .setVersion("1.0.0")
-    .addApiKey(
-      { type: "apiKey", name: "x-api-key", in: "header" },
-      "api-key"
-    )
+    .addApiKey({ type: "apiKey", name: "x-api-key", in: "header" }, "api-key")
     .build();
 
   const document = SwaggerModule.createDocument(app, swaggerConfig);

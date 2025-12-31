@@ -1,19 +1,19 @@
-import { Test, TestingModule } from '@nestjs/testing';
-import { INestApplication, ValidationPipe } from '@nestjs/common';
-import { ConfigService } from '@nestjs/config';
-import { HttpService } from '@nestjs/axios';
-import { of } from 'rxjs';
-import { AppModule } from '../../src/app.module';
-import { OzRelayerService } from '../../src/oz-relayer/oz-relayer.service';
-import { GaslessService } from '../../src/relay/gasless/gasless.service';
-import { StatusModule } from '../../src/relay/status/status.module';
-import { RedisService } from '../../src/redis/redis.service';
-import { PrismaService } from '../../src/prisma/prisma.service';
-import { TEST_CONFIG } from '../fixtures/test-config';
+import { Test, TestingModule } from "@nestjs/testing";
+import { INestApplication, ValidationPipe } from "@nestjs/common";
+import { ConfigService } from "@nestjs/config";
+import { HttpService } from "@nestjs/axios";
+import { of } from "rxjs";
+import { AppModule } from "../../src/app.module";
+import { OzRelayerService } from "../../src/oz-relayer/oz-relayer.service";
+import { GaslessService } from "../../src/relay/gasless/gasless.service";
+import { StatusModule } from "../../src/relay/status/status.module";
+import { RedisService } from "../../src/redis/redis.service";
+import { PrismaService } from "../../src/prisma/prisma.service";
+import { TEST_CONFIG } from "../fixtures/test-config";
 import {
   createMockOzRelayerResponse,
   createMockConfirmedResponse,
-} from '../fixtures/mock-responses';
+} from "../fixtures/mock-responses";
 
 // Shared config map (no duplication)
 const configMap: Record<string, any> = {
@@ -24,26 +24,30 @@ const configMap: Record<string, any> = {
   FORWARDER_ADDRESS: TEST_CONFIG.forwarder.address,
   FORWARDER_NAME: TEST_CONFIG.forwarder.name,
   CHAIN_ID: TEST_CONFIG.forwarder.chain_id,
-  RPC_URL: 'http://localhost:8545',
+  RPC_URL: "http://localhost:8545",
+  WEBHOOK_SIGNING_KEY: TEST_CONFIG.webhook.signing_key,
+  CLIENT_WEBHOOK_URL: TEST_CONFIG.webhook.client_url,
 };
 
 // Default mock for OzRelayerService
 const defaultOzRelayerMock = {
   sendTransaction: jest.fn().mockResolvedValue(createMockOzRelayerResponse()),
-  getTransactionStatus: jest.fn().mockResolvedValue(createMockConfirmedResponse()),
-  getRelayerId: jest.fn().mockResolvedValue('test-relayer-id'),
+  getTransactionStatus: jest
+    .fn()
+    .mockResolvedValue(createMockConfirmedResponse()),
+  getRelayerId: jest.fn().mockResolvedValue("test-relayer-id"),
 };
 
 // Default mock for Redis client (ioredis instance) - Prevents real Redis connections
 export const defaultRedisClientMock = {
   get: jest.fn().mockResolvedValue(null),
-  set: jest.fn().mockResolvedValue('OK'),
+  set: jest.fn().mockResolvedValue("OK"),
   del: jest.fn().mockResolvedValue(1),
   exists: jest.fn().mockResolvedValue(0),
   ttl: jest.fn().mockResolvedValue(-1),
-  flushall: jest.fn().mockResolvedValue('OK'),
-  ping: jest.fn().mockResolvedValue('PONG'),
-  quit: jest.fn().mockResolvedValue('OK'),
+  flushall: jest.fn().mockResolvedValue("OK"),
+  ping: jest.fn().mockResolvedValue("PONG"),
+  quit: jest.fn().mockResolvedValue("OK"),
   disconnect: jest.fn(),
   on: jest.fn(),
 };
@@ -60,6 +64,21 @@ export const defaultRedisMock = {
   onModuleDestroy: jest.fn().mockResolvedValue(undefined),
 };
 
+// Default mock transaction data for Prisma
+const createMockTransaction = (overrides = {}) => ({
+  id: "test-tx-id",
+  hash: "0x" + "1".repeat(64),
+  status: "confirmed",
+  from: "0x" + "a".repeat(40),
+  to: "0x" + "b".repeat(40),
+  value: "1000000000000000000",
+  data: null,
+  createdAt: new Date(),
+  updatedAt: new Date(),
+  confirmedAt: new Date(),
+  ...overrides,
+});
+
 // Default mock for PrismaService (L2 Cache / MySQL)
 export const defaultPrismaMock = {
   $connect: jest.fn().mockResolvedValue(undefined),
@@ -69,17 +88,17 @@ export const defaultPrismaMock = {
   transaction: {
     findUnique: jest.fn().mockResolvedValue(null),
     findMany: jest.fn().mockResolvedValue([]),
-    create: jest.fn().mockResolvedValue({ id: 'test-tx-id' }),
-    update: jest.fn().mockResolvedValue({ id: 'test-tx-id' }),
-    upsert: jest.fn().mockResolvedValue({ id: 'test-tx-id' }),
-    delete: jest.fn().mockResolvedValue({ id: 'test-tx-id' }),
+    create: jest.fn().mockResolvedValue(createMockTransaction()),
+    update: jest.fn().mockResolvedValue(createMockTransaction()),
+    upsert: jest.fn().mockResolvedValue(createMockTransaction()),
+    delete: jest.fn().mockResolvedValue(createMockTransaction()),
   },
 };
 
 // Default mock for HttpService (for RPC calls in GaslessService)
 // Structure mirrors real HttpService from @nestjs/axios
 export const mockAxiosPost = jest.fn().mockResolvedValue({
-  data: { jsonrpc: '2.0', result: '0x0', id: 1 },
+  data: { jsonrpc: "2.0", result: "0x0", id: 1 },
 });
 
 // Mock axiosRef object (axios instance)
@@ -121,7 +140,9 @@ export async function createTestApp(): Promise<INestApplication> {
     // Mock ConfigService
     .overrideProvider(ConfigService)
     .useValue({
-      get: jest.fn((key: string, defaultValue?: any) => configMap[key] ?? defaultValue),
+      get: jest.fn(
+        (key: string, defaultValue?: any) => configMap[key] ?? defaultValue,
+      ),
       getOrThrow: jest.fn((key: string) => {
         const value = configMap[key];
         if (value === undefined) throw new Error(`Config key ${key} not found`);
@@ -137,7 +158,7 @@ export async function createTestApp(): Promise<INestApplication> {
       factory: () => defaultHttpServiceMock,
     })
     // Mock REDIS_CLIENT (ioredis instance) - Critical: prevents real Redis connections
-    .overrideProvider('REDIS_CLIENT')
+    .overrideProvider("REDIS_CLIENT")
     .useValue(defaultRedisClientMock)
     // Mock RedisService (L1 Cache)
     .overrideProvider(RedisService)
@@ -151,7 +172,7 @@ export async function createTestApp(): Promise<INestApplication> {
   currentModuleFixture = moduleFixture;
 
   const app = moduleFixture.createNestApplication();
-  app.setGlobalPrefix('api/v1');
+  app.setGlobalPrefix("api/v1");
   app.useGlobalPipes(
     new ValidationPipe({
       whitelist: true,
@@ -181,23 +202,28 @@ function setupServiceMocks(moduleFixture: TestingModule): void {
   // Spy on GaslessService.getNonceFromForwarder to avoid real RPC calls
   try {
     const gaslessService = moduleFixture.get(GaslessService);
-    gaslessServiceSpy = jest.spyOn(gaslessService, 'getNonceFromForwarder')
-      .mockResolvedValue('0');
+    gaslessServiceSpy = jest
+      .spyOn(gaslessService, "getNonceFromForwarder")
+      .mockResolvedValue("0");
   } catch {
     // GaslessService might not be available
   }
 
   // Spy on HttpService from StatusModule context (for OZ Relayer status calls)
   try {
-    const statusHttpService = moduleFixture.select(StatusModule).get(HttpService, { strict: false });
+    const statusHttpService = moduleFixture
+      .select(StatusModule)
+      .get(HttpService, { strict: false });
     if (statusHttpService) {
-      jest.spyOn(statusHttpService, 'get').mockReturnValue(of({
-        data: {},
-        status: 200,
-        statusText: 'OK',
-        headers: {},
-        config: {} as never,
-      }));
+      jest.spyOn(statusHttpService, "get").mockReturnValue(
+        of({
+          data: {},
+          status: 200,
+          statusText: "OK",
+          headers: {},
+          config: {} as never,
+        }),
+      );
     }
   } catch {
     // StatusModule HttpService might not be available
@@ -207,13 +233,15 @@ function setupServiceMocks(moduleFixture: TestingModule): void {
   try {
     const rootHttpService = moduleFixture.get(HttpService, { strict: false });
     if (rootHttpService) {
-      jest.spyOn(rootHttpService, 'get').mockReturnValue(of({
-        data: {},
-        status: 200,
-        statusText: 'OK',
-        headers: {},
-        config: {} as never,
-      }));
+      jest.spyOn(rootHttpService, "get").mockReturnValue(
+        of({
+          data: {},
+          status: 200,
+          statusText: "OK",
+          headers: {},
+          config: {} as never,
+        }),
+      );
     }
   } catch {
     // Root HttpService might not be available
@@ -255,7 +283,9 @@ export function getHttpServiceMock(app: INestApplication): MockedHttpService {
   // Get HttpService from StatusModule context
   if (currentModuleFixture) {
     try {
-      const statusHttpService = currentModuleFixture.select(StatusModule).get(HttpService, { strict: false });
+      const statusHttpService = currentModuleFixture
+        .select(StatusModule)
+        .get(HttpService, { strict: false });
       return statusHttpService as unknown as MockedHttpService;
     } catch {
       // Fall back to root HttpService
@@ -271,7 +301,9 @@ export function getHttpServiceMock(app: INestApplication): MockedHttpService {
  * const gaslessMock = getGaslessServiceMock(app);
  * gaslessMock.getNonceFromForwarder.mockRejectedValueOnce(new Error('RPC unavailable'));
  */
-export function getGaslessServiceMock(app: INestApplication): jest.Mocked<GaslessService> {
+export function getGaslessServiceMock(
+  app: INestApplication,
+): jest.Mocked<GaslessService> {
   return app.get(GaslessService) as jest.Mocked<GaslessService>;
 }
 
@@ -288,27 +320,31 @@ export function resetMocks(app?: INestApplication): void {
 
   // Use mockImplementation to generate unique transactionIds per call
   defaultOzRelayerMock.sendTransaction.mockImplementation(() =>
-    Promise.resolve(createMockOzRelayerResponse())
+    Promise.resolve(createMockOzRelayerResponse()),
   );
   defaultOzRelayerMock.getTransactionStatus.mockImplementation(() =>
-    Promise.resolve(createMockConfirmedResponse())
+    Promise.resolve(createMockConfirmedResponse()),
   );
-  defaultOzRelayerMock.getRelayerId.mockResolvedValue('test-relayer-id');
+  defaultOzRelayerMock.getRelayerId.mockResolvedValue("test-relayer-id");
 
   // Reset GaslessService spy
   if (gaslessServiceSpy) {
     gaslessServiceSpy.mockReset();
-    gaslessServiceSpy.mockResolvedValue('0');
+    gaslessServiceSpy.mockResolvedValue("0");
   }
 
   // Reset HttpService spies for StatusModule
   if (app && currentModuleFixture) {
     // Reset StatusModule HttpService
     try {
-      const statusHttpService = currentModuleFixture.select(StatusModule).get(HttpService, { strict: false });
+      const statusHttpService = currentModuleFixture
+        .select(StatusModule)
+        .get(HttpService, { strict: false });
       if (statusHttpService?.get) {
         (statusHttpService.get as unknown as jest.SpyInstance).mockReset();
-        (statusHttpService.get as unknown as jest.SpyInstance).mockReturnValue(of({ data: {}, status: 200 }));
+        (statusHttpService.get as unknown as jest.SpyInstance).mockReturnValue(
+          of({ data: {}, status: 200 }),
+        );
       }
     } catch {
       // StatusModule HttpService might not be available
@@ -316,10 +352,14 @@ export function resetMocks(app?: INestApplication): void {
 
     // Reset root HttpService
     try {
-      const rootHttpService = currentModuleFixture.get(HttpService, { strict: false });
+      const rootHttpService = currentModuleFixture.get(HttpService, {
+        strict: false,
+      });
       if (rootHttpService?.get) {
         (rootHttpService.get as unknown as jest.SpyInstance).mockReset();
-        (rootHttpService.get as unknown as jest.SpyInstance).mockReturnValue(of({ data: {}, status: 200 }));
+        (rootHttpService.get as unknown as jest.SpyInstance).mockReturnValue(
+          of({ data: {}, status: 200 }),
+        );
       }
     } catch {
       // Root HttpService might not be available

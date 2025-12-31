@@ -1,7 +1,7 @@
-import { Module, Global } from '@nestjs/common';
-import { ConfigService } from '@nestjs/config';
-import Redis from 'ioredis';
-import { RedisService } from './redis.service';
+import { Module, Global } from "@nestjs/common";
+import { ConfigService } from "@nestjs/config";
+import Redis from "ioredis";
+import { RedisService } from "./redis.service";
 
 /**
  * RedisModule
@@ -13,20 +13,20 @@ import { RedisService } from './redis.service';
 @Module({
   providers: [
     {
-      provide: 'REDIS_CLIENT',
+      provide: "REDIS_CLIENT",
       useFactory: (configService: ConfigService) => {
         const redisUrl = configService.get<string>(
-          'REDIS_URL',
-          'redis://localhost:6379',
+          "REDIS_URL",
+          "redis://localhost:6379",
         );
         const client = new Redis(redisUrl);
 
-        client.on('error', (err) => {
-          console.error('Redis Client Error:', err);
+        client.on("error", (err) => {
+          console.error("Redis Client Error:", err);
         });
 
-        client.on('connect', () => {
-          console.log('Redis Client Connected');
+        client.on("connect", () => {
+          console.log("Redis Client Connected");
         });
 
         return client;
@@ -35,6 +35,6 @@ import { RedisService } from './redis.service';
     },
     RedisService,
   ],
-  exports: ['REDIS_CLIENT', RedisService],
+  exports: ["REDIS_CLIENT", RedisService],
 })
 export class RedisModule {}

@@ -1,5 +1,5 @@
-import { Injectable, Inject, Logger, OnModuleDestroy } from '@nestjs/common';
-import Redis from 'ioredis';
+import { Injectable, Inject, Logger, OnModuleDestroy } from "@nestjs/common";
+import Redis from "ioredis";
 
 /**
  * RedisService
@@ -10,7 +10,7 @@ import Redis from 'ioredis';
 export class RedisService implements OnModuleDestroy {
   private readonly logger = new Logger(RedisService.name);
 
-  constructor(@Inject('REDIS_CLIENT') private readonly client: Redis) {}
+  constructor(@Inject("REDIS_CLIENT") private readonly client: Redis) {}
 
   /**
    * Get a value from Redis
@@ -37,9 +37,10 @@ export class RedisService implements OnModuleDestroy {
    * @param ttl Optional TTL in seconds
    */
   async set<T>(key: string, value: T, ttl?: number): Promise<void> {
-    const serialized = typeof value === 'string' ? value : JSON.stringify(value);
+    const serialized =
+      typeof value === "string" ? value : JSON.stringify(value);
     if (ttl) {
-      await this.client.set(key, serialized, 'EX', ttl);
+      await this.client.set(key, serialized, "EX", ttl);
     } else {
       await this.client.set(key, serialized);
     }
@@ -101,7 +102,7 @@ export class RedisService implements OnModuleDestroy {
   async onModuleDestroy() {
     try {
       await this.client.quit();
-      this.logger.log('Redis client disconnected');
+      this.logger.log("Redis client disconnected");
     } catch (error) {
       this.logger.warn(`Error disconnecting Redis: ${error.message}`);
     }

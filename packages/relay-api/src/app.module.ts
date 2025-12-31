@@ -8,6 +8,7 @@ import { OzRelayerModule } from "./oz-relayer/oz-relayer.module";
 import { RelayModule } from "./relay/relay.module";
 import { RedisModule } from "./redis/redis.module";
 import { PrismaModule } from "./prisma/prisma.module";
+import { WebhooksModule } from "./webhooks/webhooks.module";
 
 @Module({
   imports: [
@@ -19,6 +20,7 @@ import { PrismaModule } from "./prisma/prisma.module";
     AuthModule,
     OzRelayerModule,
     RelayModule,
+    WebhooksModule,
     HealthModule,
   ],
   controllers: [],

@@ -1,7 +1,7 @@
-import { Test, TestingModule } from '@nestjs/testing';
-import { PrismaService } from './prisma.service';
+import { Test, TestingModule } from "@nestjs/testing";
+import { PrismaService } from "./prisma.service";
 
-describe('PrismaService', () => {
+describe("PrismaService", () => {
   let service: PrismaService;
 
   // Mock PrismaClient
@@ -39,77 +39,77 @@ describe('PrismaService', () => {
     jest.clearAllMocks();
   });
 
-  it('should be defined', () => {
+  it("should be defined", () => {
     expect(service).toBeDefined();
   });
 
-  describe('Database Connection', () => {
-    it('should have $connect method', () => {
+  describe("Database Connection", () => {
+    it("should have $connect method", () => {
       expect(service.$connect).toBeDefined();
-      expect(typeof service.$connect).toBe('function');
+      expect(typeof service.$connect).toBe("function");
     });
 
-    it('should have $disconnect method', () => {
+    it("should have $disconnect method", () => {
       expect(service.$disconnect).toBeDefined();
-      expect(typeof service.$disconnect).toBe('function');
+      expect(typeof service.$disconnect).toBe("function");
     });
 
-    it('should have $executeRawUnsafe method', () => {
+    it("should have $executeRawUnsafe method", () => {
       expect(service.$executeRawUnsafe).toBeDefined();
-      expect(typeof service.$executeRawUnsafe).toBe('function');
+      expect(typeof service.$executeRawUnsafe).toBe("function");
     });
   });
 
-  describe('Transaction Model', () => {
-    it('should have transaction delegate', () => {
+  describe("Transaction Model", () => {
+    it("should have transaction delegate", () => {
       expect(service.transaction).toBeDefined();
     });
 
-    it('should support create operation', () => {
+    it("should support create operation", () => {
       expect(service.transaction.create).toBeDefined();
-      expect(typeof service.transaction.create).toBe('function');
+      expect(typeof service.transaction.create).toBe("function");
     });
 
-    it('should support findUnique operation', () => {
+    it("should support findUnique operation", () => {
       expect(service.transaction.findUnique).toBeDefined();
-      expect(typeof service.transaction.findUnique).toBe('function');
+      expect(typeof service.transaction.findUnique).toBe("function");
     });
 
-    it('should support findMany operation', () => {
+    it("should support findMany operation", () => {
       expect(service.transaction.findMany).toBeDefined();
-      expect(typeof service.transaction.findMany).toBe('function');
+      expect(typeof service.transaction.findMany).toBe("function");
     });
 
-    it('should support update operation', () => {
+    it("should support update operation", () => {
       expect(service.transaction.update).toBeDefined();
-      expect(typeof service.transaction.update).toBe('function');
+      expect(typeof service.transaction.update).toBe("function");
     });
 
-    it('should support upsert operation', () => {
+    it("should support upsert operation", () => {
       expect(service.transaction.upsert).toBeDefined();
-      expect(typeof service.transaction.upsert).toBe('function');
+      expect(typeof service.transaction.upsert).toBe("function");
     });
 
-    it('should support delete operation', () => {
+    it("should support delete operation", () => {
       expect(service.transaction.delete).toBeDefined();
-      expect(typeof service.transaction.delete).toBe('function');
+      expect(typeof service.transaction.delete).toBe("function");
     });
 
-    it('should support deleteMany operation', () => {
+    it("should support deleteMany operation", () => {
       expect(service.transaction.deleteMany).toBeDefined();
-      expect(typeof service.transaction.deleteMany).toBe('function');
+      expect(typeof service.transaction.deleteMany).toBe("function");
     });
   });
 
-  describe('Transaction Create', () => {
-    it('should create a transaction', async () => {
+  describe("Transaction Create", () => {
+    it("should create a transaction", async () => {
       const createInput = {
         data: {
-          id: 'test-tx-1',
-          status: 'pending',
-          to: '0x1234567890123456789012345678901234567890',
-          value: '1000000000000000000',
-          data: '0x',
+          id: "test-tx-1",
+          status: "pending",
+          to: "0x1234567890123456789012345678901234567890",
+          value: "1000000000000000000",
+          data: "0x",
         },
       };
       const mockTx = createInput.data;
@@ -119,17 +119,17 @@ describe('PrismaService', () => {
 
       expect(service.transaction.create).toHaveBeenCalledWith(createInput);
       expect(result).toBeDefined();
-      expect(result.id).toBe('test-tx-1');
-      expect(result.status).toBe('pending');
+      expect(result.id).toBe("test-tx-1");
+      expect(result.status).toBe("pending");
     });
 
-    it('should create transaction with hash', async () => {
+    it("should create transaction with hash", async () => {
       const createInput = {
         data: {
-          id: 'test-tx-2',
-          status: 'pending',
-          hash: '0xabc123',
-          to: '0x1234567890123456789012345678901234567890',
+          id: "test-tx-2",
+          status: "pending",
+          hash: "0xabc123",
+          to: "0x1234567890123456789012345678901234567890",
         },
       };
       const mockTx = createInput.data;
@@ -137,18 +137,18 @@ describe('PrismaService', () => {
 
       const result = await service.transaction.create(createInput);
 
-      expect(result.hash).toBe('0xabc123');
+      expect(result.hash).toBe("0xabc123");
     });
   });
 
-  describe('Transaction Find', () => {
-    it('should find transaction by id', async () => {
-      const txId = 'test-tx-find';
+  describe("Transaction Find", () => {
+    it("should find transaction by id", async () => {
+      const txId = "test-tx-find";
       const mockTx = {
         id: txId,
-        status: 'confirmed',
-        hash: '0xabc123',
-        to: '0x1234567890123456789012345678901234567890',
+        status: "confirmed",
+        hash: "0xabc123",
+        to: "0x1234567890123456789012345678901234567890",
       };
       mockTransactionDelegate.findUnique.mockResolvedValue(mockTx);
 
@@ -156,48 +156,50 @@ describe('PrismaService', () => {
         where: { id: txId },
       });
 
-      expect(service.transaction.findUnique).toHaveBeenCalledWith({ where: { id: txId } });
+      expect(service.transaction.findUnique).toHaveBeenCalledWith({
+        where: { id: txId },
+      });
       expect(result).toBeDefined();
       expect(result!.id).toBe(txId);
-      expect(result!.status).toBe('confirmed');
+      expect(result!.status).toBe("confirmed");
     });
 
-    it('should return null when transaction not found', async () => {
+    it("should return null when transaction not found", async () => {
       mockTransactionDelegate.findUnique.mockResolvedValue(null);
 
       const result = await service.transaction.findUnique({
-        where: { id: 'non-existent' },
+        where: { id: "non-existent" },
       });
 
       expect(result).toBeNull();
     });
 
-    it('should find transactions by status', async () => {
+    it("should find transactions by status", async () => {
       const mockTxs = [
-        { id: 'tx-1', status: 'pending' },
-        { id: 'tx-2', status: 'pending' },
+        { id: "tx-1", status: "pending" },
+        { id: "tx-2", status: "pending" },
       ];
       mockTransactionDelegate.findMany.mockResolvedValue(mockTxs);
 
       const result = await service.transaction.findMany({
-        where: { status: 'pending' },
+        where: { status: "pending" },
       });
 
       expect(service.transaction.findMany).toHaveBeenCalledWith({
-        where: { status: 'pending' },
+        where: { status: "pending" },
       });
       expect(result).toHaveLength(2);
     });
   });
 
-  describe('Transaction Update', () => {
-    it('should update a transaction', async () => {
-      const txId = 'test-tx-update';
+  describe("Transaction Update", () => {
+    it("should update a transaction", async () => {
+      const txId = "test-tx-update";
       const updateInput = {
         where: { id: txId },
         data: {
-          status: 'confirmed',
-          hash: '0xupdate123',
+          status: "confirmed",
+          hash: "0xupdate123",
           confirmedAt: new Date(),
         },
       };
@@ -207,61 +209,61 @@ describe('PrismaService', () => {
       const result = await service.transaction.update(updateInput);
 
       expect(service.transaction.update).toHaveBeenCalledWith(updateInput);
-      expect(result.status).toBe('confirmed');
-      expect(result.hash).toBe('0xupdate123');
+      expect(result.status).toBe("confirmed");
+      expect(result.hash).toBe("0xupdate123");
     });
   });
 
-  describe('Transaction Upsert', () => {
-    it('should create transaction on first upsert', async () => {
-      const txId = 'test-tx-upsert';
+  describe("Transaction Upsert", () => {
+    it("should create transaction on first upsert", async () => {
+      const txId = "test-tx-upsert";
       const upsertInput = {
         where: { id: txId },
         create: {
           id: txId,
-          status: 'pending',
-          hash: '0xoriginal',
+          status: "pending",
+          hash: "0xoriginal",
         },
         update: {
-          status: 'confirmed',
+          status: "confirmed",
         },
       };
-      const mockResult = { id: txId, status: 'pending', hash: '0xoriginal' };
+      const mockResult = { id: txId, status: "pending", hash: "0xoriginal" };
       mockTransactionDelegate.upsert.mockResolvedValue(mockResult);
 
       const result = await service.transaction.upsert(upsertInput);
 
       expect(service.transaction.upsert).toHaveBeenCalledWith(upsertInput);
-      expect(result.status).toBe('pending');
+      expect(result.status).toBe("pending");
     });
 
-    it('should update transaction on second upsert', async () => {
-      const txId = 'test-tx-upsert';
+    it("should update transaction on second upsert", async () => {
+      const txId = "test-tx-upsert";
       const upsertInput = {
         where: { id: txId },
         create: {
           id: txId,
-          status: 'pending',
+          status: "pending",
         },
         update: {
-          status: 'confirmed',
-          hash: '0xupserted',
+          status: "confirmed",
+          hash: "0xupserted",
         },
       };
-      const mockResult = { id: txId, status: 'confirmed', hash: '0xupserted' };
+      const mockResult = { id: txId, status: "confirmed", hash: "0xupserted" };
       mockTransactionDelegate.upsert.mockResolvedValue(mockResult);
 
       const result = await service.transaction.upsert(upsertInput);
 
-      expect(result.status).toBe('confirmed');
-      expect(result.hash).toBe('0xupserted');
+      expect(result.status).toBe("confirmed");
+      expect(result.hash).toBe("0xupserted");
     });
   });
 
-  describe('Transaction Delete', () => {
-    it('should delete a transaction', async () => {
-      const txId = 'test-tx-delete';
-      const mockDeleted = { id: txId, status: 'pending' };
+  describe("Transaction Delete", () => {
+    it("should delete a transaction", async () => {
+      const txId = "test-tx-delete";
+      const mockDeleted = { id: txId, status: "pending" };
       mockTransactionDelegate.delete.mockResolvedValue(mockDeleted);
 
       const result = await service.transaction.delete({
@@ -274,100 +276,100 @@ describe('PrismaService', () => {
       expect(result.id).toBe(txId);
     });
 
-    it('should delete many transactions', async () => {
+    it("should delete many transactions", async () => {
       mockTransactionDelegate.deleteMany.mockResolvedValue({ count: 3 });
 
       const result = await service.transaction.deleteMany({
-        where: { status: 'failed' },
+        where: { status: "failed" },
       });
 
       expect(service.transaction.deleteMany).toHaveBeenCalledWith({
-        where: { status: 'failed' },
+        where: { status: "failed" },
       });
       expect(result.count).toBe(3);
     });
   });
 
-  describe('Database Indexes', () => {
-    it('should support queries with status index', async () => {
+  describe("Database Indexes", () => {
+    it("should support queries with status index", async () => {
       mockTransactionDelegate.findMany.mockResolvedValue([]);
 
       await service.transaction.findMany({
-        where: { status: 'pending' },
+        where: { status: "pending" },
       });
 
       expect(service.transaction.findMany).toHaveBeenCalled();
     });
 
-    it('should support queries with hash index', async () => {
+    it("should support queries with hash index", async () => {
       mockTransactionDelegate.findMany.mockResolvedValue([]);
 
       await service.transaction.findMany({
-        where: { hash: '0xtest' },
+        where: { hash: "0xtest" },
       });
 
       expect(service.transaction.findMany).toHaveBeenCalled();
     });
 
-    it('should support queries ordered by createdAt index', async () => {
+    it("should support queries ordered by createdAt index", async () => {
       mockTransactionDelegate.findMany.mockResolvedValue([]);
 
       await service.transaction.findMany({
-        orderBy: { createdAt: 'desc' },
+        orderBy: { createdAt: "desc" },
       });
 
       expect(service.transaction.findMany).toHaveBeenCalled();
     });
   });
 
-  describe('Unique Constraints', () => {
-    it('should enforce unique hash constraint', async () => {
-      const hash = '0xunique123';
+  describe("Unique Constraints", () => {
+    it("should enforce unique hash constraint", async () => {
+      const hash = "0xunique123";
       mockTransactionDelegate.create.mockRejectedValue(
-        new Error('Unique constraint failed on the fields: (`hash`)'),
+        new Error("Unique constraint failed on the fields: (`hash`)"),
       );
 
       const createInput = {
         data: {
-          id: 'tx-1',
+          id: "tx-1",
           hash,
-          status: 'pending',
+          status: "pending",
         },
       };
 
       await expect(service.transaction.create(createInput)).rejects.toThrow(
-        'Unique constraint failed',
+        "Unique constraint failed",
       );
     });
   });
 
-  describe('Query Patterns', () => {
-    it('should support complex where conditions', async () => {
+  describe("Query Patterns", () => {
+    it("should support complex where conditions", async () => {
       mockTransactionDelegate.findMany.mockResolvedValue([]);
 
       await service.transaction.findMany({
         where: {
-          status: 'pending',
-          to: '0x1234567890123456789012345678901234567890',
+          status: "pending",
+          to: "0x1234567890123456789012345678901234567890",
         },
       });
 
       expect(service.transaction.findMany).toHaveBeenCalled();
     });
 
-    it('should support pagination', async () => {
+    it("should support pagination", async () => {
       mockTransactionDelegate.findMany.mockResolvedValue([]);
 
       await service.transaction.findMany({
         skip: 10,
         take: 20,
-        orderBy: { createdAt: 'desc' },
+        orderBy: { createdAt: "desc" },
       });
 
       expect(service.transaction.findMany).toHaveBeenCalled();
     });
 
-    it('should support field selection', async () => {
+    it("should support field selection", async () => {
       mockTransactionDelegate.findMany.mockResolvedValue([]);
 
       await service.transaction.findMany({
