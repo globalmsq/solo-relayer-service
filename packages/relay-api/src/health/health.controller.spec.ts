@@ -10,6 +10,7 @@ import { ServiceUnavailableException } from "@nestjs/common";
 import { of, throwError } from "rxjs";
 import { HealthController } from "./health.controller";
 import { OzRelayerHealthIndicator, RedisHealthIndicator } from "./indicators";
+import { RedisService } from "../redis/redis.service";
 
 describe("HealthController (Integration)", () => {
   let controller: HealthController;
@@ -25,6 +26,12 @@ describe("HealthController (Integration)", () => {
       providers: [
         OzRelayerHealthIndicator,
         RedisHealthIndicator,
+        {
+          provide: RedisService,
+          useValue: {
+            healthCheck: jest.fn().mockResolvedValue(true),
+          },
+        },
         {
           provide: HttpService,
           useValue: {
@@ -98,7 +105,7 @@ describe("HealthController (Integration)", () => {
       expect(result.details!["redis"]).toBeDefined();
     });
 
-    // Redis indicator included
+    // Redis indicator included (actual RedisService.healthCheck integration)
     it("should include redis indicator in response", async () => {
       jest
         .spyOn(httpService, "get")
@@ -106,8 +113,7 @@ describe("HealthController (Integration)", () => {
 
       const result = await controller.check();
 
-      expect(result.info!["redis"].status).toBe("healthy");
-      expect(result.info!["redis"].message).toContain("Phase 1");
+      expect(result.info!["redis"].status).toBe("up");
     });
 
     // OZ Relayer LB details (SPEC-PROXY-001: Simplified to single Nginx LB endpoint)

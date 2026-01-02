@@ -6,9 +6,9 @@
 **Blockchain Transaction Relayer System (MSQ Relayer Service)**
 
 ### Document Version
-- **Version**: 12.3
-- **Last Updated**: 2025-12-23
-- **Status**: Phase 1 MVP Complete (Direct TX + Gasless TX with EIP-712 Verification + Transaction Status Polling)
+- **Version**: 12.5
+- **Last Updated**: 2026-01-02
+- **Status**: Phase 2 Complete (Phase 1 + TX History + 3-Tier Lookup + Webhook Handler)
 
 ### Related Documents
 - [Technical Stack and API Spec](./tech.md)
@@ -51,7 +51,7 @@ As OpenZeppelin Defender service will be discontinued in July 2026, we are build
 **Phase 2+**:
 | Feature | Description | Implementation |
 |---------|-------------|----------------|
-| **Queue System** | Transaction queuing and sequential processing | Redis(BullMQ) / AWS SQS (QUEUE_PROVIDER) |
+| **Queue System** | Async transaction processing with DLQ | AWS SQS + LocalStack (Local Dev) |
 | **Policy Engine** | Contract/Method Whitelist, Blacklist | NestJS Policy Module |
 | **Monitor Service** | Blockchain event monitoring | Using OZ Monitor |
 
@@ -150,18 +150,41 @@ As OpenZeppelin Defender service will be discontinued in July 2026, we are build
 
 ---
 
-### 3.2 Phase 2+: Future Implementation
+### 3.2 Phase 2: TX History & Webhook (SPEC-WEBHOOK-001) - Complete
 
-**TX History & Webhook (P1)**:
-- MySQL (Transaction History storage)
-- Webhook Handler (OZ Relayer status notification processing)
-- Status change push notifications
+**3-Tier Lookup System**:
+| Tier | Storage | Latency | Purpose |
+|------|---------|---------|---------|
+| L1 | Redis Cache | ~1-5ms | Fast lookup for terminal statuses |
+| L2 | MySQL (Prisma) | ~50ms | Persistent transaction history |
+| L3 | OZ Relayer API | ~200ms | Real-time status from source |
+
+**Key Features**:
+| Feature | Description | Status |
+|---------|-------------|--------|
+| Redis L1 Cache | Transaction status caching with ioredis | Complete |
+| MySQL L2 Storage | Prisma ORM with transactions table | Complete |
+| Webhook Handler | POST /webhooks/oz-relayer endpoint | Complete |
+| HMAC-SHA256 Verification | X-OZ-Signature header validation | Complete |
+| Client Notifications | Non-blocking webhook forwarding | Complete |
+| Write-Through Caching | Automatic cache population on writes | Complete |
+
+**Environment Variables**:
+```bash
+DATABASE_URL=mysql://root:pass@localhost:3307/msq_relayer
+REDIS_URL=redis://localhost:6379
+WEBHOOK_SIGNING_KEY=your-secret-signing-key
+CLIENT_WEBHOOK_URL=https://client.example.com/webhooks
+```
+
+### 3.3 Phase 3+: Future Implementation
 
 **Queue System (P1)**:
-- Queue Adapter pattern (QUEUE_PROVIDER configuration)
-- Redis + BullMQ implementation (Default)
-- AWS SQS implementation (Optional)
-- Job status tracking API
+- AWS SQS Standard Queue for async transaction processing
+- LocalStack for local development (AWS SQS emulation)
+- Nginx Load Balancer for multi-relayer routing
+- Dead Letter Queue (DLQ) with 3 retry limit
+- Job status tracking API (`GET /api/v1/relay/job/:jobId`)
 
 **Policy Engine (P1)**:
 - Contract Whitelist verification
@@ -220,10 +243,17 @@ As OpenZeppelin Defender service will be discontinued in July 2026, we are build
 
 **Week 3 Completion**: Smart contracts package initialized with Hardhat, ERC2771Forwarder deployed, Sample ERC20/ERC721 contracts implemented with ERC2771Context integration. See [SPEC-CONTRACTS-001](../docs/tech.md#smart-contracts-technical-stack) for technical details.
 
-### Phase 2+: Future Expansion (TBD)
+### Phase 2: TX History & Webhook (SPEC-WEBHOOK-001) - Complete
 
-- TX History (MySQL) + Webhook Handler
-- Queue System (Redis/BullMQ or AWS SQS)
+| Week | Key Objectives | Status |
+|------|---|---|
+| **Week 6** | Redis L1 Cache + MySQL L2 Storage setup | Complete |
+| **Week 7** | 3-Tier Lookup implementation + Webhook Handler | Complete |
+| **Week 8** | Write-through caching + Client notifications | Complete |
+
+### Phase 3+: Future Expansion (TBD)
+
+- Queue System (AWS SQS + LocalStack)
 - Policy Engine (Contract/Method Whitelist)
 - OZ Monitor integration
 - Kubernetes / CI/CD
@@ -269,6 +299,9 @@ As OpenZeppelin Defender service will be discontinued in July 2026, we are build
 
 | Version | Date | Changes |
 |---------|------|---------|
+| 12.5 | 2026-01-02 | SPEC-WEBHOOK-001 Phase 2 Complete - Added Section 3.2 with 3-Tier Lookup system, Redis L1 Cache, MySQL L2 Storage, Webhook Handler features, Updated milestones with Phase 2 weeks 6-8, Renumbered Phase 3+ sections |
+| 12.4 | 2025-12-30 | Queue System architecture update - Changed from Redis+BullMQ to AWS SQS+LocalStack, Added Nginx LB for multi-relayer routing, Added DLQ with 3 retry limit, Updated Section 1.3 and 3.2 Queue System descriptions |
+| 12.3 | 2025-12-23 | Transaction Status Polling API - Added SPEC-STATUS-001 reference |
 | 12.2 | 2025-12-22 | Phase 1 MVP Completion - Updated version status from 12.1 to 12.2, Marked all Week 4 and Week 5 objectives as Complete, Added EIP-712 Verification, Nonce Management, and Multi-Relayer Pool to Phase 1 Core Features, Updated milestones table with all phases complete |
 | 12.1 | 2025-12-19 | SPEC-CONTRACTS-001 integration - Updated Section 3.1 with contract deployment status, Updated Section 6 milestones with Week 3 completion, Added SPEC links and cross-references |
 | 12.0 | 2025-12-15 | Document version sync - Complete document structure cleanup, Remove duplicates, Establish cross-reference system |

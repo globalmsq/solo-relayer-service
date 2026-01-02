@@ -95,6 +95,27 @@ services:
       - msq-relayer-network
     restart: unless-stopped
 
+  # === MySQL Database (Phase 2+) ===
+  mysql:
+    image: mysql:8.0
+    ports:
+      - "3307:3306"
+    environment:
+      MYSQL_ROOT_PASSWORD: pass
+      MYSQL_DATABASE: msq_relayer
+    volumes:
+      - msq-relayer-mysql-data:/var/lib/mysql
+      - ./init:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-u", "root", "-ppass"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+    networks:
+      - msq-relayer-network
+    restart: unless-stopped
+
   # === Relay API (NestJS) ===
   relay-api:
     build:
@@ -107,12 +128,16 @@ services:
     depends_on:
       redis:
         condition: service_healthy
+      mysql:
+        condition: service_healthy
       oz-relayer-1:
         condition: service_healthy
     environment:
       PORT: 8080
       NODE_ENV: development
       REDIS_URL: redis://redis:6379
+      REDIS_STATUS_TTL_SECONDS: ${REDIS_STATUS_TTL_SECONDS:-600}
+      DATABASE_URL: ${DATABASE_URL:-mysql://root:pass@mysql:3306/msq_relayer}
       # Uses local hardhat-node (shared with msqpay-monorepo via msq-network)
       RPC_URL: ${RPC_URL:-http://hardhat-node:8545}
       RELAY_API_KEY: ${RELAY_API_KEY:-local-dev-api-key}
@@ -123,6 +148,9 @@ services:
       # (Load balancer causes ID mismatch between getRelayerId and sendTransaction)
       OZ_RELAYER_URL: http://oz-relayer-1:8080
       OZ_RELAYER_API_KEY: ${OZ_RELAYER_API_KEY:-oz-relayer-shared-api-key-local-dev}
+      # Phase 2: Webhook & Notification settings
+      WEBHOOK_SIGNING_KEY: ${WEBHOOK_SIGNING_KEY:-local-dev-webhook-signing-key-32ch}
+      CLIENT_WEBHOOK_URL: ${CLIENT_WEBHOOK_URL:-http://host.docker.internal:9000/webhooks/transaction-updates}
     networks:
       - msq-relayer-network
       - msq-network
@@ -138,7 +166,6 @@ services:
   # Phase 2+: Queue system (BullMQ/SQS) with multiple instances
   oz-relayer-1:
     <<: *relayer-common
-    container_name: oz-relayer-1
     ports:
       - "8081:8080"
       - "8091:8081"
@@ -151,6 +178,7 @@ services:
 
   # === Integration Tests (profile: manual) ===
   # Run with: docker compose run --rm integration-tests
+  # Note: Tests call relay-api via HTTP, no direct Redis/MySQL connection needed
   integration-tests:
     build:
       context: ..
@@ -163,13 +191,15 @@ services:
       oz-relayer-1:
         condition: service_healthy
     environment:
-      # Uses local hardhat-node (shared with msqpay-monorepo via msq-network)
+      # Blockchain RPC for on-chain verification (balance, nonce, contract calls)
       RPC_URL: ${RPC_URL:-http://hardhat-node:8545}
       CHAIN_ID: 31337
-      # Forwarder address from msqpay-monorepo
+      # Forwarder address for EIP-712 signing
       FORWARDER_ADDRESS: ${FORWARDER_ADDRESS:-0x5FbDB2315678afecb367f032d93F642f64180aa3}
+      # Relay API endpoint (tests call via HTTP, not direct import)
       RELAY_API_URL: http://relay-api:8080
       RELAY_API_KEY: ${RELAY_API_KEY:-local-dev-api-key}
+      # OZ Relayer for direct relayer status checks
       OZ_RELAYER_URL: http://oz-relayer-1:8080
       OZ_RELAYER_API_KEY: ${OZ_RELAYER_API_KEY:-oz-relayer-shared-api-key-local-dev}
     networks:
@@ -193,4 +223,6 @@ networks:
 
 volumes:
   msq-relayer-redis-data:
+    driver: local
+  msq-relayer-mysql-data:
     driver: local

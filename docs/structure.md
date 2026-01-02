@@ -1,9 +1,9 @@
 # MSQ Relayer Service - Structure Document
 
 ## Document Information
-- **Version**: 12.2
-- **Last Updated**: 2025-12-22
-- **Status**: Phase 1 MVP Complete (Direct TX + Gasless TX with EIP-712 Verification + Single OZ Relayer)
+- **Version**: 12.4
+- **Last Updated**: 2026-01-02
+- **Status**: Phase 2 Complete (Phase 1 + TX History + 3-Tier Lookup + Webhook Handler)
 
 ### Related Documents
 - [Product Requirements](./product.md)
@@ -23,8 +23,9 @@ It utilizes **OZ open-source (Relayer + Monitor)** as its core, with NestJS API 
 
 | Phase | Scope | Status |
 |-------|-------|--------|
-| **Phase 1** | OZ Relayer + Redis, Auth, Health, Direct TX, Gasless TX, ERC2771Forwarder, EIP-712 verification, Nonce API, Single OZ Relayer instance | **Complete** ✅ |
-| **Phase 2+** | TX History (MySQL), Webhook Handler, Queue System (Redis/SQS), OZ Monitor, Policy Engine, Multi-Relayer Pool, Kubernetes | Planned |
+| **Phase 1** | OZ Relayer + Redis, Auth, Health, Direct TX, Gasless TX, ERC2771Forwarder, EIP-712 verification, Nonce API, Multi-Relayer Pool | **Complete** |
+| **Phase 2** | TX History (MySQL), Webhook Handler, 3-Tier Lookup, Redis L1 Cache, MySQL L2 Storage, Client Notifications | **Complete** |
+| **Phase 3+** | Queue System (AWS SQS + LocalStack), OZ Monitor, Policy Engine, Kubernetes | Planned |
 
 ---
 
@@ -85,10 +86,10 @@ It utilizes **OZ open-source (Relayer + Monitor)** as its core, with NestJS API 
                     ▼
 ┌─────────────────────────────────────────────────────────────────┐
 │                      Infrastructure                              │
-│  ┌───────────┐ ┌───────────┐                                   │
-│  │ Redis     │ │ Prometheus│                                   │
-│  │ (Queue)   │ │ + Grafana │                                   │
-│  └───────────┘ └───────────┘                                   │
+│  ┌───────────┐ ┌───────────┐ ┌───────────┐                     │
+│  │ LocalStack│ │ Redis     │ │ Prometheus│                     │
+│  │ (SQS)     │ │ (Relayer) │ │ + Grafana │                     │
+│  └───────────┘ └───────────┘ └───────────┘                     │
 └─────────────────────────────────────────────────────────────────┘
                     │
                     ▼
@@ -131,7 +132,8 @@ flowchart TB
     end
 
     subgraph Infra["Infrastructure"]
-        Redis["Redis\n(Queue)"]
+        LocalStack["LocalStack\n(SQS Queue)"]
+        Redis["Redis\n(OZ Relayer)"]
         Prometheus["Prometheus\n+ Grafana"]
     end
 
@@ -165,21 +167,29 @@ flowchart TB
 
 ```
 ┌─────────────────────────────────────────────────────────────┐
-│                NestJS API Gateway (Load Balancer)            │
+│                NestJS API Gateway                            │
 │  ┌───────────┐ ┌───────────────┐ ┌─────────────────────┐   │
-│  │ Auth      │ │ Relayer       │ │ Pool Health         │   │
-│  │ Module    │ │ Router        │ │ Monitor             │   │
+│  │ Auth      │ │ Queue         │ │ Pool Health         │   │
+│  │ Module    │ │ Service (SQS) │ │ Monitor             │   │
 │  └───────────┘ └───────────────┘ └─────────────────────┘   │
 └─────────────────────────┬───────────────────────────────────┘
-                          │ Routing Strategy: Round Robin / Least Load
+                          │
+                          ▼
+┌─────────────────────────────────────────────────────────────┐
+│                Nginx Load Balancer                           │
+│  ┌─────────────────────────────────────────────────────┐   │
+│  │  upstream oz-relayers { least_conn; }                │   │
+│  └─────────────────────────────────────────────────────┘   │
+└─────────────────────────┬───────────────────────────────────┘
+                          │ Routing Strategy: Least Connections
           ┌───────────────┼───────────────┐
           ▼               ▼               ▼
 ┌─────────────────┐ ┌─────────────────┐ ┌─────────────────┐
-│ OZ Relayer #1   │ │ OZ Relayer #2   │ │ OZ Relayer #N   │
+│ OZ Relayer #1   │ │ OZ Relayer #2   │ │ OZ Relayer #3   │
 │ ─────────────── │ │ ─────────────── │ │ ─────────────── │
-│ Key: 0xAAA...   │ │ Key: 0xBBB...   │ │ Key: 0xNNN...   │
-│ Balance: 1 ETH  │ │ Balance: 1 ETH  │ │ Balance: 1 ETH  │
-│ Status: Active  │ │ Status: Active  │ │ Status: Standby │
+│ Key: 0xAAA...   │ │ Key: 0xBBB...   │ │ Key: 0xCCC...   │
+│ Port: 8081      │ │ Port: 8082      │ │ Port: 8083      │
+│ Status: Active  │ │ Status: Active  │ │ Status: Active  │
 └────────┬────────┘ └────────┬────────┘ └────────┬────────┘
          │                   │                   │
          └───────────────────┴───────────────────┘
@@ -187,7 +197,8 @@ flowchart TB
                              ▼
                     ┌─────────────────┐
                     │     Redis       │
-                    │  (Shared Queue) │
+                    │ (OZ Relayer     │
+                    │  Internal Queue)│
                     └─────────────────┘
 ```
 
@@ -301,19 +312,31 @@ msq-relayer-service/
 │   │   │   │   ├── gasless/         # Gasless TX controller
 │   │   │   │   │   ├── gasless.controller.ts
 │   │   │   │   │   └── gasless.service.ts
-│   │   │   │   └── status/          # Status query (polling)
+│   │   │   │   └── status/          # Status query (3-Tier Lookup)
 │   │   │   │       ├── status.controller.ts
-│   │   │   │       └── status.service.ts
+│   │   │   │       └── status.service.ts    # Redis L1 + MySQL L2 + OZ Relayer L3
 │   │   │   │
-│   │   │   ├── policy/              # Policy Engine (Phase 2+)
+│   │   │   ├── redis/               # Redis L1 Cache (Phase 2)
+│   │   │   │   ├── redis.module.ts          # ioredis provider
+│   │   │   │   └── redis.service.ts         # Cache operations
+│   │   │   │
+│   │   │   ├── prisma/              # MySQL L2 Storage (Phase 2)
+│   │   │   │   ├── prisma.module.ts         # Global Prisma module
+│   │   │   │   └── prisma.service.ts        # Database operations
+│   │   │   │
+│   │   │   ├── webhooks/            # OZ Relayer Webhook handler (Phase 2)
+│   │   │   │   ├── guards/
+│   │   │   │   │   └── webhook-signature.guard.ts  # HMAC-SHA256 verification
+│   │   │   │   ├── webhooks.module.ts
+│   │   │   │   ├── webhooks.controller.ts   # POST /webhooks/oz-relayer
+│   │   │   │   ├── webhooks.service.ts      # Webhook processing
+│   │   │   │   └── notification.service.ts  # Client notifications
+│   │   │   │
+│   │   │   ├── policy/              # Policy Engine (Phase 3+)
 │   │   │   │   ├── policy.module.ts
 │   │   │   │   ├── whitelist.service.ts
 │   │   │   │   ├── blacklist.service.ts
 │   │   │   │   └── rules.service.ts
-│   │   │   │
-│   │   │   ├── webhook/             # OZ Relayer Webhook handler (Phase 2+)
-│   │   │   │   ├── webhook.module.ts
-│   │   │   │   └── webhook.controller.ts
 │   │   │   │
 │   │   │   ├── oz-relayer/          # OZ Relayer SDK wrapper
 │   │   │   │   ├── oz-relayer.module.ts
@@ -431,13 +454,15 @@ cd docker && docker-compose -f docker-compose-amoy.yaml up
 
 | Module | Responsibility | Phase | Status |
 |--------|---------------|-------|--------|
-| `auth/` | API Key authentication | Phase 1 | ✅ Complete |
-| `relay/direct/` | Direct TX endpoint, OZ Relayer proxy | Phase 1 | ✅ Complete |
-| `relay/gasless/` | Gasless TX endpoint, EIP-712 pre-verification | Phase 1 | ✅ Complete |
-| `relay/status/` | Transaction status query | Phase 1 | ✅ Complete |
-| `policy/` | Contract/Method Whitelist, User Blacklist | Phase 2+ | - |
-| `webhook/` | OZ Relayer Webhook handler, TX History storage | Phase 2+ | - |
-| `oz-relayer/` | OZ Relayer SDK wrapper service | Phase 1 | ✅ Complete |
+| `auth/` | API Key authentication | Phase 1 | Complete |
+| `relay/direct/` | Direct TX endpoint, OZ Relayer proxy | Phase 1 | Complete |
+| `relay/gasless/` | Gasless TX endpoint, EIP-712 pre-verification | Phase 1 | Complete |
+| `relay/status/` | Transaction status query with 3-Tier Lookup | Phase 2 | Complete |
+| `redis/` | L1 Cache - Transaction status caching (ioredis) | Phase 2 | Complete |
+| `prisma/` | L2 Storage - MySQL persistence (Prisma ORM) | Phase 2 | Complete |
+| `webhooks/` | OZ Relayer Webhook handler, TX History storage | Phase 2 | Complete |
+| `policy/` | Contract/Method Whitelist, User Blacklist | Phase 3+ | - |
+| `oz-relayer/` | OZ Relayer SDK wrapper service | Phase 1 | Complete |
 
 #### 4.3.1 Auth Module Details (Phase 1)
 
@@ -771,6 +796,95 @@ sequenceDiagram
     Client-->>EndUser: Processing complete notification
 ```
 
+### 5.3 3-Tier Lookup Flow (Phase 2)
+
+```mermaid
+sequenceDiagram
+    autonumber
+    participant Client as Client Service
+    participant Gateway as API Gateway
+    participant Redis as Redis L1 Cache
+    participant MySQL as MySQL L2 Storage
+    participant OZ as OZ Relayer L3
+
+    Client->>Gateway: GET /api/v1/relay/status/:txId
+
+    rect rgb(230, 255, 230)
+        Note over Gateway,Redis: Tier 1: Redis L1 (~1-5ms)
+        Gateway->>Redis: Check cache
+        alt Cache hit (terminal status)
+            Redis-->>Gateway: {status: confirmed/failed}
+            Gateway-->>Client: Return cached result
+        else Cache miss
+            Redis-->>Gateway: null
+        end
+    end
+
+    rect rgb(255, 245, 220)
+        Note over Gateway,MySQL: Tier 2: MySQL L2 (~50ms)
+        Gateway->>MySQL: Query transactions table
+        alt Record found (terminal status)
+            MySQL-->>Gateway: {status, hash, ...}
+            Gateway->>Redis: Backfill cache (TTL: 600s)
+            Gateway-->>Client: Return DB result
+        else Record not found
+            MySQL-->>Gateway: null
+        end
+    end
+
+    rect rgb(255, 230, 230)
+        Note over Gateway,OZ: Tier 3: OZ Relayer L3 (~200ms)
+        Gateway->>OZ: GET /api/v1/txs/:txId
+        OZ-->>Gateway: {status, hash, ...}
+        Gateway->>Redis: Store in cache (TTL: 600s)
+        Gateway->>MySQL: Upsert transaction
+        Gateway-->>Client: Return fresh result
+    end
+```
+
+### 5.4 Webhook Flow (Phase 2)
+
+```mermaid
+sequenceDiagram
+    autonumber
+    participant OZ as OZ Relayer
+    participant Gateway as API Gateway
+    participant Guard as Signature Guard
+    participant Service as Webhooks Service
+    participant MySQL as MySQL L2
+    participant Redis as Redis L1
+    participant Client as Client Service
+
+    OZ->>Gateway: POST /api/v1/webhooks/oz-relayer
+    Note over OZ,Gateway: Header: X-OZ-Signature: sha256={signature}
+
+    rect rgb(255, 230, 230)
+        Note over Gateway,Guard: HMAC-SHA256 Verification
+        Gateway->>Guard: Verify signature
+        alt Invalid signature
+            Guard-->>OZ: 401 Unauthorized
+        else Valid signature
+            Guard-->>Gateway: Continue
+        end
+    end
+
+    Gateway->>Service: handleWebhook(payload)
+
+    rect rgb(230, 255, 230)
+        Note over Service,MySQL: Update Storage Layers
+        Service->>MySQL: Upsert transaction record
+        Service->>Redis: Set cache (TTL reset)
+    end
+
+    rect rgb(230, 230, 255)
+        Note over Service,Client: Client Notification (Non-blocking)
+        Service--)Client: POST client webhook URL
+    end
+
+    Service-->>Gateway: {success: true}
+    Gateway-->>OZ: 200 OK
+```
+
 ---
 
 ## 6. OZ Service Configuration
@@ -865,6 +979,8 @@ sequenceDiagram
 
 | Version | Date | Changes |
 |---------|------|---------|
+| 12.4 | 2026-01-02 | SPEC-WEBHOOK-001 Phase 2 Complete - Updated Implementation Scope (Phase 2 complete), Added redis/, prisma/, webhooks/ modules to directory structure, Updated Module Responsibility table with Phase 2 modules, Updated status/ module description with 3-Tier Lookup |
+| 12.3 | 2025-12-30 | Queue System architecture update - Updated Infrastructure diagram (LocalStack SQS + Redis for Relayer), Updated Multi-Relayer Pool Architecture with Nginx LB, Updated Mermaid diagrams, Changed status to Multi-Relayer Pool |
 | 12.2 | 2025-12-22 | Phase 1 MVP Completion - Updated version to 12.2, Changed architecture status to Single OZ Relayer instance, Updated Section 1.2 OZ Service Role Separation with Phase 1 Single Instance note, Added Status column to Module Responsibility table (all Phase 1 modules marked Complete), Updated Implementation Scope with Phase 1/2+ separation |
 | 12.1 | 2025-12-19 | SPEC-CONTRACTS-001 integration - Added packages/contracts structure to Section 3, Expanded Section 4.4 with deployment artifacts, test suites, and deployment commands, Updated related documents section with SPEC links and cross-references |
 | 12.0 | 2025-12-15 | Document version sync - Complete document structure cleanup, Remove duplicates, Establish cross-reference system |

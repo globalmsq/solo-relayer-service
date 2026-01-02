@@ -13,14 +13,14 @@ describe("Smart Contracts - Core Functionality", function () {
   beforeEach(async function () {
     [owner, user1, user2, forwarder] = await ethers.getSigners();
 
-    // Deploy SampleToken
+    // Deploy SampleToken with separate forwarder (NOT owner to avoid ERC2771 calldata extraction issues)
     const TokenFactory = await ethers.getContractFactory("SampleToken");
-    sampleToken = await TokenFactory.connect(owner).deploy(owner.address);
+    sampleToken = await TokenFactory.connect(owner).deploy(forwarder.address);
     await sampleToken.waitForDeployment();
 
-    // Deploy SampleNFT
+    // Deploy SampleNFT with separate forwarder (NOT owner to avoid ERC2771 calldata extraction issues)
     const NFTFactory = await ethers.getContractFactory("SampleNFT");
-    sampleNFT = await NFTFactory.connect(owner).deploy(owner.address);
+    sampleNFT = await NFTFactory.connect(owner).deploy(forwarder.address);
     await sampleNFT.waitForDeployment();
   });
 
@@ -161,13 +161,13 @@ describe("Smart Contracts - Core Functionality", function () {
 
   describe("ERC2771Context - Meta-transaction Support", function () {
     it("SampleToken should have trusted forwarder", async function () {
-      expect(await sampleToken.trustedForwarder()).to.equal(owner.address);
-      expect(await sampleToken.getTrustedForwarder()).to.equal(owner.address);
+      expect(await sampleToken.trustedForwarder()).to.equal(forwarder.address);
+      expect(await sampleToken.getTrustedForwarder()).to.equal(forwarder.address);
     });
 
     it("SampleNFT should have trusted forwarder", async function () {
-      expect(await sampleNFT.trustedForwarder()).to.equal(owner.address);
-      expect(await sampleNFT.getTrustedForwarder()).to.equal(owner.address);
+      expect(await sampleNFT.trustedForwarder()).to.equal(forwarder.address);
+      expect(await sampleNFT.getTrustedForwarder()).to.equal(forwarder.address);
     });
 
     it("Should deploy with custom forwarder", async function () {
@@ -355,13 +355,13 @@ describe("Smart Contracts - Core Functionality", function () {
     });
 
     it("Should verify trusted forwarder setup", async function () {
-      // Verify default forwarder is set correctly
-      expect(await sampleToken.trustedForwarder()).to.equal(owner.address);
-      expect(await sampleNFT.trustedForwarder()).to.equal(owner.address);
+      // Verify forwarder is set correctly (NOT owner)
+      expect(await sampleToken.trustedForwarder()).to.equal(forwarder.address);
+      expect(await sampleNFT.trustedForwarder()).to.equal(forwarder.address);
 
       // Verify getTrustedForwarder returns correct address
-      expect(await sampleToken.getTrustedForwarder()).to.equal(owner.address);
-      expect(await sampleNFT.getTrustedForwarder()).to.equal(owner.address);
+      expect(await sampleToken.getTrustedForwarder()).to.equal(forwarder.address);
+      expect(await sampleNFT.getTrustedForwarder()).to.equal(forwarder.address);
     });
 
     it("Should verify nonces function", async function () {

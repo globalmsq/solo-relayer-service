@@ -1,58 +1,89 @@
 import { Test, TestingModule } from "@nestjs/testing";
+import { HealthCheckError } from "@nestjs/terminus";
 import { RedisHealthIndicator } from "./redis.health";
+import { RedisService } from "../../redis/redis.service";
 
 describe("RedisHealthIndicator", () => {
   let indicator: RedisHealthIndicator;
+  let redisService: jest.Mocked<RedisService>;
 
   beforeEach(async () => {
+    const mockRedisService = {
+      healthCheck: jest.fn(),
+    };
+
     const module: TestingModule = await Test.createTestingModule({
-      providers: [RedisHealthIndicator],
+      providers: [
+        RedisHealthIndicator,
+        {
+          provide: RedisService,
+          useValue: mockRedisService,
+        },
+      ],
     }).compile();
 
     indicator = module.get<RedisHealthIndicator>(RedisHealthIndicator);
+    redisService = module.get(RedisService);
   });
 
   describe("isHealthy", () => {
-    // AC-006: Redis placeholder always returns healthy
-    it("should return healthy status", async () => {
+    it("should return healthy status when Redis is connected", async () => {
+      redisService.healthCheck.mockResolvedValue(true);
+
       const result = await indicator.isHealthy("redis");
 
-      expect(result["redis"].status).toBe("healthy");
+      expect(result["redis"].status).toBe("up");
+      expect(redisService.healthCheck).toHaveBeenCalledTimes(1);
     });
 
-    it("should include placeholder message", async () => {
-      const result = await indicator.isHealthy("redis");
+    it("should throw HealthCheckError when Redis healthCheck returns false", async () => {
+      redisService.healthCheck.mockResolvedValue(false);
 
-      expect(result["redis"].message).toContain("Phase 1");
-      expect(result["redis"].message).toContain("not implemented");
+      await expect(indicator.isHealthy("redis")).rejects.toThrow(
+        HealthCheckError,
+      );
     });
 
-    it("should not throw HealthCheckError", async () => {
-      await expect(indicator.isHealthy("redis")).resolves.not.toThrow();
+    it("should throw HealthCheckError when Redis throws error", async () => {
+      redisService.healthCheck.mockRejectedValue(
+        new Error("Connection refused"),
+      );
+
+      await expect(indicator.isHealthy("redis")).rejects.toThrow(
+        HealthCheckError,
+      );
     });
 
-    it("should always return healthy regardless of any state", async () => {
-      // Call multiple times to verify consistent behavior
-      const result1 = await indicator.isHealthy("redis");
-      const result2 = await indicator.isHealthy("redis");
-      const result3 = await indicator.isHealthy("redis");
+    it("should include error message in HealthCheckError", async () => {
+      redisService.healthCheck.mockRejectedValue(
+        new Error("Connection refused"),
+      );
 
-      expect(result1["redis"].status).toBe("healthy");
-      expect(result2["redis"].status).toBe("healthy");
-      expect(result3["redis"].status).toBe("healthy");
+      try {
+        await indicator.isHealthy("redis");
+        fail("Expected HealthCheckError to be thrown");
+      } catch (error) {
+        expect(error).toBeInstanceOf(HealthCheckError);
+        expect(error.message).toContain("Connection refused");
+      }
     });
 
-    it("should return expected structure", async () => {
-      const result = await indicator.isHealthy("redis");
+    it("should return down status in error causes", async () => {
+      redisService.healthCheck.mockResolvedValue(false);
 
-      expect(result).toHaveProperty("redis");
-      expect(result["redis"]).toHaveProperty("status");
-      expect(result["redis"]).toHaveProperty("message");
+      try {
+        await indicator.isHealthy("redis");
+        fail("Expected HealthCheckError to be thrown");
+      } catch (error) {
+        expect(error).toBeInstanceOf(HealthCheckError);
+        expect(error.causes).toHaveProperty("redis");
+        expect(error.causes["redis"].status).toBe("down");
+      }
     });
   });
 
   describe("Integration", () => {
-    it("should be injectable as a provider", () => {
+    it("should be injectable with RedisService dependency", () => {
       expect(indicator).toBeDefined();
       expect(indicator).toBeInstanceOf(RedisHealthIndicator);
     });
@@ -61,13 +92,14 @@ describe("RedisHealthIndicator", () => {
       expect(indicator).toHaveProperty("getStatus");
     });
 
-    it("should respond synchronously", async () => {
+    it("should respond quickly when Redis is healthy", async () => {
+      redisService.healthCheck.mockResolvedValue(true);
+
       const start = Date.now();
       await indicator.isHealthy("redis");
       const duration = Date.now() - start;
 
-      // Should respond very quickly (< 50ms) since it's just returning a value
-      expect(duration).toBeLessThan(50);
+      expect(duration).toBeLessThan(100);
     });
   });
 });

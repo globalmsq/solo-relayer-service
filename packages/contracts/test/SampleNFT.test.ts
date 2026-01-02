@@ -7,13 +7,14 @@ describe("SampleNFT", function () {
   let owner: any;
   let addr1: any;
   let addr2: any;
+  let forwarder: any;
 
   beforeEach(async function () {
-    [owner, addr1, addr2] = await ethers.getSigners();
+    [owner, addr1, addr2, forwarder] = await ethers.getSigners();
 
     const SampleNFTFactory = await ethers.getContractFactory("SampleNFT");
-    // Deploy with owner as the signer (who becomes msg.sender)
-    sampleNFT = await SampleNFTFactory.connect(owner).deploy(owner.address);
+    // Deploy with forwarder as trusted forwarder (NOT owner to avoid ERC2771 calldata extraction issues)
+    sampleNFT = await SampleNFTFactory.connect(owner).deploy(forwarder.address);
     await sampleNFT.waitForDeployment();
   });
 
@@ -31,7 +32,7 @@ describe("SampleNFT", function () {
     });
 
     it("Should set the correct trusted forwarder", async function () {
-      expect(await sampleNFT.getTrustedForwarder()).to.equal(owner.address);
+      expect(await sampleNFT.getTrustedForwarder()).to.equal(forwarder.address);
     });
 
     it("Should start with empty total supply", async function () {
@@ -263,8 +264,8 @@ describe("SampleNFT", function () {
 
   describe("ERC2771Context", function () {
     it("Should return correct trusted forwarder", async function () {
-      const forwarder = await sampleNFT.getTrustedForwarder();
-      expect(forwarder).to.equal(owner.address);
+      const trustedForwarder = await sampleNFT.getTrustedForwarder();
+      expect(trustedForwarder).to.equal(forwarder.address);
     });
 
     it("Should return zero address as trusted forwarder when initialized with zero", async function () {
@@ -327,8 +328,8 @@ describe("SampleNFT", function () {
   describe("Internal Functions", function () {
     it("Should handle internal context functions", async function () {
       // Test getTrustedForwarder function which uses internal context
-      const forwarder = await sampleNFT.getTrustedForwarder();
-      expect(forwarder).to.equal(owner.address);
+      const trustedForwarder = await sampleNFT.getTrustedForwarder();
+      expect(trustedForwarder).to.equal(forwarder.address);
     });
 
     it("Should support multiple mints", async function () {
@@ -346,8 +347,9 @@ describe("SampleNFT", function () {
     });
 
     it("Should test context suffix length function", async function () {
+      // ERC2771Context returns 20 (address length in bytes) for context suffix length
       const suffixLength = await sampleNFT.testContextSuffixLength();
-      expect(suffixLength).to.equal(0);
+      expect(suffixLength).to.equal(20);
     });
   });
 });

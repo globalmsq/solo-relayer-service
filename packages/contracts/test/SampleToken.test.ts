@@ -7,14 +7,15 @@ describe("SampleToken", function () {
   let owner: any;
   let addr1: any;
   let addr2: any;
+  let forwarder: any;
   const INITIAL_SUPPLY = ethers.parseEther("1000000");
 
   beforeEach(async function () {
-    [owner, addr1, addr2] = await ethers.getSigners();
+    [owner, addr1, addr2, forwarder] = await ethers.getSigners();
 
     const SampleTokenFactory = await ethers.getContractFactory("SampleToken");
-    // Deploy with owner as the signer (who becomes msg.sender)
-    sampleToken = await SampleTokenFactory.connect(owner).deploy(owner.address);
+    // Deploy with forwarder as trusted forwarder (NOT owner to avoid ERC2771 calldata extraction issues)
+    sampleToken = await SampleTokenFactory.connect(owner).deploy(forwarder.address);
     await sampleToken.waitForDeployment();
   });
 
@@ -44,7 +45,7 @@ describe("SampleToken", function () {
     });
 
     it("Should set the correct trusted forwarder", async function () {
-      expect(await sampleToken.getTrustedForwarder()).to.equal(owner.address);
+      expect(await sampleToken.getTrustedForwarder()).to.equal(forwarder.address);
     });
   });
 
@@ -248,8 +249,8 @@ describe("SampleToken", function () {
 
   describe("ERC2771Context", function () {
     it("Should return correct trusted forwarder", async function () {
-      const forwarder = await sampleToken.getTrustedForwarder();
-      expect(forwarder).to.equal(owner.address);
+      const trustedForwarder = await sampleToken.getTrustedForwarder();
+      expect(trustedForwarder).to.equal(forwarder.address);
     });
 
     it("Should return zero address as trusted forwarder when initialized with zero", async function () {
@@ -264,11 +265,6 @@ describe("SampleToken", function () {
   describe("Edge Cases", function () {
     it("Should handle zero amount transfer", async function () {
       const zeroAmount = ethers.parseEther("0");
-      // Verify not paused
-      const isPaused = await sampleToken.paused();
-      if (isPaused) {
-        await sampleToken.unpause();
-      }
 
       const addr1BalanceBefore = await sampleToken.balanceOf(addr1.address);
       await sampleToken.transfer(addr1.address, zeroAmount);
@@ -277,11 +273,6 @@ describe("SampleToken", function () {
 
     it("Should handle transfer to self", async function () {
       const transferAmount = ethers.parseEther("100");
-      // Verify not paused
-      const isPaused = await sampleToken.paused();
-      if (isPaused) {
-        await sampleToken.unpause();
-      }
 
       const balanceBefore = await sampleToken.balanceOf(owner.address);
       await sampleToken.transfer(owner.address, transferAmount);
@@ -290,11 +281,6 @@ describe("SampleToken", function () {
 
     it("Should handle large amounts safely", async function () {
       const largeAmount = ethers.parseEther("100000");
-      // Verify not paused
-      const isPaused = await sampleToken.paused();
-      if (isPaused) {
-        await sampleToken.unpause();
-      }
 
       // Verify owner has enough balance
       const ownerBalance = await sampleToken.balanceOf(owner.address);
@@ -313,8 +299,8 @@ describe("SampleToken", function () {
 
     it("Should handle internal context functions", async function () {
       // Test getTrustedForwarder function which uses internal context
-      const forwarder = await sampleToken.getTrustedForwarder();
-      expect(forwarder).to.equal(owner.address);
+      const trustedForwarder = await sampleToken.getTrustedForwarder();
+      expect(trustedForwarder).to.equal(forwarder.address);
     });
 
     it("Should test context data function", async function () {
@@ -324,8 +310,9 @@ describe("SampleToken", function () {
     });
 
     it("Should test context suffix length function", async function () {
+      // ERC2771Context returns 20 (address length in bytes) for context suffix length
       const suffixLength = await sampleToken.testContextSuffixLength();
-      expect(suffixLength).to.equal(0);
+      expect(suffixLength).to.equal(20);
     });
   });
 });

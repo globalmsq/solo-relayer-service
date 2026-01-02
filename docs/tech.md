@@ -1,9 +1,9 @@
 # MSQ Relayer Service - Technical Document
 
 ## Document Information
-- **Version**: 12.6
-- **Last Updated**: 2025-12-23
-- **Status**: Phase 1 Complete (Direct + Gasless + Multi-Relayer Proxy + Nginx LB + Transaction Status Polling + API Key Authentication)
+- **Version**: 12.8
+- **Last Updated**: 2026-01-02
+- **Status**: Phase 2 Complete (Phase 1 + TX History + 3-Tier Lookup + Webhook Handler + Redis L1 Cache + MySQL L2 Storage)
 
 > **Note**: This document covers technical implementation details (HOW).
 > - Business requirements (WHAT/WHY): [product.md](./product.md)
@@ -38,8 +38,9 @@ Defines the technical stack and implementation specifications for the Blockchain
 
 | Phase | Technical Scope | Status |
 |-------|-----------------|--------|
-| **Phase 1** | OZ Relayer (3x instances), Redis, Nginx Load Balancer, NestJS (Auth, Direct TX API, Gasless TX, EIP-712 Verification, Health, Status Polling), ERC2771Forwarder | **Complete** ✅ |
-| **Phase 2+** | TX History (MySQL), Webhook Handler, Queue System (Redis/SQS), OZ Monitor, Policy Engine | Planned |
+| **Phase 1** | OZ Relayer (3x instances), Redis, Nginx Load Balancer, NestJS (Auth, Direct TX API, Gasless TX, EIP-712 Verification, Health, Status Polling), ERC2771Forwarder | **Complete** |
+| **Phase 2** | TX History (MySQL), Webhook Handler, 3-Tier Lookup, Redis L1 Cache, MySQL L2 Storage, Client Notifications | **Complete** |
+| **Phase 3+** | Queue System (AWS SQS + LocalStack), OZ Monitor, Policy Engine | Planned |
 
 ---
 
@@ -569,12 +570,85 @@ For detailed requirements and acceptance criteria, see:
 | Container | Docker Compose | AWS EKS |
 | Container Runtime | Docker | containerd |
 | Orchestration | - | Kubernetes |
-| Database | MySQL Container (Phase 2+) | AWS RDS MySQL (Multi-AZ) |
-| Cache/Queue | Redis Container | AWS ElastiCache Cluster |
+| Database | MySQL 8.0 Container (Phase 2) | AWS RDS MySQL (Multi-AZ) |
+| Cache/Queue | Redis 8.0 Container | AWS ElastiCache Cluster |
 | Secrets | .env / K8s Secret | AWS Secrets Manager |
 | Load Balancer | - | AWS ALB / Nginx Ingress |
 | Monitoring | Prometheus + Grafana | Prometheus + Grafana |
 | Logging | Console | CloudWatch / Loki |
+
+### 5.1 Redis Module (L1 Cache - Phase 2)
+
+**Purpose**: Transaction status caching with 3-Tier Lookup integration.
+
+| Category | Technology | Version | Rationale |
+|----------|------------|---------|-----------|
+| Client | ioredis | 5.x | Production-ready Redis client for Node.js |
+| Container | Redis | 8.0-alpine | Official Redis image, lightweight |
+| TTL Strategy | 600 seconds | - | 10-minute cache for transaction status |
+
+**Module Structure**:
+```
+packages/relay-api/src/redis/
+├── redis.module.ts      # NestJS module with ioredis provider
+├── redis.service.ts     # Cache operations (get/set/del/exists)
+└── redis.service.spec.ts # Unit tests
+```
+
+**Key Features**:
+- Generic `get<T>()` / `set<T>()` with JSON serialization
+- TTL support for automatic cache expiration
+- Health check integration (`healthCheck()`)
+- Graceful connection handling (`OnModuleDestroy`)
+
+**Environment Variables**:
+```bash
+REDIS_URL=redis://localhost:6379  # Redis connection URL
+```
+
+### 5.2 MySQL Module (L2 Storage - Phase 2)
+
+**Purpose**: Persistent transaction history storage with Prisma ORM.
+
+| Category | Technology | Version | Rationale |
+|----------|------------|---------|-----------|
+| ORM | Prisma | 5.x | Type-safe database access, migrations |
+| Database | MySQL | 8.0 | Production-ready, ACID compliant |
+| Container Port | 3307:3306 | - | External 3307, internal 3306 |
+
+**Module Structure**:
+```
+packages/relay-api/src/prisma/
+├── prisma.module.ts     # Global module export
+├── prisma.service.ts    # PrismaClient extension with lifecycle hooks
+└── prisma.service.spec.ts # Unit tests
+```
+
+**Schema** (`packages/relay-api/prisma/schema.prisma`):
+```prisma
+model Transaction {
+  id          String    @id @default(uuid())
+  hash        String?   @unique
+  status      String    // pending, sent, submitted, inmempool, mined, confirmed, failed
+  from        String?
+  to          String?
+  value       String?
+  data        String?   @db.Text
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  confirmedAt DateTime?
+
+  @@index([status])
+  @@index([hash])
+  @@index([createdAt])
+  @@map("transactions")
+}
+```
+
+**Environment Variables**:
+```bash
+DATABASE_URL=mysql://root:pass@localhost:3307/msq_relayer  # MySQL connection string
+```
 
 ---
 
@@ -978,11 +1052,11 @@ Response (200 OK):
 }
 ```
 
-### 5.4 Transaction Status Polling API (SPEC-STATUS-001)
+### 5.4 Transaction Status Polling API (SPEC-STATUS-001, SPEC-WEBHOOK-001)
 
-**Overview**: Transaction Status Polling API enables clients to query the status of submitted transactions. This is a Phase 1 polling-based approach with plans for webhook notifications in Phase 2+.
+**Overview**: Transaction Status Polling API enables clients to query the status of submitted transactions. Phase 2 implements a 3-Tier Lookup system with Redis L1 cache and MySQL L2 storage for optimized performance.
 
-#### 5.4.1 Architecture and Data Flow
+#### 5.4.1 3-Tier Lookup Architecture (Phase 2)
 
 ```
 Client Service
@@ -990,11 +1064,22 @@ Client Service
     └─→ GET /api/v1/relay/status/:txId  (Query status)
             │
             └─→ StatusService.getTransactionStatus()
-                └─→ Direct HTTP call → OZ Relayer
-                    └─→ Transform → TxStatusResponseDto
+                │
+                ├─→ Tier 1: Redis (L1 Cache) ~1-5ms
+                │   └─→ Return if terminal status (confirmed/mined/failed/cancelled)
+                │
+                ├─→ Tier 2: MySQL (L2 Storage) ~50ms
+                │   └─→ Return if terminal status, backfill Redis
+                │
+                └─→ Tier 3: OZ Relayer API ~200ms
+                    └─→ Return and store in both Redis + MySQL (Write-through)
 ```
 
-**Design Principle**: Thin API gateway with proper error handling (404 vs 503 differentiation).
+**Design Principles**:
+- **Terminal Status Optimization**: Only return cached data for terminal statuses (confirmed, mined, failed, cancelled)
+- **Non-terminal Status Refresh**: Always fetch fresh data from OZ Relayer for pending/submitted statuses
+- **Write-through Caching**: Updates propagate to both Redis and MySQL simultaneously
+- **Graceful Degradation**: Redis failures don't break the lookup chain
 
 #### 5.4.2 Module Structure
 
@@ -1092,7 +1177,108 @@ Both transaction types use the same status query endpoint.
 - Consistent with Direct and Gasless transaction responses
 - Swagger/OpenAPI annotations for API documentation
 
-### 5.5 Health Check API
+### 5.5 Webhook Handler (SPEC-WEBHOOK-001 - Phase 2)
+
+**Overview**: Webhook Handler receives transaction status updates from OZ Relayer and updates both Redis (L1) and MySQL (L2) storage.
+
+#### 5.5.1 Module Structure
+
+```
+packages/relay-api/src/webhooks/
+├── guards/
+│   ├── webhook-signature.guard.ts      # HMAC-SHA256 signature verification
+│   └── webhook-signature.guard.spec.ts # Guard unit tests
+├── dto/
+│   └── oz-relayer-webhook.dto.ts       # Webhook payload DTOs
+├── webhooks.controller.ts               # POST /webhooks/oz-relayer endpoint
+├── webhooks.service.ts                  # Webhook processing logic
+├── notification.service.ts              # Client notification service
+├── webhooks.module.ts                   # NestJS module registration
+├── webhooks.controller.spec.ts          # Controller tests
+└── webhooks.service.spec.ts             # Service tests
+```
+
+#### 5.5.2 Webhook Endpoint
+
+```yaml
+POST /api/v1/webhooks/oz-relayer
+Content-Type: application/json
+X-OZ-Signature: sha256={HMAC-SHA256 signature}
+
+Request Body:
+{
+  "transactionId": "550e8400-e29b-41d4-a716-446655440000",
+  "status": "confirmed",
+  "hash": "0xabcd1234...",
+  "from": "0x70997970C51812dc3A010C7d01b50e0d17dc79C8",
+  "to": "0x5FbDB2315678afecb367f032d93F642f64180aa3",
+  "value": "0",
+  "createdAt": "2025-12-19T10:00:00Z",
+  "confirmedAt": "2025-12-19T10:05:00Z"
+}
+
+Response (200 OK):
+{
+  "success": true,
+  "message": "Webhook processed successfully",
+  "transactionId": "550e8400-e29b-41d4-a716-446655440000"
+}
+
+Error Responses:
+- 400 Bad Request: Invalid payload format
+- 401 Unauthorized: Invalid or missing X-OZ-Signature header
+- 500 Internal Server Error: Database update failure
+```
+
+#### 5.5.3 Webhook Processing Flow
+
+```
+OZ Relayer → POST /api/v1/webhooks/oz-relayer
+    │
+    ├─→ WebhookSignatureGuard (HMAC-SHA256 verification)
+    │
+    └─→ WebhooksService.handleWebhook()
+        │
+        ├─→ Step 1: Update MySQL (L2 - permanent storage)
+        │   └─→ Upsert transaction record
+        │
+        ├─→ Step 2: Update Redis (L1 - cache) with TTL reset
+        │   └─→ Set with 600s TTL (graceful degradation)
+        │
+        └─→ Step 3: Send notification to client (non-blocking)
+            └─→ NotificationService.notify() - fire and forget
+```
+
+#### 5.5.4 Signature Verification
+
+**HMAC-SHA256 Guard**:
+```typescript
+// X-OZ-Signature header format: sha256={signature}
+// Signature computed: HMAC-SHA256(request body, WEBHOOK_SIGNING_KEY)
+
+const expectedSignature = crypto
+  .createHmac('sha256', signingKey)
+  .update(JSON.stringify(body))
+  .digest('hex');
+```
+
+**Environment Variables**:
+```bash
+WEBHOOK_SIGNING_KEY=your-secret-signing-key  # HMAC-SHA256 signing key
+CLIENT_WEBHOOK_URL=https://client.example.com/webhooks  # Client notification endpoint
+```
+
+#### 5.5.5 Write-Through Caching Pattern
+
+The webhook handler implements write-through caching:
+
+1. **Direct Service / Gasless Service**: Stores transaction in Redis + MySQL after OZ Relayer submission
+2. **Webhook Handler**: Updates both Redis + MySQL when OZ Relayer sends status updates
+3. **Status Service**: Reads from 3-tier lookup, backfills Redis when reading from MySQL
+
+This ensures data consistency across all storage layers.
+
+### 5.6 Health Check API
 
 Health check endpoints follow the **@nestjs/terminus standard pattern** with custom HealthIndicator implementations for OZ Relayer Pool and Redis.
 
@@ -2407,78 +2593,210 @@ export default config;
 
 ## 16. Queue System (Phase 2+)
 
-> **QUEUE_PROVIDER Pattern**: Selectively use Redis+BullMQ or AWS SQS depending on environment.
+> **Architecture**: AWS SQS Standard Queue with LocalStack for local development. No QUEUE_PROVIDER pattern - SQS is the unified queue solution across all environments.
 
-### 15.1 Queue Architecture
+### 16.1 Queue Architecture
 
 ```
-┌─────────────────────────────────────────────────────────────┐
-│                    NestJS API Gateway                        │
-│  ┌───────────────────────────────────────────────────────┐  │
-│  │                   Queue Adapter                        │  │
-│  │  ┌─────────────────┐    ┌─────────────────────────┐   │  │
-│  │  │ QUEUE_PROVIDER  │────│ Redis+BullMQ (default)  │   │  │
-│  │  │ env variable    │    │ AWS SQS (production)    │   │  │
-│  │  └─────────────────┘    └─────────────────────────┘   │  │
-│  └───────────────────────────────────────────────────────┘  │
-└─────────────────────────────────────────────────────────────┘
+┌─────────────────────────────────────────────────────────────────────┐
+│                         NestJS API Gateway                           │
+│  ┌───────────────────────────────────────────────────────────────┐  │
+│  │                      Queue Module                              │  │
+│  │  ┌─────────────┐    ┌─────────────┐    ┌─────────────────┐   │  │
+│  │  │ QueueService│────│ SqsAdapter  │────│ AWS SQS         │   │  │
+│  │  └─────────────┘    └─────────────┘    │ (LocalStack Dev)│   │  │
+│  │                                         └─────────────────┘   │  │
+│  │  ┌─────────────┐    ┌─────────────┐                          │  │
+│  │  │ JobService  │────│ JobController│ GET /relay/job/:jobId   │  │
+│  │  └─────────────┘    └─────────────┘                          │  │
+│  │                                                               │  │
+│  │  ┌───────────────────────────────────────────────────────┐   │  │
+│  │  │                  QueueConsumer                         │   │  │
+│  │  │  Long-polling (20s) → Process → Delete                 │   │  │
+│  │  └───────────────────────────────────────────────────────┘   │  │
+│  └───────────────────────────────────────────────────────────────┘  │
+└─────────────────────────────────┬───────────────────────────────────┘
+                                  │
+                                  ▼
+┌─────────────────────────────────────────────────────────────────────┐
+│                        Nginx Load Balancer                           │
+│  ┌─────────────────────────────────────────────────────────────┐   │
+│  │  upstream oz-relayers { least_conn; }                        │   │
+│  │  ┌─────────────┐ ┌─────────────┐ ┌─────────────┐            │   │
+│  │  │ oz-relayer-1│ │ oz-relayer-2│ │ oz-relayer-3│            │   │
+│  │  │ (Port 8081) │ │ (Port 8082) │ │ (Port 8083) │            │   │
+│  │  └─────────────┘ └─────────────┘ └─────────────┘            │   │
+│  └─────────────────────────────────────────────────────────────┘   │
+└─────────────────────────────────────────────────────────────────────┘
 ```
 
-### 15.2 Provider Comparison
+### 16.2 Environment Comparison
 
-| Item | Redis + BullMQ | AWS SQS |
-|------|----------------|---------|
-| Environment | Local/Dev/Test | Production |
-| Configuration Complexity | Low | Medium |
-| Cost | Infrastructure only | Per-request billing |
-| Scalability | Requires horizontal scaling | Auto-scaling |
-| Message Retention | Volatile (configurable) | 4-day default retention |
-| Latency | Very low | Low |
+| Config | Local Dev | Staging | Production |
+|--------|-----------|---------|------------|
+| Queue Service | LocalStack SQS | AWS SQS | AWS SQS |
+| Load Balancer | Nginx Container | Nginx/ALB | AWS ALB |
+| Relayers | 3x Docker | 3-5x K8s | Auto-scale K8s |
+| Endpoint | `http://localstack:4566` | AWS endpoint | AWS endpoint |
 
-### 15.3 Environment Configuration
+### 16.3 SQS Queue Design
+
+| Item | Value | Rationale |
+|------|-------|-----------|
+| Queue Type | Standard Queue | High throughput, transaction order-independent |
+| DLQ | relay-tx-dlq | Failed message isolation |
+| Max Receive Count | 3 | Retry limit before DLQ |
+| Visibility Timeout | 30 seconds | Processing time allowance |
+| Long Polling | 20 seconds | Reduce empty responses |
+| AWS Region | ap-northeast-2 | Match production environment |
+
+### 16.4 Environment Configuration
 
 ```bash
 # .env file
-# Redis (default)
-QUEUE_PROVIDER=redis
-REDIS_URL=redis://localhost:6379
 
-# AWS SQS (production)
-QUEUE_PROVIDER=sqs
+# Queue Feature Flag
+QUEUE_ENABLED=true
+
+# AWS Configuration
 AWS_REGION=ap-northeast-2
-AWS_SQS_QUEUE_URL=https://sqs.ap-northeast-2.amazonaws.com/123456789012/relayer-queue
+AWS_ACCESS_KEY_ID=test                    # LocalStack default
+AWS_SECRET_ACCESS_KEY=test                # LocalStack default
+
+# SQS Queue URLs
+SQS_QUEUE_URL=http://localstack:4566/000000000000/relay-tx-queue
+SQS_DLQ_URL=http://localstack:4566/000000000000/relay-tx-dlq
+
+# LocalStack Endpoint (local dev only)
+LOCALSTACK_ENDPOINT=http://localstack:4566
+
+# Consumer Settings
+SQS_VISIBILITY_TIMEOUT=30
+SQS_WAIT_TIME_SECONDS=20
+SQS_MAX_RETRIES=3
+
+# OZ Relayer URL (via Nginx LB)
+OZ_RELAYER_URL=http://oz-relayer-lb:80
 ```
 
-### 15.4 Queue Adapter Interface
+### 16.5 Queue Module Structure
+
+```
+packages/relay-api/src/
+└── queue/                              # Queue Module
+    ├── queue.module.ts                 # NestJS DynamicModule
+    ├── queue.service.ts                # Enqueue operations
+    ├── queue.consumer.ts               # Long-polling consumer
+    ├── sqs/
+    │   ├── sqs.adapter.ts              # AWS SDK SQS wrapper
+    │   ├── sqs.config.ts               # Configuration types
+    │   └── sqs.health.ts               # Health indicator
+    ├── job/
+    │   ├── job.controller.ts           # GET /api/v1/relay/job/:jobId
+    │   └── job.service.ts              # In-memory job tracking
+    ├── dto/
+    │   ├── queue-job.dto.ts            # Job status response
+    │   └── enqueue-response.dto.ts     # Enqueue response
+    └── interfaces/
+        ├── queue-message.interface.ts  # Message types
+        └── queue-job.interface.ts      # Job status types
+```
+
+### 16.6 Queue Interfaces
 
 ```typescript
-// packages/relay-api/src/queue/queue-adapter.interface.ts
-interface QueueAdapter {
-  enqueue(job: RelayJob): Promise<string>;  // returns jobId
-  getJob(jobId: string): Promise<JobStatus>;
-  cancelJob(jobId: string): Promise<boolean>;
-}
-
-interface RelayJob {
+// packages/relay-api/src/queue/interfaces/queue-message.interface.ts
+export interface QueueMessage {
+  jobId: string;
   type: 'direct' | 'gasless';
   payload: DirectTxRequest | GaslessTxRequest;
   priority?: 'high' | 'normal' | 'low';
   metadata?: Record<string, string>;
+  createdAt: string;
 }
 
-interface JobStatus {
+// packages/relay-api/src/queue/interfaces/queue-job.interface.ts
+export interface QueueJob {
   jobId: string;
   status: 'queued' | 'processing' | 'completed' | 'failed';
+  txId?: string;
   txHash?: string;
   error?: string;
   createdAt: Date;
   updatedAt: Date;
 }
+
+export type JobStatus = 'queued' | 'processing' | 'completed' | 'failed';
 ```
 
-### 15.5 API Changes (Queue Mode)
+### 16.7 SQS Adapter Implementation
 
-API responses change when Queue system is enabled:
+```typescript
+// packages/relay-api/src/queue/sqs/sqs.adapter.ts
+import { Injectable } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
+import {
+  SQSClient,
+  SendMessageCommand,
+  ReceiveMessageCommand,
+  DeleteMessageCommand,
+  Message,
+} from '@aws-sdk/client-sqs';
+import { QueueMessage } from '../interfaces/queue-message.interface';
+
+@Injectable()
+export class SqsAdapter {
+  private client: SQSClient;
+
+  constructor(private configService: ConfigService) {
+    this.client = new SQSClient({
+      region: this.configService.get('AWS_REGION', 'ap-northeast-2'),
+      endpoint: this.configService.get('LOCALSTACK_ENDPOINT'), // undefined in prod
+      credentials: {
+        accessKeyId: this.configService.get('AWS_ACCESS_KEY_ID', 'test'),
+        secretAccessKey: this.configService.get('AWS_SECRET_ACCESS_KEY', 'test'),
+      },
+    });
+  }
+
+  async sendMessage(queueUrl: string, message: QueueMessage): Promise<string> {
+    const command = new SendMessageCommand({
+      QueueUrl: queueUrl,
+      MessageBody: JSON.stringify(message),
+      MessageAttributes: {
+        jobId: { DataType: 'String', StringValue: message.jobId },
+        type: { DataType: 'String', StringValue: message.type },
+      },
+    });
+    const result = await this.client.send(command);
+    return result.MessageId!;
+  }
+
+  async receiveMessages(queueUrl: string, maxMessages = 10): Promise<Message[]> {
+    const command = new ReceiveMessageCommand({
+      QueueUrl: queueUrl,
+      MaxNumberOfMessages: maxMessages,
+      WaitTimeSeconds: this.configService.get('SQS_WAIT_TIME_SECONDS', 20),
+      VisibilityTimeout: this.configService.get('SQS_VISIBILITY_TIMEOUT', 30),
+      MessageAttributeNames: ['All'],
+    });
+    const result = await this.client.send(command);
+    return result.Messages || [];
+  }
+
+  async deleteMessage(queueUrl: string, receiptHandle: string): Promise<void> {
+    const command = new DeleteMessageCommand({
+      QueueUrl: queueUrl,
+      ReceiptHandle: receiptHandle,
+    });
+    await this.client.send(command);
+  }
+}
+```
+
+### 16.8 API Changes (Queue Mode)
+
+API responses change when Queue system is enabled (`QUEUE_ENABLED=true`):
 
 ```yaml
 # Queue disabled (Phase 1 - immediate processing)
@@ -2495,8 +2813,7 @@ POST /api/v1/relay/direct
 Response (202 Accepted):
 {
   "jobId": "uuid",
-  "status": "queued",
-  "estimatedWait": "5s"
+  "status": "queued"
 }
 
 # Job status query
@@ -2505,44 +2822,104 @@ Response:
 {
   "jobId": "uuid",
   "status": "completed",
-  "txHash": "0x...",
-  "txId": "uuid"
+  "txId": "uuid",
+  "txHash": "0x..."
+}
+
+# Queue disabled response
+GET /api/v1/relay/job/{jobId}
+Response (503 Service Unavailable):
+{
+  "error": "Queue system is not enabled"
 }
 ```
 
-### 15.6 Redis + BullMQ Configuration
+### 16.9 Docker Compose Integration
 
-```typescript
-// packages/relay-api/src/queue/redis-queue.adapter.ts
-import { Queue, Worker } from 'bullmq';
+```yaml
+# docker/docker-compose.yaml
 
-const relayQueue = new Queue('relay-jobs', {
-  connection: {
-    host: process.env.REDIS_HOST || 'localhost',
-    port: parseInt(process.env.REDIS_PORT || '6379')
+services:
+  localstack:
+    image: localstack/localstack:latest
+    ports:
+      - "4566:4566"
+    environment:
+      SERVICES: sqs
+      AWS_DEFAULT_REGION: ap-northeast-2
+    volumes:
+      - ./scripts/init-localstack.sh:/etc/localstack/init/ready.d/init-sqs.sh:ro
+      - localstack-data:/var/lib/localstack
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:4566/_localstack/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - msq-relayer-network
+
+  relay-api:
+    depends_on:
+      localstack:
+        condition: service_healthy
+      oz-relayer-lb:
+        condition: service_healthy
+    environment:
+      QUEUE_ENABLED: "true"
+      AWS_REGION: ap-northeast-2
+      SQS_QUEUE_URL: http://localstack:4566/000000000000/relay-tx-queue
+      SQS_DLQ_URL: http://localstack:4566/000000000000/relay-tx-dlq
+      LOCALSTACK_ENDPOINT: http://localstack:4566
+      OZ_RELAYER_URL: http://oz-relayer-lb:80
+
+volumes:
+  localstack-data:
+```
+
+### 16.10 LocalStack Initialization Script
+
+```bash
+#!/bin/bash
+# docker/scripts/init-localstack.sh
+
+# Create main queue with DLQ redrive policy
+awslocal sqs create-queue --queue-name relay-tx-dlq
+
+awslocal sqs create-queue \
+  --queue-name relay-tx-queue \
+  --attributes '{
+    "RedrivePolicy": "{\"deadLetterTargetArn\":\"arn:aws:sqs:ap-northeast-2:000000000000:relay-tx-dlq\",\"maxReceiveCount\":\"3\"}"
+  }'
+
+echo "SQS queues created successfully"
+awslocal sqs list-queues
+```
+
+### 16.11 Backward Compatibility
+
+| QUEUE_ENABLED | Behavior |
+|---------------|----------|
+| `false` (default) | Phase 1 behavior - immediate processing, 200 OK response |
+| `true` | Queue mode - async processing, 202 Accepted + jobId response |
+
+Queue disabled state maintains full Phase 1 API compatibility. No breaking changes for existing clients.
+
+### 16.12 Dependencies
+
+```json
+// packages/relay-api/package.json
+{
+  "dependencies": {
+    "@aws-sdk/client-sqs": "^3.700.0",
+    "uuid": "^11.0.0"
   },
-  defaultJobOptions: {
-    attempts: 3,
-    backoff: {
-      type: 'exponential',
-      delay: 1000
-    }
+  "devDependencies": {
+    "@types/uuid": "^10.0.0"
   }
-});
+}
 ```
 
-### 15.7 AWS SQS Configuration
-
-```typescript
-// packages/relay-api/src/queue/sqs-queue.adapter.ts
-import { SQSClient, SendMessageCommand } from '@aws-sdk/client-sqs';
-
-const sqsClient = new SQSClient({
-  region: process.env.AWS_REGION || 'ap-northeast-2'
-});
-
-const queueUrl = process.env.AWS_SQS_QUEUE_URL;
-```
+> **Note**: Redis is retained for OZ Relayer internal queue only. Application-level queue uses AWS SQS exclusively.
 
 ---
 
@@ -2834,6 +3211,8 @@ pnpm --filter @msq-relayer/integration-tests test:lifecycle
 
 | Version | Date | Changes |
 |---------|------|---------|
+| 12.8 | 2026-01-02 | SPEC-WEBHOOK-001 Phase 2 Complete - Added Section 5.1 Redis Module (L1 Cache), Section 5.2 MySQL Module (L2 Storage with Prisma), Section 5.5 Webhook Handler, Updated Section 5.4 with 3-Tier Lookup architecture, Updated Implementation Scope table, Added environment variables (DATABASE_URL, REDIS_URL, WEBHOOK_SIGNING_KEY, CLIENT_WEBHOOK_URL) |
+| 12.7 | 2025-12-30 | Queue System architecture update - Complete Section 16 rewrite: changed from QUEUE_PROVIDER pattern (Redis+BullMQ/SQS) to AWS SQS-only with LocalStack for local dev, added Nginx LB multi-relayer architecture diagram, updated environment configuration, added SQS adapter implementation, LocalStack init script, Docker Compose integration |
 | 12.4 | 2025-12-19 | Section 4 Smart Contracts expansion - Replaced basic overview with comprehensive SPEC-CONTRACTS-001 integration (Section 4.1-4.10): project structure, OpenZeppelin usage, ERC2771Forwarder deployment, sample contracts, deployment scripts, test coverage, verification process, related specifications |
 | 12.3 | 2025-12-16 | Phase 1 completion - Updated version and status to reflect Phase 1 complete, added Docker Setup Guide cross-reference |
 | 12.2 | 2025-12-15 | Section 5.5 Health Check API expansion - Added Relayer Pool Status Aggregation NestJS implementation example (HealthService, checkRelayerPoolHealth, aggregateStatus), Added Detailed Health Response JSON example (including degraded status) |

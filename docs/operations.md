@@ -274,7 +274,7 @@ Error: bind: address already in use
 
 ```bash
 # CPU and memory usage
-docker stats msq-relay-api msq-redis
+docker stats msq-relay-api msq-redis msq-mysql
 
 # Resource limits
 docker inspect msq-relay-api | jq '.[0].HostConfig.Memory'
@@ -282,19 +282,279 @@ docker inspect msq-relay-api | jq '.[0].HostConfig.Memory'
 
 ---
 
-## 5. New Team Member Onboarding Checklist
+## 5. Database Operations (Phase 2)
+
+### MySQL Management
+
+**Start MySQL service** (with Phase 2 profile):
+```bash
+docker compose -f docker/docker-compose.yaml --profile phase2 up -d mysql
+```
+
+**Connect to MySQL**:
+```bash
+# Via Docker
+docker exec -it msq-mysql mysql -u root -ppass msq_relayer
+
+# Via CLI (requires mysql client)
+mysql -h localhost -P 3307 -u root -ppass msq_relayer
+```
+
+**Check database status**:
+```bash
+# Verify connection
+docker exec msq-mysql mysql -u root -ppass -e "SELECT 1"
+
+# Check tables
+docker exec msq-mysql mysql -u root -ppass msq_relayer -e "SHOW TABLES"
+
+# Check transaction count
+docker exec msq-mysql mysql -u root -ppass msq_relayer -e "SELECT COUNT(*) FROM transactions"
+```
+
+### Prisma Operations
+
+**Run migrations**:
+```bash
+cd packages/relay-api
+
+# Apply pending migrations
+pnpm prisma migrate deploy
+
+# Create new migration (development only)
+pnpm prisma migrate dev --name <migration_name>
+
+# Reset database (WARNING: deletes all data)
+pnpm prisma migrate reset
+```
+
+**Generate Prisma client**:
+```bash
+pnpm prisma generate
+```
+
+**Open Prisma Studio** (GUI for database):
+```bash
+pnpm prisma studio
+# Opens at http://localhost:5555
+```
+
+### Database Troubleshooting
+
+#### Scenario: Migration failed
+
+**Symptom**: `prisma migrate deploy` fails
+
+**Resolution**:
+1. Check migration status
+   ```bash
+   pnpm prisma migrate status
+   ```
+
+2. Check database connectivity
+   ```bash
+   docker exec msq-mysql mysql -u root -ppass -e "SELECT 1"
+   ```
+
+3. If schema is out of sync, reset (development only)
+   ```bash
+   pnpm prisma migrate reset
+   ```
+
+#### Scenario: Connection refused
+
+**Symptom**: `Error: Can't connect to MySQL server`
+
+**Resolution**:
+1. Verify MySQL is running
+   ```bash
+   docker ps | grep mysql
+   ```
+
+2. Check DATABASE_URL format
+   ```
+   DATABASE_URL=mysql://root:pass@localhost:3307/msq_relayer
+   ```
+
+3. Verify port mapping
+   ```bash
+   docker port msq-mysql
+   ```
+
+---
+
+## 6. Redis Management (Phase 2)
+
+### Redis Operations
+
+**Connect to Redis CLI**:
+```bash
+docker exec -it msq-redis redis-cli
+```
+
+**Check Redis status**:
+```bash
+# Ping test
+docker exec msq-redis redis-cli ping
+# Expected: PONG
+
+# Get info
+docker exec msq-redis redis-cli info server
+
+# Check memory usage
+docker exec msq-redis redis-cli info memory | grep used_memory_human
+```
+
+**View cached transactions**:
+```bash
+# List all transaction keys
+docker exec msq-redis redis-cli keys "tx:*"
+
+# Get specific transaction
+docker exec msq-redis redis-cli get "tx:<transaction_id>"
+
+# Check TTL
+docker exec msq-redis redis-cli ttl "tx:<transaction_id>"
+```
+
+**Clear cache** (use with caution):
+```bash
+# Clear all keys (development only)
+docker exec msq-redis redis-cli flushall
+
+# Clear specific pattern
+docker exec msq-redis redis-cli --scan --pattern "tx:*" | xargs -L 1 docker exec msq-redis redis-cli del
+```
+
+### Cache Configuration
+
+| Setting | Value | Description |
+|---------|-------|-------------|
+| TTL | 86400s (24h) | Default cache expiration |
+| Terminal Status TTL | 86400s | confirmed/mined/failed/cancelled |
+| Pending Status TTL | No cache | Always query L3 (OZ Relayer) |
+
+### Redis Troubleshooting
+
+#### Scenario: Cache miss for confirmed transaction
+
+**Symptom**: 3-Tier Lookup always hits L3 for confirmed transactions
+
+**Cause**: Cache not populated or expired
+
+**Resolution**:
+1. Check if key exists
+   ```bash
+   docker exec msq-redis redis-cli exists "tx:<transaction_id>"
+   ```
+
+2. Verify write-through is working (check application logs)
+   ```bash
+   docker logs msq-relay-api | grep "Cache"
+   ```
+
+3. Manually verify transaction in MySQL
+   ```bash
+   docker exec msq-mysql mysql -u root -ppass msq_relayer \
+     -e "SELECT * FROM transactions WHERE transaction_id='<id>'"
+   ```
+
+---
+
+## 7. Webhook Configuration (Phase 2)
+
+### Webhook Setup
+
+**Required Environment Variables**:
+```bash
+# OZ Relayer webhook signature verification
+WEBHOOK_SIGNING_KEY=your-secret-signing-key
+
+# Client notification endpoint (optional)
+CLIENT_WEBHOOK_URL=https://your-service.example.com/webhooks
+```
+
+**OZ Relayer Webhook Endpoint**:
+```
+POST /api/v1/webhooks/oz-relayer
+```
+
+### Webhook Testing
+
+**Test webhook with curl**:
+```bash
+# Generate HMAC-SHA256 signature
+PAYLOAD='{"transactionId":"tx_123","status":"confirmed","hash":"0xabc..."}'
+SIGNATURE=$(echo -n "$PAYLOAD" | openssl dgst -sha256 -hmac "your-secret-signing-key" | cut -d' ' -f2)
+
+# Send webhook request
+curl -X POST http://localhost:3000/api/v1/webhooks/oz-relayer \
+  -H "Content-Type: application/json" \
+  -H "X-OZ-Signature: sha256=$SIGNATURE" \
+  -d "$PAYLOAD"
+```
+
+**Expected Response** (HTTP 200):
+```json
+{
+  "success": true,
+  "message": "Webhook processed"
+}
+```
+
+### Webhook Security
+
+| Header | Required | Description |
+|--------|----------|-------------|
+| `X-OZ-Signature` | Yes | HMAC-SHA256 signature |
+| `Content-Type` | Yes | Must be `application/json` |
+
+**Signature Verification**:
+1. Extract signature from `X-OZ-Signature` header (format: `sha256=<hex>`)
+2. Compute HMAC-SHA256 of raw request body using `WEBHOOK_SIGNING_KEY`
+3. Compare signatures using constant-time comparison
+4. Reject if signatures don't match (HTTP 401)
+
+### Webhook Troubleshooting
+
+#### Scenario: Signature verification failed
+
+**Symptom**: HTTP 401 Unauthorized response
+
+**Resolution**:
+1. Verify WEBHOOK_SIGNING_KEY matches OZ Relayer configuration
+2. Ensure raw body is used for signature (not parsed JSON)
+3. Check signature format: `sha256=<hex_signature>`
+
+#### Scenario: Client notification failed
+
+**Symptom**: Webhook processed but client not notified
+
+**Resolution**:
+1. Verify CLIENT_WEBHOOK_URL is set correctly
+2. Check client endpoint is accessible from relay-api container
+3. Review logs for notification errors
+   ```bash
+   docker logs msq-relay-api | grep "webhook"
+   ```
+
+---
+
+## 8. New Team Member Onboarding Checklist
 
 - [ ] Read this document
 - [ ] Install Docker Desktop
-- [ ] Configure `.env` file
+- [ ] Configure `.env` file (including Phase 2 variables)
 - [ ] Start service with `pnpm run start:dev`
 - [ ] Access Swagger UI at `http://localhost:3000/api/docs`
 - [ ] Extract OpenAPI JSON with curl
 - [ ] Understand common troubleshooting scenarios
+- [ ] (Phase 2) Verify MySQL and Redis connectivity
+- [ ] (Phase 2) Run Prisma migrations
 
 ---
 
-## 6. Additional Resources
+## 9. Additional Resources
 
 - **[README.md](../README.md)** - Project overview
 - **[Swagger UI](http://localhost:3000/api/docs)** - API documentation
@@ -302,5 +562,6 @@ docker inspect msq-relay-api | jq '.[0].HostConfig.Memory'
 
 ---
 
-**Last Updated**: 2024-12-25
+**Last Updated**: 2026-01-02
+**Version**: 1.1.0
 **Author**: MoAI-ADK

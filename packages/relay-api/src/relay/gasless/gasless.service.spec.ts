@@ -9,6 +9,8 @@ import { HttpService } from "@nestjs/axios";
 import { GaslessService } from "./gasless.service";
 import { SignatureVerifierService } from "./signature-verifier.service";
 import { OzRelayerService } from "../../oz-relayer/oz-relayer.service";
+import { PrismaService } from "../../prisma/prisma.service";
+import { RedisService } from "../../redis/redis.service";
 import { GaslessTxRequestDto } from "../dto/gasless-tx-request.dto";
 
 describe("GaslessService", () => {
@@ -61,6 +63,22 @@ describe("GaslessService", () => {
             axiosRef: {
               post: jest.fn(),
             },
+          },
+        },
+        {
+          provide: PrismaService,
+          useValue: {
+            transaction: {
+              create: jest.fn().mockResolvedValue({}),
+              findUnique: jest.fn().mockResolvedValue(null),
+            },
+          },
+        },
+        {
+          provide: RedisService,
+          useValue: {
+            get: jest.fn().mockResolvedValue(null),
+            set: jest.fn().mockResolvedValue(undefined),
           },
         },
       ],

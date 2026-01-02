@@ -34,14 +34,17 @@ RUN pnpm install --frozen-lockfile || pnpm install
 # ============================================================================
 FROM base AS relay-api
 
-# Copy Relay API source
+# Copy Relay API source (includes prisma schema)
 COPY packages/relay-api ./packages/relay-api
 
 # Set working directory
 WORKDIR /app/packages/relay-api
 
-# Install package-specific dependencies if needed
+# Install package-specific dependencies
 RUN pnpm install
+
+# Generate Prisma Client (required for PrismaService)
+RUN pnpm exec prisma generate
 
 # Expose port
 EXPOSE 3000

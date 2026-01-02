@@ -10,6 +10,8 @@ import { HttpService } from "@nestjs/axios";
 import { Interface } from "ethers";
 import { SignatureVerifierService } from "./signature-verifier.service";
 import { OzRelayerService } from "../../oz-relayer/oz-relayer.service";
+import { PrismaService } from "../../prisma/prisma.service";
+import { RedisService } from "../../redis/redis.service";
 import { GaslessTxRequestDto } from "../dto/gasless-tx-request.dto";
 import { GaslessTxResponseDto } from "../dto/gasless-tx-response.dto";
 import { DirectTxRequestDto } from "../dto/direct-tx-request.dto";
@@ -18,6 +20,8 @@ import { DirectTxRequestDto } from "../dto/direct-tx-request.dto";
  * GaslessService - Gasless Transaction Orchestration
  *
  * SPEC-GASLESS-001: Gasless Transaction API
+ * SPEC-WEBHOOK-001: TX History & Webhook System - Write-through caching
+ *
  * - U-GASLESS-001: EIP-712 Signature Verification
  * - U-GASLESS-002: Deadline Validation
  * - U-GASLESS-003: Nonce Query API
@@ -29,6 +33,8 @@ import { DirectTxRequestDto } from "../dto/direct-tx-request.dto";
 @Injectable()
 export class GaslessService {
   private readonly logger = new Logger(GaslessService.name);
+  private readonly CACHE_TTL_SECONDS = 600; // 10 minutes
+
   // ERC2771Forwarder contract ABI for nonces() and execute()
   // OpenZeppelin v5 uses ForwardRequestData struct with signature inside
   private forwarderInterface = new Interface([
@@ -41,6 +47,8 @@ export class GaslessService {
     private readonly ozRelayerService: OzRelayerService,
     private readonly configService: ConfigService,
     private readonly httpService: HttpService,
+    private readonly prismaService: PrismaService,
+    private readonly redisService: RedisService,
   ) {}
 
   /**
@@ -53,7 +61,8 @@ export class GaslessService {
    * 4. Verify EIP-712 signature
    * 5. Build Forwarder.execute() transaction
    * 6. Submit to OZ Relayer
-   * 7. Return transaction response
+   * 7. Store transaction in Redis + MySQL (Write-through)
+   * 8. Return transaction response
    *
    * @param dto - Validated GaslessTxRequestDto
    * @returns GaslessTxResponseDto with transaction details
@@ -96,13 +105,56 @@ export class GaslessService {
         `Gasless transaction submitted: txId=${response.transactionId}, from=${dto.request.from}`,
       );
 
-      // Step 7: Return transaction response
-      return {
+      const result: GaslessTxResponseDto = {
         transactionId: response.transactionId,
         hash: response.hash,
         status: response.status,
         createdAt: response.createdAt,
       };
+
+      // Step 7: Store in Redis + MySQL (Write-through)
+      const forwarderAddress =
+        this.configService.get<string>("FORWARDER_ADDRESS");
+      const cacheKey = `tx:status:${response.transactionId}`;
+      const cacheData = {
+        transactionId: response.transactionId,
+        hash: response.hash,
+        status: response.status,
+        createdAt: response.createdAt,
+        from: dto.request.from,
+        to: forwarderAddress,
+        value: "0",
+      };
+
+      try {
+        await Promise.all([
+          this.redisService.set(cacheKey, cacheData, this.CACHE_TTL_SECONDS),
+          this.prismaService.transaction.create({
+            data: {
+              id: response.transactionId,
+              hash: response.hash,
+              status: response.status,
+              from: dto.request.from,
+              to: forwarderAddress,
+              value: "0",
+              data: dto.request.data,
+              createdAt: new Date(response.createdAt),
+            },
+          }),
+        ]);
+
+        this.logger.log(
+          `Gasless transaction stored: txId=${response.transactionId}, from=${dto.request.from}`,
+        );
+      } catch (storageError) {
+        // Log but don't fail the request - OZ Relayer already accepted it
+        this.logger.error(
+          `Failed to store gasless transaction ${response.transactionId}: ${storageError.message}`,
+        );
+      }
+
+      // Step 8: Return transaction response
+      return result;
     } catch (error) {
       this.logger.error(
         `OZ Relayer error for address ${dto.request.from}: ${error instanceof Error ? error.message : "Unknown error"}`,

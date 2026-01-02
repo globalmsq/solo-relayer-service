@@ -64,16 +64,26 @@ function sleep(ms: number): Promise<void> {
 
 /**
  * Get relay API base URL from environment
+ * @throws Error if RELAY_API_URL is not set
  */
 function getRelayApiUrl(): string {
-  return process.env.RELAY_API_URL || 'http://localhost:3000';
+  const url = process.env.RELAY_API_URL;
+  if (!url) {
+    throw new Error('RELAY_API_URL environment variable is required');
+  }
+  return url;
 }
 
 /**
  * Get API key from environment
+ * @throws Error if RELAY_API_KEY is not set
  */
 function getApiKey(): string {
-  return process.env.RELAY_API_KEY || 'local-dev-api-key';
+  const key = process.env.RELAY_API_KEY;
+  if (!key) {
+    throw new Error('RELAY_API_KEY environment variable is required');
+  }
+  return key;
 }
 
 /**
