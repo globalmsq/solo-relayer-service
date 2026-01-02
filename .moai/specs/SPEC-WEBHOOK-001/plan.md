@@ -477,11 +477,11 @@ const expectedSignature = crypto
 ```typescript
 import { Injectable, Inject, NotFoundException, InternalServerErrorException, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import { PrismaClient } from '@prisma/client';
 import Redis from 'ioredis';
 import { OzRelayerWebhookDto } from './dto/oz-relayer-webhook.dto';
 import { NotificationService } from './notification.service';
 import { REDIS_CLIENT } from '../redis/redis.module';
+import { PrismaService } from '../prisma/prisma.service';
 
 /**
  * WebhooksService
@@ -492,12 +492,12 @@ import { REDIS_CLIENT } from '../redis/redis.module';
 @Injectable()
 export class WebhooksService {
   private readonly logger = new Logger(WebhooksService.name);
-  private readonly prisma = new PrismaClient();
 
   constructor(
     @Inject(REDIS_CLIENT) private readonly redis: Redis,
     private readonly configService: ConfigService,
     private readonly notificationService: NotificationService,
+    private readonly prismaService: PrismaService,
   ) {}
 
   /**
@@ -801,24 +801,25 @@ async getTransactionStatus(txId: string): Promise<TxStatusResponseDto> {
 
 **After Change** (Phase 2 - 3-Tier Lookup):
 ```typescript
-import { Injectable, Inject, Logger } from '@nestjs/common';
+import { Injectable, Inject, Logger, NotFoundException, ServiceUnavailableException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { HttpService } from '@nestjs/axios';
-import { PrismaClient } from '@prisma/client';
-import Redis from 'ioredis';
 import { firstValueFrom } from 'rxjs';
-import { REDIS_CLIENT } from '../../redis/redis.module';
+import { PrismaService } from '../../prisma/prisma.service';
+import { RedisService } from '../../redis/redis.service';
+import { OzRelayerService } from '../../oz-relayer/oz-relayer.service';
 
 @Injectable()
 export class StatusService {
   private readonly logger = new Logger(StatusService.name);
-  private readonly prisma = new PrismaClient();
+  private readonly CACHE_TTL_SECONDS = 600; // 10 minutes
 
   constructor(
-    @Inject(REDIS_CLIENT) private readonly redis: Redis,
     private readonly httpService: HttpService,
     private readonly configService: ConfigService,
     private readonly ozRelayerService: OzRelayerService,
+    private readonly prismaService: PrismaService,
+    private readonly redisService: RedisService,
   ) {}
 
   /**
@@ -967,21 +968,25 @@ export class StatusService {
 
 **Additional Code** (sendTransaction method modification):
 ```typescript
-import { Injectable, Inject, Logger } from '@nestjs/common';
+import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import { PrismaClient } from '@prisma/client';
-import Redis from 'ioredis';
-import { REDIS_CLIENT } from '../../redis/redis.module';
+import { HttpService } from '@nestjs/axios';
+import { firstValueFrom } from 'rxjs';
+import { PrismaService } from '../../prisma/prisma.service';
+import { RedisService } from '../../redis/redis.service';
+import { OzRelayerService } from '../../oz-relayer/oz-relayer.service';
 
 @Injectable()
 export class DirectService {
   private readonly logger = new Logger(DirectService.name);
-  private readonly prisma = new PrismaClient();
+  private readonly CACHE_TTL_SECONDS = 600;
 
   constructor(
-    @Inject(REDIS_CLIENT) private readonly redis: Redis,
+    private readonly httpService: HttpService,
     private readonly configService: ConfigService,
-    // ... (existing dependencies)
+    private readonly ozRelayerService: OzRelayerService,
+    private readonly prismaService: PrismaService,
+    private readonly redisService: RedisService,
   ) {}
 
   async sendTransaction(dto: DirectTxDto): Promise<DirectTxResponseDto> {
@@ -1042,21 +1047,25 @@ export class DirectService {
 
 **Additional Code** (same pattern):
 ```typescript
-import { Injectable, Inject, Logger } from '@nestjs/common';
+import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import { PrismaClient } from '@prisma/client';
-import Redis from 'ioredis';
-import { REDIS_CLIENT } from '../../redis/redis.module';
+import { HttpService } from '@nestjs/axios';
+import { firstValueFrom } from 'rxjs';
+import { PrismaService } from '../../prisma/prisma.service';
+import { RedisService } from '../../redis/redis.service';
+import { OzRelayerService } from '../../oz-relayer/oz-relayer.service';
 
 @Injectable()
 export class GaslessService {
   private readonly logger = new Logger(GaslessService.name);
-  private readonly prisma = new PrismaClient();
+  private readonly CACHE_TTL_SECONDS = 600;
 
   constructor(
-    @Inject(REDIS_CLIENT) private readonly redis: Redis,
+    private readonly httpService: HttpService,
     private readonly configService: ConfigService,
-    // ... (existing dependencies)
+    private readonly ozRelayerService: OzRelayerService,
+    private readonly prismaService: PrismaService,
+    private readonly redisService: RedisService,
   ) {}
 
   async sendGaslessTransaction(dto: GaslessTxDto): Promise<GaslessTxResponseDto> {

@@ -250,10 +250,27 @@ async getTransactionStatus(txId: string): Promise<TxStatusResponseDto> {
   // Tier 3: OZ Relayer API - ~200ms
   const fresh = await this.fetchFromOzRelayer(txId);
 
-  // Save to both L1 (Redis) and L2 (MySQL)
+  // Save to both L1 (Redis) and L2 (MySQL) using upsert for idempotency
   await Promise.all([
     this.cacheToRedis(txId, fresh),
-    this.prisma.transaction.create({ data: fresh })
+    this.prisma.transaction.upsert({
+      where: { id: fresh.transactionId },
+      update: {
+        hash: fresh.hash,
+        status: fresh.status,
+        confirmedAt: fresh.confirmedAt ? new Date(fresh.confirmedAt) : null,
+      },
+      create: {
+        id: fresh.transactionId,
+        hash: fresh.hash,
+        status: fresh.status,
+        from: fresh.from,
+        to: fresh.to,
+        value: fresh.value,
+        createdAt: new Date(fresh.createdAt),
+        confirmedAt: fresh.confirmedAt ? new Date(fresh.confirmedAt) : null,
+      },
+    })
   ]);
 
   return fresh;
@@ -271,10 +288,20 @@ private async cacheToRedis(txId: string, data: any): Promise<void> {
 async handleWebhook(event: WebhookEvent): Promise<void> {
   const { txId, status, hash } = event;
 
-  // Update MySQL (L2 - permanent)
-  const updated = await this.prisma.transaction.update({
+  // Update MySQL (L2 - permanent) using upsert for idempotency
+  const updated = await this.prisma.transaction.upsert({
     where: { id: txId },
-    data: { status, hash, updatedAt: new Date() },
+    update: {
+      status,
+      hash,
+      updatedAt: new Date(),
+    },
+    create: {
+      id: txId,
+      status,
+      hash,
+      createdAt: new Date(),
+    },
   });
 
   // Update Redis (L1 - cache) with TTL reset
