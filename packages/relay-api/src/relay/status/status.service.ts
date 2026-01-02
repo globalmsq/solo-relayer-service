@@ -84,11 +84,19 @@ export class StatusService {
       );
     }
 
-    // Tier 2: MySQL lookup (~50ms)
+    // Tier 2: MySQL lookup (~50ms) with graceful degradation
     // Only return from MySQL if status is terminal
-    const stored = await this.prismaService.transaction.findUnique({
-      where: { id: txId },
-    });
+    let stored: Transaction | null = null;
+    try {
+      stored = await this.prismaService.transaction.findUnique({
+        where: { id: txId },
+      });
+    } catch (error) {
+      // Graceful degradation: log error and continue to OZ Relayer
+      this.logger.warn(
+        `MySQL lookup failed for ${txId}: ${error instanceof Error ? error.message : "Unknown error"}`,
+      );
+    }
 
     if (stored && this.isTerminalStatus(stored.status)) {
       this.logger.debug(`MySQL hit for ${txId} (terminal: ${stored.status})`);
