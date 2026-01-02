@@ -1,9 +1,9 @@
 # MSQ Relayer Service - Technical Document
 
 ## Document Information
-- **Version**: 12.7
-- **Last Updated**: 2025-12-30
-- **Status**: Phase 1 Complete (Direct + Gasless + Multi-Relayer Proxy + Nginx LB + Transaction Status Polling + API Key Authentication)
+- **Version**: 12.8
+- **Last Updated**: 2026-01-02
+- **Status**: Phase 2 Complete (Phase 1 + TX History + 3-Tier Lookup + Webhook Handler + Redis L1 Cache + MySQL L2 Storage)
 
 > **Note**: This document covers technical implementation details (HOW).
 > - Business requirements (WHAT/WHY): [product.md](./product.md)
@@ -38,8 +38,9 @@ Defines the technical stack and implementation specifications for the Blockchain
 
 | Phase | Technical Scope | Status |
 |-------|-----------------|--------|
-| **Phase 1** | OZ Relayer (3x instances), Redis, Nginx Load Balancer, NestJS (Auth, Direct TX API, Gasless TX, EIP-712 Verification, Health, Status Polling), ERC2771Forwarder | **Complete** ✅ |
-| **Phase 2+** | TX History (MySQL), Webhook Handler, Queue System (AWS SQS + LocalStack), OZ Monitor, Policy Engine | Planned |
+| **Phase 1** | OZ Relayer (3x instances), Redis, Nginx Load Balancer, NestJS (Auth, Direct TX API, Gasless TX, EIP-712 Verification, Health, Status Polling), ERC2771Forwarder | **Complete** |
+| **Phase 2** | TX History (MySQL), Webhook Handler, 3-Tier Lookup, Redis L1 Cache, MySQL L2 Storage, Client Notifications | **Complete** |
+| **Phase 3+** | Queue System (AWS SQS + LocalStack), OZ Monitor, Policy Engine | Planned |
 
 ---
 
@@ -569,12 +570,85 @@ For detailed requirements and acceptance criteria, see:
 | Container | Docker Compose | AWS EKS |
 | Container Runtime | Docker | containerd |
 | Orchestration | - | Kubernetes |
-| Database | MySQL Container (Phase 2+) | AWS RDS MySQL (Multi-AZ) |
-| Cache/Queue | Redis Container | AWS ElastiCache Cluster |
+| Database | MySQL 8.0 Container (Phase 2) | AWS RDS MySQL (Multi-AZ) |
+| Cache/Queue | Redis 8.0 Container | AWS ElastiCache Cluster |
 | Secrets | .env / K8s Secret | AWS Secrets Manager |
 | Load Balancer | - | AWS ALB / Nginx Ingress |
 | Monitoring | Prometheus + Grafana | Prometheus + Grafana |
 | Logging | Console | CloudWatch / Loki |
+
+### 5.1 Redis Module (L1 Cache - Phase 2)
+
+**Purpose**: Transaction status caching with 3-Tier Lookup integration.
+
+| Category | Technology | Version | Rationale |
+|----------|------------|---------|-----------|
+| Client | ioredis | 5.x | Production-ready Redis client for Node.js |
+| Container | Redis | 8.0-alpine | Official Redis image, lightweight |
+| TTL Strategy | 600 seconds | - | 10-minute cache for transaction status |
+
+**Module Structure**:
+```
+packages/relay-api/src/redis/
+├── redis.module.ts      # NestJS module with ioredis provider
+├── redis.service.ts     # Cache operations (get/set/del/exists)
+└── redis.service.spec.ts # Unit tests
+```
+
+**Key Features**:
+- Generic `get<T>()` / `set<T>()` with JSON serialization
+- TTL support for automatic cache expiration
+- Health check integration (`healthCheck()`)
+- Graceful connection handling (`OnModuleDestroy`)
+
+**Environment Variables**:
+```bash
+REDIS_URL=redis://localhost:6379  # Redis connection URL
+```
+
+### 5.2 MySQL Module (L2 Storage - Phase 2)
+
+**Purpose**: Persistent transaction history storage with Prisma ORM.
+
+| Category | Technology | Version | Rationale |
+|----------|------------|---------|-----------|
+| ORM | Prisma | 5.x | Type-safe database access, migrations |
+| Database | MySQL | 8.0 | Production-ready, ACID compliant |
+| Container Port | 3307:3306 | - | External 3307, internal 3306 |
+
+**Module Structure**:
+```
+packages/relay-api/src/prisma/
+├── prisma.module.ts     # Global module export
+├── prisma.service.ts    # PrismaClient extension with lifecycle hooks
+└── prisma.service.spec.ts # Unit tests
+```
+
+**Schema** (`packages/relay-api/prisma/schema.prisma`):
+```prisma
+model Transaction {
+  id          String    @id @default(uuid())
+  hash        String?   @unique
+  status      String    // pending, sent, submitted, inmempool, mined, confirmed, failed
+  from        String?
+  to          String?
+  value       String?
+  data        String?   @db.Text
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  confirmedAt DateTime?
+
+  @@index([status])
+  @@index([hash])
+  @@index([createdAt])
+  @@map("transactions")
+}
+```
+
+**Environment Variables**:
+```bash
+DATABASE_URL=mysql://root:pass@localhost:3307/msq_relayer  # MySQL connection string
+```
 
 ---
 
@@ -978,11 +1052,11 @@ Response (200 OK):
 }
 ```
 
-### 5.4 Transaction Status Polling API (SPEC-STATUS-001)
+### 5.4 Transaction Status Polling API (SPEC-STATUS-001, SPEC-WEBHOOK-001)
 
-**Overview**: Transaction Status Polling API enables clients to query the status of submitted transactions. This is a Phase 1 polling-based approach with plans for webhook notifications in Phase 2+.
+**Overview**: Transaction Status Polling API enables clients to query the status of submitted transactions. Phase 2 implements a 3-Tier Lookup system with Redis L1 cache and MySQL L2 storage for optimized performance.
 
-#### 5.4.1 Architecture and Data Flow
+#### 5.4.1 3-Tier Lookup Architecture (Phase 2)
 
 ```
 Client Service
@@ -990,11 +1064,22 @@ Client Service
     └─→ GET /api/v1/relay/status/:txId  (Query status)
             │
             └─→ StatusService.getTransactionStatus()
-                └─→ Direct HTTP call → OZ Relayer
-                    └─→ Transform → TxStatusResponseDto
+                │
+                ├─→ Tier 1: Redis (L1 Cache) ~1-5ms
+                │   └─→ Return if terminal status (confirmed/mined/failed/cancelled)
+                │
+                ├─→ Tier 2: MySQL (L2 Storage) ~50ms
+                │   └─→ Return if terminal status, backfill Redis
+                │
+                └─→ Tier 3: OZ Relayer API ~200ms
+                    └─→ Return and store in both Redis + MySQL (Write-through)
 ```
 
-**Design Principle**: Thin API gateway with proper error handling (404 vs 503 differentiation).
+**Design Principles**:
+- **Terminal Status Optimization**: Only return cached data for terminal statuses (confirmed, mined, failed, cancelled)
+- **Non-terminal Status Refresh**: Always fetch fresh data from OZ Relayer for pending/submitted statuses
+- **Write-through Caching**: Updates propagate to both Redis and MySQL simultaneously
+- **Graceful Degradation**: Redis failures don't break the lookup chain
 
 #### 5.4.2 Module Structure
 
@@ -1092,7 +1177,108 @@ Both transaction types use the same status query endpoint.
 - Consistent with Direct and Gasless transaction responses
 - Swagger/OpenAPI annotations for API documentation
 
-### 5.5 Health Check API
+### 5.5 Webhook Handler (SPEC-WEBHOOK-001 - Phase 2)
+
+**Overview**: Webhook Handler receives transaction status updates from OZ Relayer and updates both Redis (L1) and MySQL (L2) storage.
+
+#### 5.5.1 Module Structure
+
+```
+packages/relay-api/src/webhooks/
+├── guards/
+│   ├── webhook-signature.guard.ts      # HMAC-SHA256 signature verification
+│   └── webhook-signature.guard.spec.ts # Guard unit tests
+├── dto/
+│   └── oz-relayer-webhook.dto.ts       # Webhook payload DTOs
+├── webhooks.controller.ts               # POST /webhooks/oz-relayer endpoint
+├── webhooks.service.ts                  # Webhook processing logic
+├── notification.service.ts              # Client notification service
+├── webhooks.module.ts                   # NestJS module registration
+├── webhooks.controller.spec.ts          # Controller tests
+└── webhooks.service.spec.ts             # Service tests
+```
+
+#### 5.5.2 Webhook Endpoint
+
+```yaml
+POST /api/v1/webhooks/oz-relayer
+Content-Type: application/json
+X-OZ-Signature: sha256={HMAC-SHA256 signature}
+
+Request Body:
+{
+  "transactionId": "550e8400-e29b-41d4-a716-446655440000",
+  "status": "confirmed",
+  "hash": "0xabcd1234...",
+  "from": "0x70997970C51812dc3A010C7d01b50e0d17dc79C8",
+  "to": "0x5FbDB2315678afecb367f032d93F642f64180aa3",
+  "value": "0",
+  "createdAt": "2025-12-19T10:00:00Z",
+  "confirmedAt": "2025-12-19T10:05:00Z"
+}
+
+Response (200 OK):
+{
+  "success": true,
+  "message": "Webhook processed successfully",
+  "transactionId": "550e8400-e29b-41d4-a716-446655440000"
+}
+
+Error Responses:
+- 400 Bad Request: Invalid payload format
+- 401 Unauthorized: Invalid or missing X-OZ-Signature header
+- 500 Internal Server Error: Database update failure
+```
+
+#### 5.5.3 Webhook Processing Flow
+
+```
+OZ Relayer → POST /api/v1/webhooks/oz-relayer
+    │
+    ├─→ WebhookSignatureGuard (HMAC-SHA256 verification)
+    │
+    └─→ WebhooksService.handleWebhook()
+        │
+        ├─→ Step 1: Update MySQL (L2 - permanent storage)
+        │   └─→ Upsert transaction record
+        │
+        ├─→ Step 2: Update Redis (L1 - cache) with TTL reset
+        │   └─→ Set with 600s TTL (graceful degradation)
+        │
+        └─→ Step 3: Send notification to client (non-blocking)
+            └─→ NotificationService.notify() - fire and forget
+```
+
+#### 5.5.4 Signature Verification
+
+**HMAC-SHA256 Guard**:
+```typescript
+// X-OZ-Signature header format: sha256={signature}
+// Signature computed: HMAC-SHA256(request body, WEBHOOK_SIGNING_KEY)
+
+const expectedSignature = crypto
+  .createHmac('sha256', signingKey)
+  .update(JSON.stringify(body))
+  .digest('hex');
+```
+
+**Environment Variables**:
+```bash
+WEBHOOK_SIGNING_KEY=your-secret-signing-key  # HMAC-SHA256 signing key
+CLIENT_WEBHOOK_URL=https://client.example.com/webhooks  # Client notification endpoint
+```
+
+#### 5.5.5 Write-Through Caching Pattern
+
+The webhook handler implements write-through caching:
+
+1. **Direct Service / Gasless Service**: Stores transaction in Redis + MySQL after OZ Relayer submission
+2. **Webhook Handler**: Updates both Redis + MySQL when OZ Relayer sends status updates
+3. **Status Service**: Reads from 3-tier lookup, backfills Redis when reading from MySQL
+
+This ensures data consistency across all storage layers.
+
+### 5.6 Health Check API
 
 Health check endpoints follow the **@nestjs/terminus standard pattern** with custom HealthIndicator implementations for OZ Relayer Pool and Redis.
 
@@ -3025,6 +3211,7 @@ pnpm --filter @msq-relayer/integration-tests test:lifecycle
 
 | Version | Date | Changes |
 |---------|------|---------|
+| 12.8 | 2026-01-02 | SPEC-WEBHOOK-001 Phase 2 Complete - Added Section 5.1 Redis Module (L1 Cache), Section 5.2 MySQL Module (L2 Storage with Prisma), Section 5.5 Webhook Handler, Updated Section 5.4 with 3-Tier Lookup architecture, Updated Implementation Scope table, Added environment variables (DATABASE_URL, REDIS_URL, WEBHOOK_SIGNING_KEY, CLIENT_WEBHOOK_URL) |
 | 12.7 | 2025-12-30 | Queue System architecture update - Complete Section 16 rewrite: changed from QUEUE_PROVIDER pattern (Redis+BullMQ/SQS) to AWS SQS-only with LocalStack for local dev, added Nginx LB multi-relayer architecture diagram, updated environment configuration, added SQS adapter implementation, LocalStack init script, Docker Compose integration |
 | 12.4 | 2025-12-19 | Section 4 Smart Contracts expansion - Replaced basic overview with comprehensive SPEC-CONTRACTS-001 integration (Section 4.1-4.10): project structure, OpenZeppelin usage, ERC2771Forwarder deployment, sample contracts, deployment scripts, test coverage, verification process, related specifications |
 | 12.3 | 2025-12-16 | Phase 1 completion - Updated version and status to reflect Phase 1 complete, added Docker Setup Guide cross-reference |

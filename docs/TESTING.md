@@ -1,8 +1,8 @@
 # Testing Guide
 
-**Version**: 1.1.0
-**Last Updated**: 2025-12-23
-**Status**: Complete with Integration & Load Tests
+**Version**: 1.2.0
+**Last Updated**: 2026-01-02
+**Status**: Complete with Integration, Load Tests, and Phase 2 (3-Tier Lookup, Webhooks)
 
 ---
 
@@ -40,6 +40,7 @@ pnpm test --coverage
 ### Unit Test Coverage
 
 **Target**: 90% coverage
+**Current**: 187 unit tests passing
 
 ```bash
 # View coverage report
@@ -49,6 +50,9 @@ pnpm test --coverage
 # - src/relay/direct/
 # - src/relay/gasless/
 # - src/relay/status/
+# - src/redis/
+# - src/prisma/
+# - src/webhooks/
 # - src/auth/
 ```
 
@@ -64,7 +68,16 @@ packages/relay-api/src/
 │   ├── gasless/
 │   │   └── gasless.service.spec.ts
 │   └── status/
-│       └── status.service.spec.ts
+│       └── status.service.spec.ts        # 3-Tier Lookup tests
+├── redis/
+│   └── redis.service.spec.ts             # L1 Cache tests
+├── prisma/
+│   └── prisma.service.spec.ts            # L2 Storage tests
+├── webhooks/
+│   ├── guards/
+│   │   └── webhook-signature.guard.spec.ts  # HMAC verification
+│   ├── webhooks.controller.spec.ts
+│   └── webhooks.service.spec.ts
 ├── auth/
 │   └── api-key.guard.spec.ts
 └── app.service.spec.ts
@@ -82,14 +95,15 @@ E2E tests verify complete API flows end-to-end using Mock OZ Relayer responses (
 # Run all E2E tests
 pnpm test:e2e
 
-# Expected output: 29/29 tests passing
-# PASS packages/relay-api/test/e2e/direct.e2e-spec.ts (5 tests)
+# Expected output: 74/74 tests passing (Phase 2 update)
+# PASS packages/relay-api/test/e2e/direct.e2e-spec.ts (8 tests)
 # PASS packages/relay-api/test/e2e/gasless.e2e-spec.ts (10 tests)
-# PASS packages/relay-api/test/e2e/status.e2e-spec.ts (6 tests)
+# PASS packages/relay-api/test/e2e/status.e2e-spec.ts (12 tests)      # 3-Tier Lookup
+# PASS packages/relay-api/test/e2e/webhooks.e2e-spec.ts (15 tests)    # Webhook Handler
 # PASS packages/relay-api/test/e2e/health.e2e-spec.ts (3 tests)
 # PASS packages/relay-api/test/e2e/payment-integration.e2e-spec.ts (2 tests)
-# Test Suites: 5 passed, 5 total
-# Tests: 29 passed, 29 total
+# Test Suites: 6+ passed
+# Tests: 74 passed, 74 total
 ```
 
 ### E2E Test Files
@@ -99,7 +113,8 @@ packages/relay-api/test/
 ├── e2e/                                    # E2E test suite
 │   ├── direct.e2e-spec.ts                 # Direct TX tests (8 tests)
 │   ├── gasless.e2e-spec.ts                # Gasless TX tests (10 tests)
-│   ├── status.e2e-spec.ts                 # Status Polling tests (6 tests)
+│   ├── status.e2e-spec.ts                 # Status Polling tests (12 tests) - 3-Tier Lookup
+│   ├── webhooks.e2e-spec.ts               # Webhook Handler tests (15 tests) - Phase 2
 │   ├── health.e2e-spec.ts                 # Health Check tests (3 tests)
 │   └── payment-integration.e2e-spec.ts    # Payment Flow tests (2 tests)
 ├── fixtures/                               # Test data
@@ -188,19 +203,84 @@ Step 4: Submit Gasless TX
   → Returns: { txId: "uuid-v4" }
 ```
 
-#### Status Polling Tests (6 tests)
+#### Status Polling Tests - 3-Tier Lookup (12 tests)
 
 **File**: `test/e2e/status.e2e-spec.ts`
 
-Tests the `/api/v1/relay/status/:txId` endpoint.
+Tests the `/api/v1/relay/status/:txId` endpoint with 3-Tier Lookup (Phase 2).
 
-**Test Cases**:
+**Test Cases (Basic)**:
 1. **TC-E2E-S001**: Query pending status → 200 + status: pending
 2. **TC-E2E-S002**: Query confirmed status → 200 + hash + confirmedAt
 3. **TC-E2E-S003**: Query failed status → 200 + status: failed
 4. **TC-E2E-S004**: Invalid UUID format → 400 Bad Request
 5. **TC-E2E-S005**: OZ Relayer unavailable → 503 Service Unavailable
 6. **TC-E2E-S006**: Non-existent txId → 404 Not Found
+
+**Test Cases (3-Tier Lookup - Phase 2)**:
+7. **TC-E2E-S007**: Redis L1 hit (terminal status) → Fast response (~1-5ms)
+8. **TC-E2E-S008**: MySQL L2 hit with Redis backfill → ~50ms response
+9. **TC-E2E-S009**: OZ Relayer L3 fallback → ~200ms response
+10. **TC-E2E-S010**: Non-terminal status always fetches fresh from L3
+11. **TC-E2E-S011**: Redis failure gracefully degrades to L2/L3
+12. **TC-E2E-S012**: Write-through caching verification
+
+**3-Tier Lookup Test Flow**:
+```
+Tier 1: Redis (L1 Cache)
+  └─ Check if terminal status (confirmed/mined/failed/cancelled)
+  └─ Return immediately if terminal
+
+Tier 2: MySQL (L2 Storage)
+  └─ Query if Redis miss
+  └─ Backfill Redis if found
+
+Tier 3: OZ Relayer API
+  └─ Fallback for non-cached transactions
+  └─ Store in both Redis + MySQL (write-through)
+```
+
+#### Webhook Handler Tests (15 tests)
+
+**File**: `test/e2e/webhooks.e2e-spec.ts`
+
+Tests the `/api/v1/webhooks/oz-relayer` endpoint (Phase 2).
+
+**Test Cases (Signature Verification)**:
+1. **TC-E2E-W001**: Valid HMAC-SHA256 signature → 200 OK
+2. **TC-E2E-W002**: Missing X-OZ-Signature header → 401 Unauthorized
+3. **TC-E2E-W003**: Invalid signature format → 401 Unauthorized
+4. **TC-E2E-W004**: Wrong signing key → 401 Unauthorized
+5. **TC-E2E-W005**: Tampered payload → 401 Unauthorized
+
+**Test Cases (Payload Processing)**:
+6. **TC-E2E-W006**: Valid webhook payload → Database + Cache updated
+7. **TC-E2E-W007**: Missing transactionId → 400 Bad Request
+8. **TC-E2E-W008**: Invalid status value → 400 Bad Request
+9. **TC-E2E-W009**: Malformed JSON → 400 Bad Request
+10. **TC-E2E-W010**: Duplicate webhook (idempotent) → 200 OK
+
+**Test Cases (Storage Updates)**:
+11. **TC-E2E-W011**: MySQL L2 updated on webhook
+12. **TC-E2E-W012**: Redis L1 updated with TTL reset
+13. **TC-E2E-W013**: Client notification triggered (non-blocking)
+14. **TC-E2E-W014**: Database failure → 500 Internal Server Error
+15. **TC-E2E-W015**: Redis failure → Graceful degradation (MySQL only)
+
+**Webhook Test Pattern**:
+```typescript
+// Generate valid HMAC-SHA256 signature
+const payload = { transactionId: 'uuid', status: 'confirmed', ... };
+const signature = crypto
+  .createHmac('sha256', WEBHOOK_SIGNING_KEY)
+  .update(JSON.stringify(payload))
+  .digest('hex');
+
+// Send with signature header
+POST /api/v1/webhooks/oz-relayer
+  -H "X-OZ-Signature: sha256={signature}"
+  -d '{payload}'
+```
 
 #### Health Check Tests (3 tests)
 
@@ -830,7 +910,7 @@ jobs:
 
 ---
 
-**Last Updated**: 2025-12-23
-**Version**: 1.1.0
+**Last Updated**: 2026-01-02
+**Version**: 1.2.0
 **Author**: Harry
-**Status**: Complete ✅ (includes Integration & Load Tests)
+**Status**: Complete (includes Integration, Load Tests, and Phase 2: 3-Tier Lookup + Webhooks)

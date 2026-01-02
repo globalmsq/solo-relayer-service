@@ -1,109 +1,109 @@
 ---
 id: SPEC-WEBHOOK-001
 title: TX History & Webhook System - Implementation Plan (Redis L1 + MySQL L2)
-version: 1.1.0
-status: draft
+version: 1.2.0
+status: complete
 created: 2025-12-30
-updated: 2025-12-30
+updated: 2026-01-02
 ---
 
 # Implementation Plan: SPEC-WEBHOOK-001
 
-## 📋 개요
+## Overview
 
-**목표**: Redis L1 캐시 + MySQL L2 영구 저장 기반 트랜잭션 이력 관리 및 OZ Relayer Webhook 시스템 구현
+**Goal**: Implement transaction history management and OZ Relayer Webhook system based on Redis L1 cache + MySQL L2 persistent storage
 
-**범위**: Phase 2 - 3-Tier Cache (Redis → MySQL → OZ Relayer), Webhook 수신, HTTP 기반 Notification
+**Scope**: Phase 2 - 3-Tier Cache (Redis → MySQL → OZ Relayer), Webhook reception, HTTP-based Notification
 
-**예상 시간**: 5-7시간 (27개 파일, ~950 LOC)
+**Estimated Time**: 5-7 hours (27 files, ~950 LOC)
 
 ---
 
-## 🎯 기술적 접근
+## Technical Approach
 
-### 핵심 설계 원칙
+### Core Design Principles
 
-**원칙 1: 3-Tier 캐시 아키텍처**
-- Redis (L1): 초고속 캐시 (응답시간 <5ms, 10분 TTL)
-- MySQL (L2): 영구 저장 (영구 보관, 검색 가능)
-- OZ Relayer API: 원본 데이터 소스 (fallback용)
+**Principle 1: 3-Tier Cache Architecture**
+- Redis (L1): Ultra-fast cache (response time <5ms, 10-minute TTL)
+- MySQL (L2): Persistent storage (permanent retention, searchable)
+- OZ Relayer API: Original data source (fallback only)
 
-**원칙 2: Write-Through 캐싱**
-- Webhook 수신 시 Redis + MySQL 동시 업데이트
-- 트랜잭션 생성 시 Redis + MySQL 동시 저장
-- TTL 리셋으로 hot data 캐시 유지
+**Principle 2: Write-Through Caching**
+- Simultaneous Redis + MySQL update on webhook reception
+- Simultaneous Redis + MySQL save on transaction creation
+- TTL reset to maintain hot data in cache
 
-**원칙 3: HMAC 서명 기반 보안**
-- Option B: OZ Relayer가 서명 → 우리가 검증
-- HMAC-SHA256 알고리즘 (3줄 코드 구현 가능)
-- NestJS Guard 패턴 활용
+**Principle 3: HMAC Signature-Based Security**
+- Option B: OZ Relayer signs → we verify
+- HMAC-SHA256 algorithm (implementable in 3 lines of code)
+- Utilizing NestJS Guard pattern
 
-**원칙 4: 단계적 확장성**
-- Phase 2: HTTP 기반 Notification (간단, 빠름)
-- Phase 3+: BullMQ/SQS Queue (확장성, 재시도)
+**Principle 4: Gradual Scalability**
+- Phase 2: HTTP-based Notification (simple, fast)
+- Phase 3+: BullMQ/SQS Queue (scalability, retry)
 
-### 주요 설계 결정사항
+### Key Design Decisions
 
-**결정 1: Redis L1 캐시 도입**
-- 기존 OZ Relayer용 Redis 인스턴스 공유 (새 컨테이너 불필요)
-- ioredis 라이브러리 사용 (NestJS 생태계 호환)
+**Decision 1: Redis L1 Cache Introduction**
+- Share existing Redis instance used by OZ Relayer (no new container needed)
+- Using ioredis library (compatible with NestJS ecosystem)
 - Key pattern: `tx:status:{txId}`
-- TTL: 600초 (환경변수 `REDIS_STATUS_TTL_SECONDS`로 설정 가능)
+- TTL: 600 seconds (configurable via `REDIS_STATUS_TTL_SECONDS` environment variable)
 
-**결정 2: Prisma ORM 선택**
-- TypeScript 타입 안전성 보장
-- 자동 마이그레이션 관리
-- NestJS 공식 권장 ORM
+**Decision 2: Prisma ORM Selection**
+- TypeScript type safety guaranteed
+- Automatic migration management
+- NestJS officially recommended ORM
 
-**결정 3: Docker Compose Profile 전략**
-- `profile: phase2` → MySQL 서비스 선택적 실행
-- Phase 1 유지 (MySQL 없이도 동작)
-- Phase 2+ 활성화 (`--profile phase2` 옵션)
+**Decision 3: Docker Compose Profile Strategy**
+- `profile: phase2` → MySQL service selective execution
+- Phase 1 maintained (works without MySQL)
+- Phase 2+ activation (`--profile phase2` option)
 
-**결정 4: StatusService 3-Tier Lookup 전략**
-- Tier 1: Redis 조회 (~1-5ms)
-- Tier 2: MySQL 조회 (~50ms) + Redis 캐싱
-- Tier 3: OZ Relayer API fallback (~200ms) + Redis + MySQL 저장
-- Graceful degradation: 상위 티어 실패 시 하위 티어로 fallback
+**Decision 4: StatusService 3-Tier Lookup Strategy**
+- Tier 1: Redis lookup (~1-5ms)
+- Tier 2: MySQL lookup (~50ms) + Redis caching
+- Tier 3: OZ Relayer API fallback (~200ms) + Redis + MySQL save
+- Graceful degradation: fallback to lower tier on upper tier failure
 
 ---
 
-## 🔴 Phase 0: Dependency Update (30분)
+## Phase 0: Dependency Update (30 min)
 
-### 목표
-Task #15 (BullMQ) 종속성 제거 및 Task #14 범위 명확화
+### Goal
+Remove Task #15 (BullMQ) dependency and clarify Task #14 scope
 
-### 작업 내역
-1. **Task #14 종속성 업데이트**
-   - 제거: Task #15 (Queue System)
-   - 유지: Task #11 (Integration Tests)
+### Tasks
+1. **Task #14 Dependency Update**
+   - Remove: Task #15 (Queue System)
+   - Keep: Task #11 (Integration Tests)
 
-2. **Phase 2 범위 정의**
-   - HTTP 기반 Notification Service 사용
-   - BullMQ 없이 구현 가능
+2. **Phase 2 Scope Definition**
+   - Use HTTP-based Notification Service
+   - Implementable without BullMQ
 
-3. **Phase 3+ 계획**
-   - BullMQ/SQS 추가 (선택적 확장)
-   - Notification 재시도 로직 강화
+3. **Phase 3+ Plan**
+   - Add BullMQ/SQS (optional extension)
+   - Strengthen Notification retry logic
 
-### 검증
+### Verification
 ```bash
-# Task #14 설명 확인
+# Check Task #14 description
 cat .taskmaster/tasks/task-14.txt
 
-# 종속성 확인 (Task #11만 존재)
+# Verify dependencies (only Task #11 should exist)
 grep -r "dependencies" .taskmaster/tasks/task-14.txt
 ```
 
 ---
 
-## 📂 Phase 1: Infrastructure Setup (1-1.5시간)
+## Phase 1: Infrastructure Setup (1-1.5 hours)
 
-### 1.1 Prisma + Redis 의존성 설치
+### 1.1 Prisma + Redis Dependency Installation
 
-**파일**: `packages/relay-api/package.json`
+**File**: `packages/relay-api/package.json`
 
-**추가 의존성**:
+**Additional Dependencies**:
 ```json
 {
   "dependencies": {
@@ -117,7 +117,7 @@ grep -r "dependencies" .taskmaster/tasks/task-14.txt
 }
 ```
 
-**실행**:
+**Execution**:
 ```bash
 cd packages/relay-api
 pnpm add @prisma/client ioredis
@@ -126,11 +126,11 @@ pnpm add -D prisma @types/ioredis
 
 ---
 
-### 1.2 Prisma Schema 정의
+### 1.2 Prisma Schema Definition
 
-**파일**: `packages/relay-api/prisma/schema.prisma` (New)
+**File**: `packages/relay-api/prisma/schema.prisma` (New)
 
-**내용**:
+**Contents**:
 ```prisma
 generator client {
   provider = "prisma-client-js"
@@ -160,19 +160,19 @@ model Transaction {
 }
 ```
 
-**설계 포인트**:
-- `id`: UUID v4 (OZ Relayer 트랜잭션 ID와 동일)
-- `hash`: Unique 제약 (중복 방지)
-- `status`: 인덱스 (빠른 상태 조회)
-- `data`: TEXT 타입 (ABI 인코딩된 데이터 저장)
+**Design Points**:
+- `id`: UUID v4 (same as OZ Relayer transaction ID)
+- `hash`: Unique constraint (prevent duplicates)
+- `status`: Index (fast status queries)
+- `data`: TEXT type (store ABI-encoded data)
 
 ---
 
-### 1.3 Docker Compose 업데이트
+### 1.3 Docker Compose Update
 
-**파일**: `docker/docker-compose.yaml` (Modified)
+**File**: `docker/docker-compose.yaml` (Modified)
 
-**추가 서비스**:
+**Additional Service**:
 ```yaml
 services:
   # === MySQL Database (Phase 2+ only) ===
@@ -220,18 +220,18 @@ volumes:
     driver: local
 ```
 
-**변경 사항**:
-- MySQL 서비스 추가 (`profiles: ["phase2"]`)
-- relay-api 의존성에 MySQL 추가
-- Volume 추가 (데이터 영구 보존)
+**Changes**:
+- MySQL service added (`profiles: ["phase2"]`)
+- MySQL added to relay-api dependencies
+- Volume added (data persistence)
 
 ---
 
-### 1.4 환경변수 설정
+### 1.4 Environment Variables Setup
 
-**파일**: `.env.example` (Modified)
+**File**: `.env.example` (Modified)
 
-**추가 변수**:
+**Additional Variables**:
 ```bash
 # === Phase 2: MySQL Database ===
 DATABASE_URL="mysql://relayer_user:secure-user-password@localhost:3306/msq_relayer"
@@ -249,7 +249,7 @@ WEBHOOK_SIGNING_KEY=your-secure-signing-key-must-be-32-characters-long
 CLIENT_WEBHOOK_URL=http://localhost:9000/webhooks/transaction-updates
 ```
 
-**파일**: `.env` (Create locally, not in Git)
+**File**: `.env` (Create locally, not in Git)
 ```bash
 cp .env.example .env
 # Edit .env with actual values
@@ -257,9 +257,9 @@ cp .env.example .env
 
 ---
 
-### 1.5 Redis Module 생성
+### 1.5 Redis Module Creation
 
-**파일**: `packages/relay-api/src/redis/redis.module.ts` (New)
+**File**: `packages/relay-api/src/redis/redis.module.ts` (New)
 
 ```typescript
 import { Module, Global } from '@nestjs/common';
@@ -285,60 +285,60 @@ export const REDIS_CLIENT = 'REDIS_CLIENT';
 export class RedisModule {}
 ```
 
-**Note**: 기존 OZ Relayer용 Redis 인스턴스를 공유하므로 새로운 Redis 컨테이너는 필요하지 않습니다.
+**Note**: Sharing the existing Redis instance used by OZ Relayer, so no new Redis container is needed.
 
 ---
 
-### 1.6 Prisma Migration 실행
+### 1.6 Prisma Migration Execution
 
-**명령어**:
+**Commands**:
 ```bash
-# MySQL 서비스 시작 (phase2 profile)
+# Start MySQL service (phase2 profile)
 docker compose --profile phase2 up -d mysql
 
-# Prisma 초기 마이그레이션
+# Prisma initial migration
 cd packages/relay-api
 pnpm prisma migrate dev --name init
 
-# Prisma Client 생성
+# Generate Prisma Client
 pnpm prisma generate
 ```
 
-**검증**:
+**Verification**:
 ```bash
-# MySQL 연결 확인
+# Verify MySQL connection
 docker exec -it msq-relayer-mysql mysql -u relayer_user -p -e "SHOW DATABASES;"
 
-# 테이블 확인
+# Verify tables
 docker exec -it msq-relayer-mysql mysql -u relayer_user -p msq_relayer -e "SHOW TABLES;"
 
-# 스키마 확인
+# Verify schema
 docker exec -it msq-relayer-mysql mysql -u relayer_user -p msq_relayer -e "DESCRIBE transactions;"
 ```
 
 ---
 
-### Phase 1 체크리스트
+### Phase 1 Checklist
 
-- [ ] Prisma + ioredis 의존성 설치 완료
-- [ ] `schema.prisma` 파일 생성 및 Transaction 모델 정의
-- [ ] Docker Compose에 MySQL 서비스 추가 (profile: phase2)
-- [ ] `.env.example` 업데이트 (DATABASE_URL, MYSQL_PASSWORD, REDIS_URL, REDIS_STATUS_TTL_SECONDS)
-- [ ] `.env` 파일 생성 (로컬 개발 환경)
-- [ ] RedisModule 생성 (`src/redis/redis.module.ts`)
-- [ ] MySQL 서비스 실행 성공
-- [ ] Prisma 마이그레이션 적용 (`pnpm prisma migrate dev`)
-- [ ] Prisma Client 생성 (`pnpm prisma generate`)
-- [ ] MySQL 테이블 생성 확인 (`transactions` 테이블 존재)
-- [ ] Redis 연결 확인 (기존 Redis 인스턴스 공유)
+- [ ] Prisma + ioredis dependencies installed
+- [ ] `schema.prisma` file created with Transaction model definition
+- [ ] MySQL service added to Docker Compose (profile: phase2)
+- [ ] `.env.example` updated (DATABASE_URL, MYSQL_PASSWORD, REDIS_URL, REDIS_STATUS_TTL_SECONDS)
+- [ ] `.env` file created (local development environment)
+- [ ] RedisModule created (`src/redis/redis.module.ts`)
+- [ ] MySQL service started successfully
+- [ ] Prisma migration applied (`pnpm prisma migrate dev`)
+- [ ] Prisma Client generated (`pnpm prisma generate`)
+- [ ] MySQL table creation verified (`transactions` table exists)
+- [ ] Redis connection verified (sharing existing Redis instance)
 
 ---
 
-## 🔨 Phase 2: Webhook Module Implementation (1.5-2시간)
+## Phase 2: Webhook Module Implementation (1.5-2 hours)
 
-### 2.1 DTO 정의
+### 2.1 DTO Definitions
 
-**파일 1**: `packages/relay-api/src/webhooks/dto/oz-relayer-webhook.dto.ts` (New)
+**File 1**: `packages/relay-api/src/webhooks/dto/oz-relayer-webhook.dto.ts` (New)
 
 ```typescript
 import { IsString, IsOptional, IsISO8601, IsUUID } from 'class-validator';
@@ -388,7 +388,7 @@ export class OzRelayerWebhookDto {
 }
 ```
 
-**파일 2**: `packages/relay-api/src/webhooks/dto/notification.dto.ts` (New)
+**File 2**: `packages/relay-api/src/webhooks/dto/notification.dto.ts` (New)
 
 ```typescript
 import { ApiProperty } from '@nestjs/swagger';
@@ -416,7 +416,7 @@ export class NotificationDto {
 
 ### 2.2 HMAC Signature Guard
 
-**파일**: `packages/relay-api/src/webhooks/guards/webhook-signature.guard.ts` (New)
+**File**: `packages/relay-api/src/webhooks/guards/webhook-signature.guard.ts` (New)
 
 ```typescript
 import { Injectable, CanActivate, ExecutionContext, UnauthorizedException } from '@nestjs/common';
@@ -460,7 +460,7 @@ export class WebhookSignatureGuard implements CanActivate {
 }
 ```
 
-**핵심 코드** (3줄):
+**Core Code** (3 lines):
 ```typescript
 const expectedSignature = crypto
   .createHmac('sha256', signingKey)
@@ -472,7 +472,7 @@ const expectedSignature = crypto
 
 ### 2.3 Webhooks Service
 
-**파일**: `packages/relay-api/src/webhooks/webhooks.service.ts` (New)
+**File**: `packages/relay-api/src/webhooks/webhooks.service.ts` (New)
 
 ```typescript
 import { Injectable, Inject, NotFoundException, InternalServerErrorException, Logger } from '@nestjs/common';
@@ -573,9 +573,9 @@ export class WebhooksService {
 
 ---
 
-### 2.4 Notification Service (HTTP 방식)
+### 2.4 Notification Service (HTTP Method)
 
-**파일**: `packages/relay-api/src/webhooks/notification.service.ts` (New)
+**File**: `packages/relay-api/src/webhooks/notification.service.ts` (New)
 
 ```typescript
 import { Injectable, Logger } from '@nestjs/common';
@@ -630,16 +630,16 @@ export class NotificationService {
 }
 ```
 
-**특징**:
-- 비동기 알림 (Webhook 처리 블로킹 방지)
-- 실패 시 로그만 기록 (Phase 3+에서 재시도 로직 추가)
-- 타임아웃 5초 (빠른 실패)
+**Features**:
+- Asynchronous notification (prevents blocking webhook processing)
+- Only logs errors on failure (retry logic added in Phase 3+)
+- 5-second timeout (fail fast)
 
 ---
 
 ### 2.5 Webhooks Controller
 
-**파일**: `packages/relay-api/src/webhooks/webhooks.controller.ts` (New)
+**File**: `packages/relay-api/src/webhooks/webhooks.controller.ts` (New)
 
 ```typescript
 import { Controller, Post, Body, UseGuards, HttpCode, HttpStatus } from '@nestjs/common';
@@ -674,16 +674,16 @@ export class WebhooksController {
 }
 ```
 
-**보안 레이어**:
-- `@UseGuards(WebhookSignatureGuard)` - HMAC 서명 자동 검증
-- 서명 검증 실패 시 401 Unauthorized 자동 반환
-- Guard에서 검증되므로 Controller/Service는 순수 비즈니스 로직만 처리
+**Security Layers**:
+- `@UseGuards(WebhookSignatureGuard)` - Automatic HMAC signature verification
+- Returns 401 Unauthorized automatically on signature verification failure
+- Controller/Service only handles pure business logic since Guard handles verification
 
 ---
 
 ### 2.6 Webhooks Module
 
-**파일**: `packages/relay-api/src/webhooks/webhooks.module.ts` (New)
+**File**: `packages/relay-api/src/webhooks/webhooks.module.ts` (New)
 
 ```typescript
 import { Module } from '@nestjs/common';
@@ -704,9 +704,9 @@ export class WebhooksModule {}
 
 ---
 
-### 2.7 App Module 업데이트
+### 2.7 App Module Update
 
-**파일**: `packages/relay-api/src/app.module.ts` (Modified)
+**File**: `packages/relay-api/src/app.module.ts` (Modified)
 
 ```typescript
 import { Module } from '@nestjs/common';
@@ -727,28 +727,28 @@ export class AppModule {}
 
 ---
 
-### Phase 2 체크리스트
+### Phase 2 Checklist
 
-- [ ] `OzRelayerWebhookDto` 정의 (Validation 포함)
-- [ ] `NotificationDto` 정의
-- [ ] `WebhookSignatureGuard` 구현 (HMAC 검증)
-- [ ] `WebhooksService` 구현 (MySQL upsert)
-- [ ] `NotificationService` 구현 (HTTP POST)
-- [ ] `WebhooksController` 구현 (POST /webhooks/oz-relayer)
-- [ ] `WebhooksModule` 생성
-- [ ] `AppModule` 업데이트 (WebhooksModule import)
-- [ ] 빌드 성공 (`pnpm build`)
-- [ ] Linting 통과 (`pnpm lint`)
+- [ ] `OzRelayerWebhookDto` defined (with Validation)
+- [ ] `NotificationDto` defined
+- [ ] `WebhookSignatureGuard` implemented (HMAC verification)
+- [ ] `WebhooksService` implemented (MySQL upsert)
+- [ ] `NotificationService` implemented (HTTP POST)
+- [ ] `WebhooksController` implemented (POST /webhooks/oz-relayer)
+- [ ] `WebhooksModule` created
+- [ ] `AppModule` updated (WebhooksModule import)
+- [ ] Build successful (`pnpm build`)
+- [ ] Linting passed (`pnpm lint`)
 
 ---
 
-## 🔗 Phase 3: Notification Service (HTTP 방식) (30분)
+## Phase 3: Notification Service (HTTP Method) (30 min)
 
-이미 Phase 2에서 구현 완료 (`notification.service.ts`)
+Already implemented in Phase 2 (`notification.service.ts`)
 
-### 추가 작업: Mock Client Service 설정 (테스트용)
+### Additional Task: Mock Client Service Setup (for testing)
 
-**Docker Compose 추가** (Optional, for E2E testing):
+**Docker Compose Addition** (Optional, for E2E testing):
 ```yaml
 services:
   mock-client:
@@ -784,13 +784,13 @@ services:
 
 ---
 
-## 🔄 Phase 4: StatusService + DirectService + GaslessService 통합 (1.5-2시간)
+## Phase 4: StatusService + DirectService + GaslessService Integration (1.5-2 hours)
 
-### 4.1 StatusService 확장 (3-Tier Lookup: Redis → MySQL → OZ Relayer)
+### 4.1 StatusService Extension (3-Tier Lookup: Redis → MySQL → OZ Relayer)
 
-**파일**: `packages/relay-api/src/relay/status/status.service.ts` (Modified)
+**File**: `packages/relay-api/src/relay/status/status.service.ts` (Modified)
 
-**변경 전** (Phase 1):
+**Before Change** (Phase 1):
 ```typescript
 async getTransactionStatus(txId: string): Promise<TxStatusResponseDto> {
   // Direct HTTP call to OZ Relayer
@@ -799,7 +799,7 @@ async getTransactionStatus(txId: string): Promise<TxStatusResponseDto> {
 }
 ```
 
-**변경 후** (Phase 2 - 3-Tier Lookup):
+**After Change** (Phase 2 - 3-Tier Lookup):
 ```typescript
 import { Injectable, Inject, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
@@ -953,19 +953,19 @@ export class StatusService {
 }
 ```
 
-**핵심 로직 (3-Tier Lookup)**:
-1. **Tier 1 (Redis)**: 초고속 조회 (~1-5ms), 캐시 히트 시 즉시 반환
-2. **Tier 2 (MySQL)**: 영구 저장소 조회 (~50ms), 히트 시 Redis에 backfill
-3. **Tier 3 (OZ Relayer)**: 원본 소스 fallback (~200ms), 결과를 Redis + MySQL에 저장
-4. **Graceful Degradation**: 상위 티어 실패 시 하위 티어로 자동 fallback
+**Core Logic (3-Tier Lookup)**:
+1. **Tier 1 (Redis)**: Ultra-fast lookup (~1-5ms), immediate return on cache hit
+2. **Tier 2 (MySQL)**: Persistent storage lookup (~50ms), backfill to Redis on hit
+3. **Tier 3 (OZ Relayer)**: Original source fallback (~200ms), save result to Redis + MySQL
+4. **Graceful Degradation**: Automatic fallback to lower tier on upper tier failure
 
 ---
 
-### 4.2 DirectService 확장 (Redis + MySQL 저장)
+### 4.2 DirectService Extension (Redis + MySQL Storage)
 
-**파일**: `packages/relay-api/src/relay/direct/direct.service.ts` (Modified)
+**File**: `packages/relay-api/src/relay/direct/direct.service.ts` (Modified)
 
-**추가 코드** (sendTransaction 메서드 수정):
+**Additional Code** (sendTransaction method modification):
 ```typescript
 import { Injectable, Inject, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
@@ -1036,11 +1036,11 @@ export class DirectService {
 
 ---
 
-### 4.3 GaslessService 확장 (Redis + MySQL 저장)
+### 4.3 GaslessService Extension (Redis + MySQL Storage)
 
-**파일**: `packages/relay-api/src/relay/gasless/gasless.service.ts` (Modified)
+**File**: `packages/relay-api/src/relay/gasless/gasless.service.ts` (Modified)
 
-**추가 코드** (동일한 패턴):
+**Additional Code** (same pattern):
 ```typescript
 import { Injectable, Inject, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
@@ -1111,26 +1111,26 @@ export class GaslessService {
 
 ---
 
-### Phase 4 체크리스트
+### Phase 4 Checklist
 
-- [ ] `StatusService` 3-Tier Lookup 로직 추가 (Redis → MySQL → OZ Relayer)
-- [ ] `DirectService` Redis + MySQL 저장 로직 추가
-- [ ] `GaslessService` Redis + MySQL 저장 로직 추가
-- [ ] Redis import 추가 (`ioredis`, `REDIS_CLIENT`)
-- [ ] Prisma import 추가 (`@prisma/client`)
-- [ ] Redis TTL 설정 확인 (`REDIS_STATUS_TTL_SECONDS`)
-- [ ] 빌드 성공 (`pnpm build`)
-- [ ] 기존 테스트 통과 (regression 방지)
+- [ ] `StatusService` 3-Tier Lookup logic added (Redis → MySQL → OZ Relayer)
+- [ ] `DirectService` Redis + MySQL storage logic added
+- [ ] `GaslessService` Redis + MySQL storage logic added
+- [ ] Redis import added (`ioredis`, `REDIS_CLIENT`)
+- [ ] Prisma import added (`@prisma/client`)
+- [ ] Redis TTL configuration verified (`REDIS_STATUS_TTL_SECONDS`)
+- [ ] Build successful (`pnpm build`)
+- [ ] Existing tests passing (regression prevention)
 
 ---
 
-## 🧪 Phase 5: Testing (Unit + E2E) (1.5-2시간)
+## Phase 5: Testing (Unit + E2E) (1.5-2 hours)
 
 ### 5.1 Webhooks Service Unit Tests
 
-**파일**: `packages/relay-api/src/webhooks/webhooks.service.spec.ts` (New)
+**File**: `packages/relay-api/src/webhooks/webhooks.service.spec.ts` (New)
 
-**테스트 케이스** (6 tests):
+**Test Cases** (6 tests):
 ```typescript
 describe('WebhooksService', () => {
   let service: WebhooksService;
@@ -1179,9 +1179,9 @@ describe('WebhooksService', () => {
 
 ### 5.2 Webhooks Controller Unit Tests
 
-**파일**: `packages/relay-api/src/webhooks/webhooks.controller.spec.ts` (New)
+**File**: `packages/relay-api/src/webhooks/webhooks.controller.spec.ts` (New)
 
-**테스트 케이스** (4 tests):
+**Test Cases** (4 tests):
 ```typescript
 describe('WebhooksController', () => {
   let controller: WebhooksController;
@@ -1218,9 +1218,9 @@ describe('WebhooksController', () => {
 
 ### 5.3 Notification Service Unit Tests
 
-**파일**: `packages/relay-api/src/webhooks/notification.service.spec.ts` (New)
+**File**: `packages/relay-api/src/webhooks/notification.service.spec.ts` (New)
 
-**테스트 케이스** (3 tests):
+**Test Cases** (3 tests):
 ```typescript
 describe('NotificationService', () => {
   let service: NotificationService;
@@ -1254,9 +1254,9 @@ describe('NotificationService', () => {
 
 ### 5.4 StatusService Unit Tests (Updated)
 
-**파일**: `packages/relay-api/src/relay/status/status.service.spec.ts` (Modified)
+**File**: `packages/relay-api/src/relay/status/status.service.spec.ts` (Modified)
 
-**추가 테스트 케이스** (5 new tests):
+**Additional Test Cases** (5 new tests):
 ```typescript
 describe('StatusService - Phase 2', () => {
   // Existing tests (Phase 1) ...
@@ -1298,9 +1298,9 @@ describe('StatusService - Phase 2', () => {
 
 ### 5.5 E2E Tests
 
-**파일**: `packages/relay-api/test/webhooks.e2e-spec.ts` (New)
+**File**: `packages/relay-api/test/webhooks.e2e-spec.ts` (New)
 
-**시나리오** (6 tests):
+**Scenarios** (6 tests):
 ```typescript
 describe('Webhooks E2E (SPEC-WEBHOOK-001)', () => {
   let app: INestApplication;
@@ -1401,54 +1401,54 @@ describe('Webhooks E2E (SPEC-WEBHOOK-001)', () => {
 
 ---
 
-### Phase 5 체크리스트
+### Phase 5 Checklist
 
-- [ ] WebhooksService 테스트 작성 (6 tests)
-- [ ] WebhooksController 테스트 작성 (4 tests)
-- [ ] NotificationService 테스트 작성 (3 tests)
-- [ ] StatusService 테스트 업데이트 (5 new tests)
-- [ ] E2E 테스트 작성 (6 scenarios)
-- [ ] 모든 Unit 테스트 통과 (`pnpm test`)
-- [ ] 모든 E2E 테스트 통과 (`pnpm test:e2e`)
-- [ ] 테스트 커버리지 ≥85% (`pnpm test:cov`)
+- [ ] WebhooksService tests written (6 tests)
+- [ ] WebhooksController tests written (4 tests)
+- [ ] NotificationService tests written (3 tests)
+- [ ] StatusService tests updated (5 new tests)
+- [ ] E2E tests written (6 scenarios)
+- [ ] All Unit tests passing (`pnpm test`)
+- [ ] All E2E tests passing (`pnpm test:e2e`)
+- [ ] Test coverage ≥85% (`pnpm test:cov`)
 
 ---
 
-## 🚀 배포 및 검증
+## Deployment and Verification
 
 ### Pre-deployment Checklist
 
-- [ ] 모든 테스트 통과 (`pnpm test && pnpm test:e2e`)
-- [ ] Linting 통과 (`pnpm lint`)
-- [ ] 빌드 성공 (`pnpm build`)
-- [ ] Prisma 마이그레이션 파일 커밋
-- [ ] `.env.example` 업데이트 완료
-- [ ] Swagger 문서 접근 가능 (`/api`)
+- [ ] All tests passing (`pnpm test && pnpm test:e2e`)
+- [ ] Linting passed (`pnpm lint`)
+- [ ] Build successful (`pnpm build`)
+- [ ] Prisma migration files committed
+- [ ] `.env.example` update completed
+- [ ] Swagger documentation accessible (`/api`)
 
 ### Deployment Process (Phase 2)
 
-**1. Docker Compose 실행**:
+**1. Docker Compose Execution**:
 ```bash
-# Phase 2 프로파일로 모든 서비스 시작
+# Start all services with Phase 2 profile
 docker compose --profile phase2 up -d
 
-# MySQL 헬스체크 대기
+# Wait for MySQL health check
 docker compose ps
 ```
 
 **2. Prisma Migration (Production)**:
 ```bash
-# Production 환경에서 마이그레이션 적용
+# Apply migration in production environment
 cd packages/relay-api
 pnpm prisma migrate deploy
 ```
 
-**3. 서비스 검증**:
+**3. Service Verification**:
 ```bash
 # Health Check
 curl http://localhost:8080/api/v1/health
 
-# Webhook 엔드포인트 확인
+# Webhook endpoint verification
 curl -X POST http://localhost:8080/api/v1/webhooks/oz-relayer \
   -H "Content-Type: application/json" \
   -H "X-OZ-Signature: test-signature" \
@@ -1456,109 +1456,109 @@ curl -X POST http://localhost:8080/api/v1/webhooks/oz-relayer \
 # Expected: 401 Unauthorized (invalid signature)
 ```
 
-**4. MySQL 데이터 확인**:
+**4. MySQL Data Verification**:
 ```bash
-# MySQL 접속
+# Connect to MySQL
 docker exec -it msq-relayer-mysql mysql -u relayer_user -p msq_relayer
 
-# 트랜잭션 조회
+# Query transactions
 SELECT * FROM transactions LIMIT 10;
 ```
 
 ---
 
-## 📊 성공 기준
+## Success Criteria
 
-### 기술적 검증
+### Technical Verification
 
-- [ ] Redis 연결 성공 (기존 Redis 인스턴스 공유)
-- [ ] MySQL 서비스 정상 실행 (Docker Compose)
-- [ ] Prisma 마이그레이션 적용 완료
-- [ ] Webhook 엔드포인트 정상 응답 (POST /webhooks/oz-relayer)
-- [ ] HMAC 서명 검증 동작 (유효한 서명: 200, 무효: 401)
-- [ ] DirectService → Redis + MySQL 저장 확인
-- [ ] GaslessService → Redis + MySQL 저장 확인
-- [ ] StatusService Redis 캐시 히트 확인 (<5ms)
-- [ ] StatusService 3-Tier Lookup 확인 (Redis → MySQL → OZ Relayer)
-- [ ] Webhook → Redis + MySQL 업데이트 및 TTL 리셋 확인
-- [ ] Notification 전송 확인 (Mock Client)
+- [ ] Redis connection successful (sharing existing Redis instance)
+- [ ] MySQL service running normally (Docker Compose)
+- [ ] Prisma migration applied
+- [ ] Webhook endpoint responding normally (POST /webhooks/oz-relayer)
+- [ ] HMAC signature verification working (valid signature: 200, invalid: 401)
+- [ ] DirectService → Redis + MySQL storage verified
+- [ ] GaslessService → Redis + MySQL storage verified
+- [ ] StatusService Redis cache hit verified (<5ms)
+- [ ] StatusService 3-Tier Lookup verified (Redis → MySQL → OZ Relayer)
+- [ ] Webhook → Redis + MySQL update and TTL reset verified
+- [ ] Notification delivery verified (Mock Client)
 
-### 기능적 검증
+### Functional Verification
 
-- [ ] 트랜잭션 생성 → Redis (L1) + MySQL (L2) 저장
-- [ ] Webhook 수신 → Redis + MySQL 업데이트
-- [ ] 상태 조회 → Redis 캐시 우선 조회 (Tier 1)
-- [ ] Redis 미스 → MySQL 조회 (Tier 2) + Redis backfill
-- [ ] MySQL 미스 → OZ Relayer API fallback (Tier 3)
-- [ ] Client 알림 전송 (상태 변경 시)
+- [ ] Transaction creation → Redis (L1) + MySQL (L2) storage
+- [ ] Webhook reception → Redis + MySQL update
+- [ ] Status query → Redis cache priority lookup (Tier 1)
+- [ ] Redis miss → MySQL lookup (Tier 2) + Redis backfill
+- [ ] MySQL miss → OZ Relayer API fallback (Tier 3)
+- [ ] Client notification delivery (on status change)
 
-### 코드 품질
+### Code Quality
 
-- [ ] 테스트 커버리지 ≥85% (Unit + E2E)
-- [ ] ESLint 규칙 준수
-- [ ] Prettier 포맷 적용
-- [ ] JSDoc 주석 작성
-- [ ] Swagger 문서 완성도
+- [ ] Test coverage ≥85% (Unit + E2E)
+- [ ] ESLint rules compliance
+- [ ] Prettier format applied
+- [ ] JSDoc comments written
+- [ ] Swagger documentation completeness
 
 ---
 
-## 🔄 Phase 3+ Migration Path
+## Phase 3+ Migration Path
 
-### Phase 3: Queue 기반 Notification (Optional)
+### Phase 3: Queue-Based Notification (Optional)
 
-**SPEC-QUEUE-001** (별도 SPEC):
-- BullMQ/SQS 통합
-- Notification 재시도 로직 (exponential backoff)
-- Dead Letter Queue (DLQ) 처리
-- 대량 알림 배치 처리
+**SPEC-QUEUE-001** (Separate SPEC):
+- BullMQ/SQS integration
+- Notification retry logic (exponential backoff)
+- Dead Letter Queue (DLQ) handling
+- Batch notification processing
 
 ### Phase 4: Transaction Analytics (Optional)
 
-**SPEC-ANALYTICS-001** (별도 SPEC):
-- 트랜잭션 통계 집계 (성공률, 평균 확인 시간)
-- Grafana 대시보드
-- Prometheus 메트릭 수집
-- 알림 기능 (Slack/Discord)
+**SPEC-ANALYTICS-001** (Separate SPEC):
+- Transaction statistics aggregation (success rate, average confirmation time)
+- Grafana dashboard
+- Prometheus metrics collection
+- Alert functionality (Slack/Discord)
 
 ---
 
-## 📝 코드 리뷰 체크리스트
+## Code Review Checklist
 
 ### Before PR Submission
 
-- [ ] HMAC 서명 검증 로직 정확성
-- [ ] Redis TTL 설정 정확성 (REDIS_STATUS_TTL_SECONDS)
-- [ ] Redis key pattern 일관성 (`tx:status:{txId}`)
-- [ ] Prisma schema 인덱스 최적화
-- [ ] MySQL 쿼리 성능 검증 (EXPLAIN)
-- [ ] Notification 실패 처리 (non-blocking)
-- [ ] StatusService 캐시 TTL 적절성 (5초)
-- [ ] 환경변수 보안 (WEBHOOK_SIGNING_KEY 32자 이상)
-- [ ] Docker Compose profile 전략 정확성
-- [ ] 테스트 커버리지 ≥85%
-- [ ] Swagger 문서 완성도
+- [ ] HMAC signature verification logic accuracy
+- [ ] Redis TTL configuration accuracy (REDIS_STATUS_TTL_SECONDS)
+- [ ] Redis key pattern consistency (`tx:status:{txId}`)
+- [ ] Prisma schema index optimization
+- [ ] MySQL query performance verification (EXPLAIN)
+- [ ] Notification failure handling (non-blocking)
+- [ ] StatusService cache TTL appropriateness (5 seconds)
+- [ ] Environment variable security (WEBHOOK_SIGNING_KEY 32+ characters)
+- [ ] Docker Compose profile strategy accuracy
+- [ ] Test coverage ≥85%
+- [ ] Swagger documentation completeness
 
 ### Reviewer Focus Areas
 
-- [ ] HMAC 알고리즘 구현 정확성 (crypto.timingSafeEqual)
-- [ ] Redis 3-Tier Lookup 로직 정확성
-- [ ] Redis TTL 리셋 동작 (Webhook 수신 시)
-- [ ] Prisma upsert 로직 (idempotency 보장)
-- [ ] StatusService 3-Tier fallback 전략
-- [ ] MySQL 인덱스 효과 검증
-- [ ] Notification 비동기 처리 (Promise 관리)
+- [ ] HMAC algorithm implementation accuracy (crypto.timingSafeEqual)
+- [ ] Redis 3-Tier Lookup logic accuracy
+- [ ] Redis TTL reset behavior (on Webhook reception)
+- [ ] Prisma upsert logic (idempotency guarantee)
+- [ ] StatusService 3-Tier fallback strategy
+- [ ] MySQL index effectiveness verification
+- [ ] Notification async processing (Promise management)
 
 ---
 
-## 📚 참고 자료
+## References
 
-### 내부 문서
+### Internal Documents
 
 - SPEC-STATUS-001: Transaction Status Polling API
 - SPEC-TEST-001: Integration Tests
 - SPEC-PROXY-001: Nginx Load Balancer
 
-### 외부 문서
+### External Documents
 
 - Prisma ORM: https://www.prisma.io/docs
 - NestJS Guards: https://docs.nestjs.com/guards
@@ -1569,6 +1569,6 @@ SELECT * FROM transactions LIMIT 10;
 
 ---
 
-**Version**: 1.1.0
-**Status**: Draft
-**Last Updated**: 2025-12-30
+**Version**: 1.2.0
+**Status**: Complete
+**Last Updated**: 2026-01-02
