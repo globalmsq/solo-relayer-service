@@ -14,6 +14,6 @@ export const TEST_CONFIG = {
   },
   webhook: {
     signing_key: "test-webhook-signing-key-32-chars",
-    client_url: "http://client-service:8080/webhooks/transaction-updates",
+    client_url: "http://localhost:8080/webhooks/transaction-updates", // Changed for E2E tests
   },
 };

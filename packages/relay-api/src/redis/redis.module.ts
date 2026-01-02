@@ -1,4 +1,4 @@
-import { Module, Global } from "@nestjs/common";
+import { Module, Global, Logger } from "@nestjs/common";
 import { ConfigService } from "@nestjs/config";
 import Redis from "ioredis";
 import { RedisService } from "./redis.service";
@@ -15,6 +15,7 @@ import { RedisService } from "./redis.service";
     {
       provide: "REDIS_CLIENT",
       useFactory: (configService: ConfigService) => {
+        const logger = new Logger("RedisModule");
         const redisUrl = configService.get<string>(
           "REDIS_URL",
           "redis://localhost:6379",
@@ -22,11 +23,11 @@ import { RedisService } from "./redis.service";
         const client = new Redis(redisUrl);
 
         client.on("error", (err) => {
-          console.error("Redis Client Error:", err);
+          logger.error(`Redis Client Error: ${err.message}`);
         });
 
         client.on("connect", () => {
-          console.log("Redis Client Connected");
+          logger.log("Redis Client Connected");
         });
 
         return client;

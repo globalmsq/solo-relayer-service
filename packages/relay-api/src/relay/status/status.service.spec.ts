@@ -57,6 +57,7 @@ describe("StatusService", () => {
             transaction: {
               findUnique: jest.fn().mockResolvedValue(null),
               create: jest.fn().mockResolvedValue({}),
+              upsert: jest.fn().mockResolvedValue({}),
             },
           },
         },
@@ -195,7 +196,7 @@ describe("StatusService", () => {
 
       // Should store in both Redis and MySQL
       expect(redisService.set).toHaveBeenCalled();
-      expect(prismaService.transaction.create).toHaveBeenCalled();
+      expect(prismaService.transaction.upsert).toHaveBeenCalled();
     });
 
     /**

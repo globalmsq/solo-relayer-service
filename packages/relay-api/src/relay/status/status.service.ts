@@ -67,11 +67,15 @@ export class StatusService {
     try {
       const cached = await this.redisService.get<TxStatusResponseDto>(cacheKey);
       if (cached && this.isTerminalStatus(cached.status)) {
-        this.logger.debug(`Redis cache hit for ${txId} (terminal: ${cached.status})`);
+        this.logger.debug(
+          `Redis cache hit for ${txId} (terminal: ${cached.status})`,
+        );
         return cached;
       }
       if (cached) {
-        this.logger.debug(`Redis cache hit for ${txId} but status is non-terminal (${cached.status}), checking OZ Relayer`);
+        this.logger.debug(
+          `Redis cache hit for ${txId} but status is non-terminal (${cached.status}), checking OZ Relayer`,
+        );
       }
     } catch (error) {
       // Graceful degradation: log error and continue to MySQL
@@ -97,7 +101,9 @@ export class StatusService {
     }
 
     if (stored) {
-      this.logger.debug(`MySQL hit for ${txId} but status is non-terminal (${stored.status}), checking OZ Relayer`);
+      this.logger.debug(
+        `MySQL hit for ${txId} but status is non-terminal (${stored.status}), checking OZ Relayer`,
+      );
     }
 
     // Tier 3: OZ Relayer API fallback (~200ms)

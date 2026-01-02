@@ -26,7 +26,7 @@ export interface ForwardRequest {
   value: string;
   gas: string;
   nonce: string;
-  deadline: number;
+  deadline: string;
   data: string;
 }
 
@@ -49,7 +49,7 @@ export function createForwardRequest(
     value: "0",
     gas: "100000",
     nonce: String(nonce),
-    deadline: Math.floor(Date.now() / 1000) + 3600, // 1 hour later
+    deadline: String(Math.floor(Date.now() / 1000) + 3600), // 1 hour later (as string for DTO validation)
     data: "0x00",
     ...restOptions,
   };
@@ -61,6 +61,6 @@ export function createExpiredForwardRequest(
 ): ForwardRequest {
   return {
     ...createForwardRequest(from, to),
-    deadline: Math.floor(Date.now() / 1000) - 3600, // 1 hour ago (expired)
+    deadline: String(Math.floor(Date.now() / 1000) - 3600), // 1 hour ago (expired, as string)
   };
 }

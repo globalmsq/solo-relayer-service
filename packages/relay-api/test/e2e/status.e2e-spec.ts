@@ -274,12 +274,15 @@ describe("Status Polling E2E Tests", () => {
         expect.any(Object),
         600,
       );
-      expect(defaultPrismaMock.transaction.create).toHaveBeenCalledWith({
-        data: expect.objectContaining({
-          id: txId,
-          status: "confirmed",
+      expect(defaultPrismaMock.transaction.upsert).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: { id: txId },
+          create: expect.objectContaining({
+            id: txId,
+            status: "confirmed",
+          }),
         }),
-      });
+      );
     });
 
     it("TC-E2E-S010: should gracefully degrade when Redis unavailable", async () => {
