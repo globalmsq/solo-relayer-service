@@ -29,11 +29,11 @@ relay-api가 트랜잭션을 SQS에 전송하고, queue-consumer가 메시지를
 
 ### When (실행 조건)
 
-1. 클라이언트가 `POST /relay/direct`로 트랜잭션 요청을 전송합니다.
+1. 클라이언트가 `POST /api/v1/relay/direct`로 트랜잭션 요청을 전송합니다.
 
 **요청 예시**:
 ```json
-POST /relay/direct
+POST /api/v1/relay/direct
 Content-Type: application/json
 
 {
@@ -162,7 +162,7 @@ updated_at: 2026-01-04 12:00:05
 
 **요청**:
 ```
-GET /relay/status/tx-12345678-abcd-1234-efgh-567890abcdef
+GET /api/v1/relay/status/tx-12345678-abcd-1234-efgh-567890abcdef
 ```
 
 **응답**:
@@ -331,7 +331,7 @@ SQS Health Check가 정상 동작하고, LocalStack 중지 시 Health Check가 �
 
 ### When (실행 조건)
 
-1. `GET /health` 엔드포인트를 호출합니다.
+1. `GET /api/v1/health` 엔드포인트를 호출합니다.
 
 ### Then (기대 결과)
 
@@ -339,7 +339,7 @@ SQS Health Check가 정상 동작하고, LocalStack 중지 시 Health Check가 �
 
 **요청**:
 ```
-GET /health
+GET /api/v1/health
 ```
 
 **응답**:
@@ -378,7 +378,7 @@ docker-compose stop localstack
 
 **요청**:
 ```
-GET /health
+GET /api/v1/health
 ```
 
 **응답**:
@@ -476,6 +476,127 @@ AWS_REGION=ap-northeast-2
 
 ---
 
+## Scenario 5: 중복 메시지 수신 처리 (At-Least-Once)
+
+### 목표
+SQS Standard Queue의 at-least-once 특성으로 인해 동일 메시지가 여러 번 수신될 수 있는 상황에서 Consumer가 올바르게 처리하는지 검증합니다.
+
+### Given (전제 조건)
+
+- LocalStack SQS가 실행 중입니다.
+- queue-consumer가 정상 동작 중입니다.
+- 트랜잭션 `tx-12345678-abcd-1234-efgh-567890abcdef`가 이미 `success` 상태로 MySQL에 저장되어 있습니다.
+
+### When (실행 조건)
+
+1. 네트워크 지연 또는 SQS 내부 동작으로 인해 동일한 메시지가 다시 수신됩니다.
+2. queue-consumer가 `transactionId`로 MySQL에서 트랜잭션 상태를 조회합니다.
+
+### Then (기대 결과)
+
+#### 1. 중복 메시지 감지
+
+**Consumer 로그 확인**:
+```
+[Consumer] Received message: tx-12345678-abcd-1234-efgh-567890abcdef
+[Consumer] Checking transaction status in MySQL...
+[Consumer] Transaction already in terminal state: success
+[Consumer] Skipping duplicate message, deleting from SQS
+```
+
+**검증 항목**:
+- [ ] Consumer가 MySQL에서 트랜잭션 상태 확인
+- [ ] 이미 처리된 메시지 감지 (status: success 또는 failed)
+- [ ] 메시지를 SQS에서 삭제
+- [ ] OZ Relayer 중복 호출 없음
+
+#### 2. Idempotent 처리 검증
+
+**SQL 쿼리**:
+```sql
+SELECT id, status, updated_at
+FROM transactions
+WHERE id = 'tx-12345678-abcd-1234-efgh-567890abcdef';
+```
+
+**기대 결과**:
+```
+id: tx-12345678-abcd-1234-efgh-567890abcdef
+status: success  (변경 없음)
+updated_at: [원래 시간]  (업데이트 없음)
+```
+
+**검증 항목**:
+- [ ] 트랜잭션 상태 변경 없음
+- [ ] `updated_at` 변경 없음
+- [ ] 부작용 없음 (Idempotent)
+
+---
+
+## Scenario 6: Consumer Graceful Shutdown
+
+### 목표
+SIGTERM 신호 수신 시 Consumer가 현재 처리 중인 메시지를 완료하고 안전하게 종료되는지 검증합니다.
+
+### Given (전제 조건)
+
+- queue-consumer가 정상 동작 중이고 메시지를 처리 중입니다.
+- Docker Compose `stop_grace_period`가 30초로 설정되어 있습니다.
+- SQS 큐에 처리 대기 중인 메시지가 있습니다.
+
+### When (실행 조건)
+
+1. `docker-compose stop queue-consumer` 명령 실행 (SIGTERM 전송)
+2. Consumer가 현재 처리 중인 메시지가 있습니다.
+
+### Then (기대 결과)
+
+#### 1. Graceful Shutdown 로그
+
+**Consumer 로그 확인**:
+```
+[Consumer] Received shutdown signal, stopping message processing...
+[Consumer] Waiting for in-flight message to complete...
+[Consumer] Message tx-abcd1234 processed successfully
+[Consumer] Deleting message from SQS...
+[Consumer] Consumer gracefully shut down
+```
+
+**검증 항목**:
+- [ ] SIGTERM 수신 시 `isShuttingDown` 플래그 설정
+- [ ] 현재 처리 중인 메시지 완료 대기
+- [ ] 새로운 메시지 수신 중단
+- [ ] 처리 완료된 메시지 SQS에서 삭제
+
+#### 2. 미처리 메시지 보존
+
+**SQS 큐 확인**:
+```bash
+awslocal sqs get-queue-attributes \
+  --queue-url http://localhost:4566/000000000000/relay-transactions \
+  --attribute-names ApproximateNumberOfMessages
+```
+
+**기대 결과**:
+- 처리 중이던 메시지를 제외한 나머지 메시지가 큐에 보존됨
+- Visibility Timeout 만료 후 다른 Consumer가 수신 가능
+
+**검증 항목**:
+- [ ] 미처리 메시지 큐에 보존
+- [ ] 메시지 손실 없음
+- [ ] 재시작 후 정상 처리 가능
+
+#### 3. 타임아웃 초과 시 강제 종료
+
+**시나리오**: Consumer가 30초 내에 종료되지 않는 경우
+
+**검증 항목**:
+- [ ] 30초 경과 시 SIGKILL로 강제 종료
+- [ ] 처리 중이던 메시지가 SQS로 반환됨 (Visibility Timeout 후)
+- [ ] 다른 Consumer가 해당 메시지 재처리 가능
+
+---
+
 ## Edge Case Scenarios
 
 ### Edge Case 1: SQS 큐가 존재하지 않는 경우
@@ -522,6 +643,23 @@ AWS_REGION=ap-northeast-2
 - [ ] 에러 메시지: `Unexpected token`
 - [ ] 메시지가 DLQ로 이동
 
+### Edge Case 5: Visibility Timeout 초과
+
+**Given**: Consumer가 메시지를 수신하고 처리 중이지만, OZ Relayer 응답이 매우 느림 (30초 이상)
+
+**When**: Visibility Timeout (30초)이 만료되기 전에 메시지 처리가 완료되지 않음
+
+**Then**:
+- [ ] SQS가 메시지를 다시 visible 상태로 전환
+- [ ] 다른 Consumer 인스턴스가 동일 메시지를 수신 가능 (중복 처리 위험)
+- [ ] Consumer는 중복 처리를 감지하고 Idempotent하게 처리해야 함
+- [ ] `ApproximateReceiveCount`가 증가
+
+**완화 전략**:
+- Visibility Timeout을 충분히 길게 설정 (30-60초)
+- 처리가 오래 걸릴 경우 `ChangeMessageVisibility` API로 타임아웃 연장
+- MySQL 상태 확인으로 중복 처리 방지 (Idempotent)
+
 ---
 
 ## Performance & Quality Gates
@@ -560,10 +698,10 @@ AWS_REGION=ap-northeast-2
 docker-compose up -d
 
 # 2. Health Check 확인
-curl http://localhost:3000/health
+curl http://localhost:8080/api/v1/health
 
 # 3. 트랜잭션 전송
-curl -X POST http://localhost:3000/relay/direct \
+curl -X POST http://localhost:8080/api/v1/relay/direct \
   -H "Content-Type: application/json" \
   -d '{"to":"0x1234...","data":"0xabcd","value":"0","gasLimit":"21000"}'
 
@@ -575,7 +713,7 @@ awslocal sqs receive-message \
 docker logs msq-queue-consumer
 
 # 6. 트랜잭션 상태 확인
-curl http://localhost:3000/relay/status/{transactionId}
+curl http://localhost:8080/api/v1/relay/status/{transactionId}
 
 # 7. DLQ 메시지 확인 (실패 시나리오)
 awslocal sqs receive-message \
@@ -596,7 +734,9 @@ awslocal sqs receive-message \
 - [ ] Scenario 2: DLQ 처리 플로우 통과
 - [ ] Scenario 3: Health Check 검증 통과
 - [ ] Scenario 4: Dual Credentials Strategy 검증 통과
-- [ ] Edge Case 1-4 모두 통과
+- [ ] Scenario 5: 중복 메시지 수신 처리 통과
+- [ ] Scenario 6: Consumer Graceful Shutdown 통과
+- [ ] Edge Case 1-5 모두 통과
 - [ ] Performance & Quality Gates 기준 충족
 - [ ] Integration Test 체크리스트 완료
 - [ ] LocalStack Web UI에서 큐 및 메시지 확인 가능

@@ -15,6 +15,7 @@ priority: "high"
 | 버전 | 날짜 | 작성자 | 변경 내용 |
 |------|------|--------|----------|
 | 1.0.0 | 2026-01-04 | @user | 초기 SPEC 작성 |
+| 1.1.0 | 2026-01-05 | @user | 검토 피드백 반영: Prisma 스키마, SQS 설정, Breaking Change |
 
 ---
 
@@ -98,6 +99,8 @@ AWS SQS Standard Queue 기반 비동기 트랜잭션 큐 시스템을 구현합�
 - **Long-polling**: SQS Consumer는 20초 Long-polling을 사용하여 API 호출 빈도를 줄여야 한다.
 - **처리량**: Consumer는 초당 최소 10개 메시지를 처리할 수 있어야 한다.
 - **응답 시간**: relay-api는 200ms 이내에 202 Accepted 응답을 반환해야 한다.
+- **Visibility Timeout**: SQS 메시지 처리 중 다른 Consumer가 동일 메시지를 수신하지 않도록 30-60초로 설정해야 한다.
+- **Message Retention**: 처리되지 않은 메시지는 최대 4일간 보관해야 한다.
 
 #### NFR-2: 가용성
 
@@ -164,6 +167,27 @@ AWS SQS Standard Queue 기반 비동기 트랜잭션 큐 시스템을 구현합�
 - **Redis**: L1 캐시로 기존 Redis 사용
 - **OZ Relayer**: 기존 OZ Relayer 인스턴스 활용
 
+#### DC-5: Prisma 스키마 필수 필드
+
+- **type**: 트랜잭션 유형 구분 ('direct' | 'gasless')
+- **request**: 원본 요청 데이터 전체 저장 (JSON)
+- **result**: OZ Relayer 응답 데이터 저장 (JSON) - hash, transactionId 포함
+- **error_message**: 실패 시 에러 메시지 저장 (TEXT)
+
+```prisma
+model Transaction {
+  // ... existing fields
+  type          String?   // 'direct' | 'gasless'
+  request       Json?     // 원본 요청 JSON
+  result        Json?     // OZ Relayer 응답 JSON
+  error_message String?   @db.Text
+
+  @@index([status])
+  @@index([type])
+  @@index([createdAt])
+}
+```
+
 ---
 
 ### 5. Acceptance Criteria (수락 기준)
@@ -192,6 +216,33 @@ AWS SQS Standard Queue 기반 비동기 트랜잭션 큐 시스템을 구현합�
 2. 트랜잭션 상태가 `failed`로 업데이트된다.
 3. 에러 메시지가 MySQL에 기록된다.
 4. LocalStack Web UI에서 DLQ에 메시지가 있음을 확인할 수 있다.
+
+#### AC-3: 중복 메시지 처리 (At-Least-Once)
+
+**Given**: SQS Standard Queue는 at-least-once 전달을 보장하며, 동일 메시지가 여러 번 수신될 수 있다.
+
+**When**: queue-consumer가 동일한 `transactionId`의 메시지를 중복 수신하면
+
+**Then**:
+1. Consumer는 MySQL에서 트랜잭션 상태를 확인한다.
+2. 이미 `success` 또는 `failed` 상태인 경우, 메시지를 삭제하고 처리를 건너뛴다.
+3. 중복 처리로 인한 부작용이 발생하지 않아야 한다 (Idempotent).
+
+#### AC-4: Breaking Change (Sync → Async 전환)
+
+**Given**: 기존 `POST /api/v1/relay/direct` API는 동기 방식으로 즉시 `hash`를 반환했다.
+
+**When**: SQS Queue 시스템 적용 후
+
+**Then**:
+1. 응답이 202 Accepted로 변경된다.
+2. 응답 본문에 `hash` 필드가 제거되고 `transactionId`가 포함된다.
+3. 클라이언트는 `GET /api/v1/relay/status/:transactionId` 또는 Webhook으로 결과를 확인해야 한다.
+4. 기존 클라이언트는 마이그레이션이 필요하다.
+
+**클라이언트 마이그레이션 가이드**:
+- 이전: 즉시 `{ hash, status: 'success' }` 수신
+- 이후: `{ transactionId, status: 'pending' }` 수신 → Polling 또는 Webhook으로 최종 결과 확인
 
 ---
 

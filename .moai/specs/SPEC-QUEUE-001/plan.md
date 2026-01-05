@@ -10,7 +10,72 @@ updated: "2026-01-04"
 
 ## 구현 개요
 
-AWS SQS Standard Queue 기반 비동기 트랜잭션 큐 시스템을 7개 Phase로 구현합니다. Producer (relay-api)와 Consumer (queue-consumer)를 독립 서비스로 분리하여 확장성과 가용성을 확보합니다.
+AWS SQS Standard Queue 기반 비동기 트랜잭션 큐 시스템을 8개 Phase로 구현합니다. Producer (relay-api)와 Consumer (queue-consumer)를 독립 서비스로 분리하여 확장성과 가용성을 확보합니다.
+
+**⚠️ Breaking Change**: 이 구현은 기존 동기 API를 비동기로 전환합니다. 클라이언트 마이그레이션이 필요합니다.
+
+---
+
+## Phase 0: Prerequisites (Prisma Schema Migration)
+
+### 목표
+SQS Queue 시스템에 필요한 4개 필드를 Transaction 모델에 추가합니다.
+
+### 구현 단계
+
+#### 0.1 Prisma 스키마 수정
+
+**파일**: `packages/relay-api/prisma/schema.prisma`
+
+**작업**:
+- Transaction 모델에 4개 필드 추가: type, request, result, error_message
+- 인덱스 추가: status, type, createdAt
+
+```prisma
+model Transaction {
+  id            String    @id @default(uuid())
+  hash          String?   @unique
+  status        String    // pending, sent, submitted, inmempool, mined, confirmed, failed
+  from          String?
+  to            String?
+  value         String?
+  data          String?   @db.Text
+
+  // ▼ 새로 추가할 필드 (SPEC-QUEUE-001)
+  type          String?   // 'direct' | 'gasless'
+  request       Json?     // 원본 DirectTxRequestDto JSON
+  result        Json?     // OZ Relayer 응답 { hash, transactionId }
+  error_message String?   @db.Text // 실패 시 에러 메시지
+  // ▲ 새로 추가할 필드
+
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+  confirmedAt   DateTime?
+
+  // 인덱싱 추가 (성능 최적화)
+  @@index([status])
+  @@index([type])
+  @@index([createdAt])
+}
+```
+
+#### 0.2 마이그레이션 실행
+
+**명령어**:
+```bash
+# 스키마 변경 적용
+npx prisma migrate dev --name add-queue-fields
+
+# 타입 생성 및 클라이언트 재생성
+npx prisma generate
+```
+
+### 검증
+
+- [ ] Migration 파일 생성: `prisma/migrations/add-queue-fields/`
+- [ ] DB에 4개 새 컬럼 생성 확인
+- [ ] Prisma Client 타입 업데이트 확인
+- [ ] 기존 테스트 통과 확인
 
 ---
 
@@ -382,6 +447,32 @@ SQS_DLQ_URL=http://localhost:4566/000000000000/relay-transactions-dlq
 ### 목표
 queue-consumer의 핵심 로직 (SQS Long-polling + OZ Relayer 전송)을 구현합니다.
 
+### MySQL 접근 전략
+
+**방식**: 직접 Prisma 연결 (relay-api와 독립적인 별도 Prisma Client 인스턴스)
+
+**장점**:
+- API 호출 오버헤드 없음
+- 높은 처리량 보장
+- 트랜잭션 상태 즉시 업데이트 가능
+
+**주의사항**:
+- 동일한 Prisma 스키마 참조 (packages/relay-api/prisma/schema.prisma)
+- 두 프로세스가 동시에 같은 트랜잭션을 수정하지 않도록 설계
+- Connection Pool 크기 조정 필요 (relay-api + consumer)
+
+```typescript
+// packages/queue-consumer/src/prisma/prisma.service.ts
+import { PrismaClient } from '@prisma/client';
+
+@Injectable()
+export class PrismaService extends PrismaClient implements OnModuleInit {
+  async onModuleInit() {
+    await this.$connect();
+  }
+}
+```
+
 ### 구현 단계
 
 #### 4.1 Consumer Service 구현
@@ -467,11 +558,57 @@ export default () => ({
 });
 ```
 
+#### 4.5 Graceful Shutdown 처리
+
+**파일**: `packages/queue-consumer/src/consumer.service.ts`
+
+**SIGTERM 신호 처리**:
+```typescript
+@Injectable()
+export class ConsumerService implements OnModuleDestroy {
+  private isShuttingDown = false;
+
+  async onModuleDestroy() {
+    this.logger.log('Received shutdown signal, stopping message processing...');
+    this.isShuttingDown = true;
+
+    // 현재 처리 중인 메시지가 완료될 때까지 대기 (최대 30초)
+    await this.waitForInFlightMessages(30000);
+
+    this.logger.log('Consumer gracefully shut down');
+  }
+
+  async processMessages(): Promise<void> {
+    while (!this.isShuttingDown) {
+      try {
+        const messages = await this.receiveMessages();
+        for (const message of messages) {
+          if (this.isShuttingDown) {
+            this.logger.warn('Shutdown requested, returning message to queue');
+            break;
+          }
+          await this.handleMessage(message);
+        }
+      } catch (error) {
+        this.logger.error(`Message processing error: ${error.message}`);
+      }
+    }
+  }
+}
+```
+
+**Docker Compose 설정**:
+```yaml
+queue-consumer:
+  stop_grace_period: 30s  # SIGTERM 후 30초 대기
+```
+
 ### 검증
 
 - [ ] Unit Test: `consumer.service.spec.ts`
 - [ ] Mock OZ Relayer로 메시지 처리 성공
 - [ ] 재시도 로직 테스트 (3회 실패 → DLQ)
+- [ ] Graceful Shutdown 테스트 (SIGTERM 신호 처리)
 
 ---
 
@@ -766,6 +903,12 @@ afterAll(async () => {
 
 ## 구현 순서
 
+0. **Phase 0**: Prerequisites → Prisma Schema Migration
+   - `packages/relay-api/prisma/schema.prisma`: Add 4 fields (type, request, result, error_message)
+   - Run `npx prisma migrate dev --name add-queue-fields`
+   - Run `npx prisma generate` to update types
+   - ✅ Subsequent phases can utilize new fields
+
 1. **Phase 1**: Docker Infrastructure → LocalStack 서비스 추가 및 SQS 큐 생성
 2. **Phase 2**: Package Structure → queue-consumer 패키지 초기화
 3. **Phase 3**: relay-api Producer → Queue 모듈 및 SQS Adapter 구현
@@ -812,6 +955,7 @@ afterAll(async () => {
 
 | Phase | 예상 시간 |
 |-------|----------|
+| Phase 0: Prerequisites (Prisma) | 0.5일 |
 | Phase 1: Docker Infrastructure | 1일 |
 | Phase 2: Package Structure | 0.5일 |
 | Phase 3: relay-api Producer | 1일 |
@@ -819,7 +963,7 @@ afterAll(async () => {
 | Phase 5: Controller/Service 연동 | 0.5일 |
 | Phase 6: Health Check | 0.5일 |
 | Phase 7: Testing | 1일 |
-| **총계** | **5일** |
+| **총계** | **5.5일** |
 
 ---
 
