@@ -16,10 +16,6 @@
 				"@playwright/mcp@latest"
 			]
 		},
-		"figma-dev-mode-mcp-server": {
-			"type": "stdio",
-			"url": "http://127.0.0.1:3845/sse"
-		},
 		"sequential-thinking": {
 			"type": "stdio",
 			"command": "npx",
