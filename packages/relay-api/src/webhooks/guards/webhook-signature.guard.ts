@@ -61,11 +61,21 @@ export class WebhookSignatureGuard implements CanActivate {
       throw new UnauthorizedException("Webhook signature verification failed");
     }
 
-    const payload = JSON.stringify(request.body);
+    // SPEC-ROUTING-001: Use raw body for HMAC calculation
+    // JSON.stringify(request.body) is insecure - it may produce different bytes than original
+    // Raw body preserves exact bytes sent by OZ Relayer
+    const rawBody = (request as any).rawBody as Buffer | undefined;
+    if (!rawBody) {
+      this.logger.error(
+        "Raw body not available for signature verification. Ensure body-parser is configured with verify callback.",
+      );
+      throw new UnauthorizedException("Webhook signature verification failed");
+    }
+
     // OZ Relayer sends Base64 encoded HMAC-SHA256 signature
     const expectedSignature = crypto
       .createHmac("sha256", signingKey)
-      .update(payload)
+      .update(rawBody)
       .digest("base64");
 
     // Use timing-safe comparison to prevent timing attacks

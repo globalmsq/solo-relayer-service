@@ -136,9 +136,9 @@ const HEALTH_CHECK_CONFIG = {
   CACHE_TTL_SECONDS: 10,
   TIMEOUT_MS: 500,  // Each health check must complete within 500ms
   ENDPOINTS: [
-    'http://oz-relayer-1:3000/health',
-    'http://oz-relayer-2:3000/health',
-    'http://oz-relayer-3:3000/health'
+    'http://oz-relayer-1:8080/health',
+    'http://oz-relayer-2:8080/health',
+    'http://oz-relayer-3:8080/health'
   ]
 };
 ```
@@ -178,7 +178,7 @@ Time 20s:    Cache expires again
 12:30:00 - Health check to oz-relayer-1/health
            Response: "healthy" (200 OK)
            Cache set: {
-             url: 'http://oz-relayer-1:3000',
+             url: 'http://oz-relayer-1:8080',
              status: 'healthy',
              timestamp: 12:30:00,
              expiresAt: 12:30:10
@@ -245,7 +245,7 @@ async getAvailableRelayer(): Promise<string> {
 | relayer-2 | ✓ Healthy | 5 | **YES** |
 | relayer-3 | ✓ Healthy | 12 | - |
 
-**Result**: `http://oz-relayer-2:3000` (lowest pending count)
+**Result**: `http://oz-relayer-2:8080` (lowest pending count)
 
 #### Scenario 2: One Relayer Unhealthy
 
@@ -255,7 +255,7 @@ async getAvailableRelayer(): Promise<string> {
 | relayer-2 | ✗ Unhealthy | 2 | - |
 | relayer-3 | ✓ Healthy | 8 | - |
 
-**Result**: `http://oz-relayer-1:3000` (lowest among healthy)
+**Result**: `http://oz-relayer-1:8080` (lowest among healthy)
 
 #### Scenario 3: All Relayers Unhealthy
 
@@ -471,14 +471,14 @@ histogram_quantile(0.95, relayer_selection_latency) > 100ms
 **Diagnosis**:
 ```bash
 # Check pending TX counts
-curl http://oz-relayer-1:3000/api/v1/relayers/[id]/pending_txs
-curl http://oz-relayer-2:3000/api/v1/relayers/[id]/pending_txs
-curl http://oz-relayer-3:3000/api/v1/relayers/[id]/pending_txs
+curl http://oz-relayer-1:8080/api/v1/relayers/[id]/pending_txs
+curl http://oz-relayer-2:8080/api/v1/relayers/[id]/pending_txs
+curl http://oz-relayer-3:8080/api/v1/relayers/[id]/pending_txs
 
 # Check health status
-curl http://oz-relayer-1:3000/health
-curl http://oz-relayer-2:3000/health
-curl http://oz-relayer-3:3000/health
+curl http://oz-relayer-1:8080/health
+curl http://oz-relayer-2:8080/health
+curl http://oz-relayer-3:8080/health
 ```
 
 **Solutions**:
@@ -495,9 +495,9 @@ curl http://oz-relayer-3:3000/health
 ```bash
 # Check relayer connectivity from queue-consumer container
 docker exec queue-consumer bash
-curl http://oz-relayer-1:3000/health
-curl http://oz-relayer-2:3000/health
-curl http://oz-relayer-3:3000/health
+curl http://oz-relayer-1:8080/health
+curl http://oz-relayer-2:8080/health
+curl http://oz-relayer-3:8080/health
 ```
 
 **Solutions**:

@@ -282,11 +282,11 @@ export class RelayerRouterService {
         }
 
         try {
-          const response = await this.httpClient.get(`${relayer.url}/relayers/${relayer.relayerId}`);
+          const response = await this.httpClient.get(`${relayer.url}/api/v1/relayers`);
           return {
             url: relayer.url,
-            relayerId: relayer.relayerId,
-            numberOfPendingTransactions: response.data.numberOfPendingTransactions || 0,
+            relayerId: response.data.data[0]?.id || relayer.relayerId,
+            numberOfPendingTransactions: response.data.data[0]?.pending_transactions || 0,
             healthy: true,
           } as RelayerInfo;
         } catch (error) {

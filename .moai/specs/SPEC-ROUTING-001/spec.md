@@ -150,10 +150,10 @@ sequenceDiagram
 #### FR-001: Smart Routing - Relayer Selection (UBIQUITOUS)
 
 **The system shall**:
-- Query all OZ Relayers for pending transaction count via GET `/relayers/{id}` API
-- Select the relayer with the lowest `numberOfPendingTransactions`
+- Query all OZ Relayers for pending transaction count via GET `/api/v1/relayers` API
+- Select the relayer with the lowest `pending_transactions` count from `response.data.data[0]`
 - Fall back to round-robin if health check fails for any relayer
-- Skip unhealthy relayers (health check failure)
+- Skip unhealthy relayers (health check failure or `status === 'paused'`)
 
 **Rationale**: Distribute load evenly across relayers to minimize transaction delay.
 

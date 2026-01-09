@@ -105,7 +105,7 @@ Client                API Gateway              OZ Relayer
 ```
 ┌─────────────────────────────────────────────────────────────┐
 │                      Relay API Gateway                       │
-│                   (Port 3000)                               │
+│                   (Port 8080)                               │
 ├─────────────────────────────────────────────────────────────┤
 │                                                               │
 │  POST /relay/direct                                         │
@@ -411,7 +411,7 @@ OZ Relayer sends webhook with following structure:
   "ozRelayerTxId": "550e8400-e29b-41d4-a716-446655440000",
   "status": "confirmed",
   "hash": "0x1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef",
-  "oz_relayer_url": "http://oz-relayer-1:3000",
+  "oz_relayer_url": "http://oz-relayer-1:8080",
   "blockNumber": 12345678,
   "gasUsed": "21000",
   "timestamp": "2026-01-09T10:30:45.123Z",
@@ -428,18 +428,16 @@ OZ Relayer sends webhook with following structure:
 export class WebhookSignatureGuard implements CanActivate {
   canActivate(context: ExecutionContext): boolean {
     const request = context.switchToHttp().getRequest();
-    const signature = request.headers['x-signature'];
-    const payload = request.rawBody; // Raw request body
+    const signature = request.headers['x-oz-signature'];
+    const rawBody = request.rawBody as Buffer; // Raw request body
 
-    // SPEC-ROUTING-001 DC-004: Hash Field Separation
-    // Use payload without signature field
-    const message = JSON.stringify(JSON.parse(payload), null, 0);
-
-    // HMAC-SHA256 verification
+    // SPEC-ROUTING-001: Use raw body for HMAC calculation
+    // JSON.stringify is insecure - it may produce different bytes than original
+    // Raw body preserves exact bytes sent by OZ Relayer
     const expectedSignature = crypto
       .createHmac('sha256', this.webhookSecret)
-      .update(message)
-      .digest('hex');
+      .update(rawBody)
+      .digest('base64');
 
     if (signature !== expectedSignature) {
       throw new UnauthorizedException('Invalid webhook signature');
@@ -694,7 +692,7 @@ Improvement: 12x more transactions/second
 3. **Store oz_relayer_url for Debugging**
    ```typescript
    // Link transaction to specific relayer
-   tx.oz_relayer_url = "http://oz-relayer-1:3000"
+   tx.oz_relayer_url = "http://oz-relayer-1:8080"
    // Helps debugging and relayer-specific issues
    ```
 
@@ -741,12 +739,12 @@ Improvement: 12x more transactions/second
 docker logs oz-relayer-1
 
 # Check if webhook endpoint is reachable
-curl -X POST http://relay-api:3000/webhooks/oz-relayer \
+curl -X POST http://relay-api:8080/api/v1/webhooks/oz-relayer \
   -H "Content-Type: application/json" \
   -d '{"test": true}'
 
 # Check firewall rules
-iptables -L -n | grep 3000
+iptables -L -n | grep 8080
 ```
 
 **Solutions**:

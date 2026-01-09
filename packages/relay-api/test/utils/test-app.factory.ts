@@ -10,6 +10,7 @@ process.env.AWS_SECRET_ACCESS_KEY = "test";
 import { Test, TestingModule } from "@nestjs/testing";
 import { INestApplication, ValidationPipe } from "@nestjs/common";
 import { ConfigService } from "@nestjs/config";
+import * as bodyParser from "body-parser";
 import { HttpService } from "@nestjs/axios";
 import { of } from "rxjs";
 import { AppModule } from "../../src/app.module";
@@ -54,12 +55,14 @@ const configMap: Record<string, any> = {
 };
 
 // Default mock for OzRelayerService
+// SPEC-ROUTING-001: Added getRelayerIdFromUrl for multi-relayer smart routing
 const defaultOzRelayerMock = {
   sendTransaction: jest.fn().mockResolvedValue(createMockOzRelayerResponse()),
   getTransactionStatus: jest
     .fn()
     .mockResolvedValue(createMockConfirmedResponse()),
   getRelayerId: jest.fn().mockResolvedValue("test-relayer-id"),
+  getRelayerIdFromUrl: jest.fn().mockResolvedValue("test-relayer-id"),
 };
 
 // Default mock for Redis client (ioredis instance) - Prevents real Redis connections
@@ -211,7 +214,21 @@ export async function createTestApp(): Promise<INestApplication> {
   // Store for module-scoped access
   currentModuleFixture = moduleFixture;
 
-  const app = moduleFixture.createNestApplication();
+  const app = moduleFixture.createNestApplication({
+    bodyParser: false, // Disable built-in body parsing for custom rawBody preservation
+  });
+
+  // Configure body-parser with rawBody preservation (mirrors main.ts)
+  // SPEC-ROUTING-001: HMAC signature must be computed on exact raw bytes
+  app.use(
+    bodyParser.json({
+      verify: (req: any, _res: any, buf: Buffer) => {
+        req.rawBody = buf;
+      },
+    }),
+  );
+  app.use(bodyParser.urlencoded({ extended: true }));
+
   app.setGlobalPrefix("api/v1");
   app.useGlobalPipes(
     new ValidationPipe({
@@ -373,6 +390,7 @@ export function resetMocks(app?: INestApplication): void {
   defaultOzRelayerMock.sendTransaction.mockReset();
   defaultOzRelayerMock.getTransactionStatus.mockReset();
   defaultOzRelayerMock.getRelayerId.mockReset();
+  defaultOzRelayerMock.getRelayerIdFromUrl.mockReset();
 
   // Use mockImplementation to generate unique transactionIds per call
   defaultOzRelayerMock.sendTransaction.mockImplementation(() =>
@@ -382,6 +400,7 @@ export function resetMocks(app?: INestApplication): void {
     Promise.resolve(createMockConfirmedResponse()),
   );
   defaultOzRelayerMock.getRelayerId.mockResolvedValue("test-relayer-id");
+  defaultOzRelayerMock.getRelayerIdFromUrl.mockResolvedValue("test-relayer-id");
 
   // Reset SqsAdapter mock (SPEC-QUEUE-001)
   defaultSqsAdapterMock.sendMessage.mockReset();
