@@ -630,7 +630,7 @@ Each OZ Relayer instance requires unique REDIS_KEY_PREFIX to isolate cache data:
 
 ```bash
 REDIS_KEY_PREFIX=relayer-1
-OZ_RELAYER_API_URL=http://oz-relayer-1:3000
+OZ_RELAYER_API_URL=http://oz-relayer-1:8080
 OZ_RELAYER_SIGNING_KEY=docker/keys/relayer-1/key1.json
 OZ_RELAYER_ID=relayer-1
 ```
@@ -639,7 +639,7 @@ OZ_RELAYER_ID=relayer-1
 
 ```bash
 REDIS_KEY_PREFIX=relayer-2
-OZ_RELAYER_API_URL=http://oz-relayer-2:3000
+OZ_RELAYER_API_URL=http://oz-relayer-2:8080
 OZ_RELAYER_SIGNING_KEY=docker/keys/relayer-2/key2.json
 OZ_RELAYER_ID=relayer-2
 ```
@@ -648,7 +648,7 @@ OZ_RELAYER_ID=relayer-2
 
 ```bash
 REDIS_KEY_PREFIX=relayer-3
-OZ_RELAYER_API_URL=http://oz-relayer-3:3000
+OZ_RELAYER_API_URL=http://oz-relayer-3:8080
 OZ_RELAYER_SIGNING_KEY=docker/keys/relayer-3/key3.json
 OZ_RELAYER_ID=relayer-3
 ```
@@ -662,10 +662,10 @@ oz-relayer-1:
   image: oz-relayer:latest
   container_name: oz-relayer-1
   ports:
-    - "8081:3000"
+    - "8081:8080"
   environment:
     REDIS_KEY_PREFIX: relayer-1
-    OZ_RELAYER_API_URL: http://oz-relayer-1:3000
+    OZ_RELAYER_API_URL: http://oz-relayer-1:8080
     OZ_RELAYER_ID: relayer-1
     # ... other config
   volumes:
@@ -679,10 +679,10 @@ oz-relayer-2:
   image: oz-relayer:latest
   container_name: oz-relayer-2
   ports:
-    - "8082:3000"
+    - "8082:8080"
   environment:
     REDIS_KEY_PREFIX: relayer-2
-    OZ_RELAYER_API_URL: http://oz-relayer-2:3000
+    OZ_RELAYER_API_URL: http://oz-relayer-2:8080
     OZ_RELAYER_ID: relayer-2
   volumes:
     - ./config/oz-relayer/relayer-2.json:/app/config.json
@@ -695,10 +695,10 @@ oz-relayer-3:
   image: oz-relayer:latest
   container_name: oz-relayer-3
   ports:
-    - "8083:3000"
+    - "8083:8080"
   environment:
     REDIS_KEY_PREFIX: relayer-3
-    OZ_RELAYER_API_URL: http://oz-relayer-3:3000
+    OZ_RELAYER_API_URL: http://oz-relayer-3:8080
     OZ_RELAYER_ID: relayer-3
   volumes:
     - ./config/oz-relayer/relayer-3.json:/app/config.json
