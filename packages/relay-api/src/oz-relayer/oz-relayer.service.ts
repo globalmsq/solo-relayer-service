@@ -115,6 +115,43 @@ export class OzRelayerService {
   }
 
   /**
+   * SPEC-ROUTING-001: Fetch relayer ID from a specific relayer URL
+   *
+   * Unlike getRelayerId() which uses the default relayer URL,
+   * this method fetches the relayer ID from any specified URL.
+   * Used by StatusService to get the correct relayer ID for multi-relayer setups.
+   *
+   * @param relayerUrl - The specific relayer URL to query
+   * @returns The relayer ID for the specified URL
+   * @throws ServiceUnavailableException if relayer is unavailable
+   */
+  public async getRelayerIdFromUrl(relayerUrl: string): Promise<string> {
+    try {
+      const response = await firstValueFrom(
+        this.httpService.get<{ data: Array<{ id: string }> }>(
+          `${relayerUrl}/api/v1/relayers`,
+          {
+            headers: {
+              Authorization: `Bearer ${this.relayerApiKey}`,
+            },
+            timeout: 10000,
+          },
+        ),
+      );
+
+      if (response.data?.data?.[0]?.id) {
+        return response.data.data[0].id;
+      }
+
+      throw new Error("No relayer found");
+    } catch (error) {
+      throw new ServiceUnavailableException(
+        `Failed to discover relayer ID from ${relayerUrl}`,
+      );
+    }
+  }
+
+  /**
    * Send transaction to OZ Relayer
    *
    * @param request - DirectTxRequest with transaction details

@@ -3,14 +3,18 @@ import { ConfigService } from '@nestjs/config';
 import { ConsumerService } from './consumer.service';
 import { SqsAdapter } from './sqs/sqs.adapter';
 import { OzRelayerClient } from './relay/oz-relayer.client';
+import { RelayerRouterService } from './relay/relayer-router.service';
 import { PrismaService } from './prisma/prisma.service';
 
-describe('ConsumerService (RED Phase - Failing Tests)', () => {
+describe('ConsumerService (Fire-and-Forget Pattern)', () => {
   let service: ConsumerService;
   let sqsAdapter: SqsAdapter;
   let relayerClient: OzRelayerClient;
+  let relayerRouter: RelayerRouterService;
   let prisma: PrismaService;
   let configService: ConfigService;
+
+  const mockRelayerUrl = 'http://oz-relayer-1:8080';
 
   beforeEach(async () => {
     const module: TestingModule = await Test.createTestingModule({
@@ -26,9 +30,20 @@ describe('ConsumerService (RED Phase - Failing Tests)', () => {
         {
           provide: OzRelayerClient,
           useValue: {
+            sendDirectTransactionAsync: jest.fn(),
+            sendGaslessTransactionAsync: jest.fn(),
+            // Legacy methods for backward compatibility
             sendDirectTransaction: jest.fn(),
             sendGaslessTransaction: jest.fn(),
-            sendToOzRelayer: jest.fn(), // Legacy method for compatibility
+          },
+        },
+        {
+          provide: RelayerRouterService,
+          useValue: {
+            getAvailableRelayer: jest.fn().mockResolvedValue({
+              url: mockRelayerUrl,
+              relayerId: 'relayer-1-id',
+            }),
           },
         },
         {
@@ -61,6 +76,7 @@ describe('ConsumerService (RED Phase - Failing Tests)', () => {
     service = module.get<ConsumerService>(ConsumerService);
     sqsAdapter = module.get<SqsAdapter>(SqsAdapter);
     relayerClient = module.get<OzRelayerClient>(OzRelayerClient);
+    relayerRouter = module.get<RelayerRouterService>(RelayerRouterService);
     prisma = module.get<PrismaService>(PrismaService);
     configService = module.get<ConfigService>(ConfigService);
   });
@@ -71,7 +87,6 @@ describe('ConsumerService (RED Phase - Failing Tests)', () => {
 
   describe('processMessages', () => {
     it('should receive messages from SQS', async () => {
-      // RED: Test fails because processMessages is not implemented
       const mockMessages = [
         {
           MessageId: 'test-message-1',
@@ -85,12 +100,20 @@ describe('ConsumerService (RED Phase - Failing Tests)', () => {
       ];
 
       jest.spyOn(sqsAdapter, 'receiveMessages').mockResolvedValue(mockMessages);
+      jest.spyOn(prisma.transaction, 'findUnique').mockResolvedValue({
+        id: 'tx-123',
+        status: 'queued',
+        ozRelayerTxId: null,
+      } as any);
+      jest.spyOn(relayerClient, 'sendDirectTransactionAsync').mockResolvedValue({
+        transactionId: 'oz-tx-123',
+        relayerUrl: mockRelayerUrl,
+      });
 
-      // This will fail until processMessages is implemented
       await expect(service.processMessages()).resolves.not.toThrow();
     });
 
-    it('should send message to OZ Relayer on success', async () => {
+    it('should use smart routing to select relayer (FR-001)', async () => {
       const transactionId = 'tx-123';
       const mockMessage = {
         MessageId: 'msg-1',
@@ -103,16 +126,30 @@ describe('ConsumerService (RED Phase - Failing Tests)', () => {
       };
 
       jest.spyOn(sqsAdapter, 'receiveMessages').mockResolvedValue([mockMessage]);
-      jest
-        .spyOn(relayerClient, 'sendDirectTransaction')
-        .mockResolvedValue({ txHash: '0xabc123' });
+      jest.spyOn(prisma.transaction, 'findUnique').mockResolvedValue({
+        id: transactionId,
+        status: 'queued',
+        ozRelayerTxId: null,
+      } as any);
+      jest.spyOn(relayerClient, 'sendDirectTransactionAsync').mockResolvedValue({
+        transactionId: 'oz-tx-123',
+        relayerUrl: mockRelayerUrl,
+      });
 
       await service.processMessages();
 
-      expect(relayerClient.sendDirectTransaction).toHaveBeenCalled();
+      // FR-001: Smart Routing - Should call getAvailableRelayer
+      expect(relayerRouter.getAvailableRelayer).toHaveBeenCalled();
+      // Fire-and-Forget: Should call async method with selected relayer URL and relayerId
+      // SPEC-ROUTING-001 FIX: Now passes relayerId to avoid redundant API call
+      expect(relayerClient.sendDirectTransactionAsync).toHaveBeenCalledWith(
+        expect.any(Object),
+        mockRelayerUrl,
+        'relayer-1-id',
+      );
     });
 
-    it('should delete message from SQS on successful processing', async () => {
+    it('should delete SQS message immediately after submission (FR-002 Fire-and-Forget)', async () => {
       const mockMessage = {
         MessageId: 'msg-1',
         Body: JSON.stringify({
@@ -124,17 +161,25 @@ describe('ConsumerService (RED Phase - Failing Tests)', () => {
       };
 
       jest.spyOn(sqsAdapter, 'receiveMessages').mockResolvedValue([mockMessage]);
-      jest
-        .spyOn(relayerClient, 'sendDirectTransaction')
-        .mockResolvedValue({ txHash: '0xabc123' });
+      jest.spyOn(prisma.transaction, 'findUnique').mockResolvedValue({
+        id: 'tx-123',
+        status: 'queued',
+        ozRelayerTxId: null,
+      } as any);
+      jest.spyOn(relayerClient, 'sendDirectTransactionAsync').mockResolvedValue({
+        transactionId: 'oz-tx-123',
+        relayerUrl: mockRelayerUrl,
+      });
 
       await service.processMessages();
 
+      // Fire-and-Forget: Delete immediately after submission, no polling
       expect(sqsAdapter.deleteMessage).toHaveBeenCalledWith('receipt-1');
     });
 
-    it('should update transaction status to success', async () => {
+    it('should set status to submitted, NOT confirmed (DC-004)', async () => {
       const transactionId = 'tx-123';
+      const ozRelayerTxId = 'oz-tx-123';
       const mockMessage = {
         MessageId: 'msg-1',
         Body: JSON.stringify({
@@ -146,21 +191,77 @@ describe('ConsumerService (RED Phase - Failing Tests)', () => {
       };
 
       jest.spyOn(sqsAdapter, 'receiveMessages').mockResolvedValue([mockMessage]);
-      jest
-        .spyOn(relayerClient, 'sendDirectTransaction')
-        .mockResolvedValue({ txHash: '0xabc123' });
+      jest.spyOn(prisma.transaction, 'findUnique').mockResolvedValue({
+        id: transactionId,
+        status: 'queued',
+        ozRelayerTxId: null,
+      } as any);
+      jest.spyOn(relayerClient, 'sendDirectTransactionAsync').mockResolvedValue({
+        transactionId: ozRelayerTxId,
+        relayerUrl: mockRelayerUrl,
+      });
 
       await service.processMessages();
 
+      // DC-004: Consumer sets ozRelayerTxId and ozRelayerUrl, NOT hash
+      // Status is 'submitted', not 'confirmed' (Webhook handles confirmation)
       expect(prisma.transaction.update).toHaveBeenCalledWith(
         expect.objectContaining({
           where: { id: transactionId },
-          data: expect.objectContaining({ status: 'confirmed', hash: '0xabc123' }),
+          data: expect.objectContaining({
+            status: 'submitted',
+            ozRelayerTxId,
+            ozRelayerUrl: mockRelayerUrl,
+          }),
+        }),
+      );
+
+      // Verify hash is NOT set by consumer (DC-004 Hash Field Separation)
+      const updateCall = (prisma.transaction.update as jest.Mock).mock.calls[0][0];
+      expect(updateCall.data.hash).toBeUndefined();
+    });
+
+    it('should track ozRelayerUrl for debugging (DC-005)', async () => {
+      const transactionId = 'tx-123';
+      const selectedRelayerUrl = 'http://oz-relayer-2:8080';
+      const mockMessage = {
+        MessageId: 'msg-1',
+        Body: JSON.stringify({
+          transactionId,
+          type: 'direct',
+          request: { to: '0x123', data: '0xabc' },
+        }),
+        ReceiptHandle: 'receipt-1',
+      };
+
+      jest.spyOn(relayerRouter, 'getAvailableRelayer').mockResolvedValue({
+        url: selectedRelayerUrl,
+        relayerId: 'relayer-2-id',
+      });
+      jest.spyOn(sqsAdapter, 'receiveMessages').mockResolvedValue([mockMessage]);
+      jest.spyOn(prisma.transaction, 'findUnique').mockResolvedValue({
+        id: transactionId,
+        status: 'queued',
+        ozRelayerTxId: null,
+      } as any);
+      jest.spyOn(relayerClient, 'sendDirectTransactionAsync').mockResolvedValue({
+        transactionId: 'oz-tx-123',
+        relayerUrl: selectedRelayerUrl,
+      });
+
+      await service.processMessages();
+
+      // DC-005: Track which relayer handled the TX
+      expect(prisma.transaction.update).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({
+            ozRelayerUrl: selectedRelayerUrl,
+          }),
         }),
       );
     });
 
-    it('should handle duplicate messages (idempotent)', async () => {
+    it('should handle duplicate messages - idempotency via ozRelayerTxId (FR-004)', async () => {
       const transactionId = 'tx-123';
       const mockMessage = {
         MessageId: 'msg-1',
@@ -172,7 +273,35 @@ describe('ConsumerService (RED Phase - Failing Tests)', () => {
         ReceiptHandle: 'receipt-1',
       };
 
-      // Transaction already processed
+      // Transaction already submitted (has ozRelayerTxId)
+      jest.spyOn(prisma.transaction, 'findUnique').mockResolvedValue({
+        id: transactionId,
+        status: 'submitted',
+        ozRelayerTxId: 'already-submitted-oz-tx-id',
+      } as any);
+
+      jest.spyOn(sqsAdapter, 'receiveMessages').mockResolvedValue([mockMessage]);
+
+      await service.processMessages();
+
+      // FR-004: Idempotency - Should delete SQS message without re-submitting
+      expect(sqsAdapter.deleteMessage).toHaveBeenCalled();
+      expect(relayerClient.sendDirectTransactionAsync).not.toHaveBeenCalled();
+    });
+
+    it('should handle terminal state (confirmed) - skip processing', async () => {
+      const transactionId = 'tx-123';
+      const mockMessage = {
+        MessageId: 'msg-1',
+        Body: JSON.stringify({
+          transactionId,
+          type: 'direct',
+          request: { to: '0x123', data: '0xabc' },
+        }),
+        ReceiptHandle: 'receipt-1',
+      };
+
+      // Transaction already in terminal state
       jest.spyOn(prisma.transaction, 'findUnique').mockResolvedValue({
         id: transactionId,
         status: 'confirmed',
@@ -184,10 +313,10 @@ describe('ConsumerService (RED Phase - Failing Tests)', () => {
 
       // Should delete message without re-processing
       expect(sqsAdapter.deleteMessage).toHaveBeenCalled();
-      expect(relayerClient.sendDirectTransaction).not.toHaveBeenCalled();
+      expect(relayerClient.sendDirectTransactionAsync).not.toHaveBeenCalled();
     });
 
-    it('should handle OZ Relayer errors and retry', async () => {
+    it('should handle OZ Relayer errors and NOT delete SQS message', async () => {
       const mockMessage = {
         MessageId: 'msg-1',
         Body: JSON.stringify({
@@ -199,21 +328,73 @@ describe('ConsumerService (RED Phase - Failing Tests)', () => {
       };
 
       jest.spyOn(sqsAdapter, 'receiveMessages').mockResolvedValue([mockMessage]);
+      jest.spyOn(prisma.transaction, 'findUnique').mockResolvedValue({
+        id: 'tx-123',
+        status: 'queued',
+        ozRelayerTxId: null,
+      } as any);
       jest
-        .spyOn(relayerClient, 'sendDirectTransaction')
+        .spyOn(relayerClient, 'sendDirectTransactionAsync')
         .mockRejectedValue(new Error('OZ Relayer unavailable'));
 
       // Should not throw, message should be returned to queue
       await expect(service.processMessages()).resolves.not.toThrow();
 
-      // Should not delete message on failure
+      // Should not delete message on failure (SQS will retry)
       expect(sqsAdapter.deleteMessage).not.toHaveBeenCalled();
+    });
+
+    it('should process gasless transactions with Fire-and-Forget', async () => {
+      const transactionId = 'tx-gasless-123';
+      const forwarderAddress = '0xForwarder123';
+      const mockMessage = {
+        MessageId: 'msg-1',
+        Body: JSON.stringify({
+          transactionId,
+          type: 'gasless',
+          request: {
+            request: {
+              from: '0xUser',
+              to: '0x123',
+              value: '0',
+              gas: '100000',
+              nonce: '1',
+              deadline: '9999999999',
+              data: '0xabc',
+            },
+            signature: '0xsig123',
+          },
+          forwarderAddress,
+        }),
+        ReceiptHandle: 'receipt-1',
+      };
+
+      jest.spyOn(sqsAdapter, 'receiveMessages').mockResolvedValue([mockMessage]);
+      jest.spyOn(prisma.transaction, 'findUnique').mockResolvedValue({
+        id: transactionId,
+        status: 'queued',
+        ozRelayerTxId: null,
+      } as any);
+      jest.spyOn(relayerClient, 'sendGaslessTransactionAsync').mockResolvedValue({
+        transactionId: 'oz-gasless-tx-123',
+        relayerUrl: mockRelayerUrl,
+      });
+
+      await service.processMessages();
+
+      // SPEC-ROUTING-001 FIX: Now passes relayerId to avoid redundant API call
+      expect(relayerClient.sendGaslessTransactionAsync).toHaveBeenCalledWith(
+        expect.any(Object),
+        forwarderAddress,
+        mockRelayerUrl,
+        'relayer-1-id',
+      );
+      expect(sqsAdapter.deleteMessage).toHaveBeenCalled();
     });
   });
 
   describe('graceful shutdown', () => {
     it('should stop processing on SIGTERM', async () => {
-      // RED: Test for graceful shutdown
       const spy = jest.spyOn(service, 'onModuleDestroy');
 
       await service.onModuleDestroy();

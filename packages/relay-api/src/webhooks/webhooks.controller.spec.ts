@@ -19,7 +19,7 @@ describe("WebhooksController", () => {
             handleWebhook: jest.fn().mockResolvedValue({
               success: true,
               message: "Webhook processed successfully",
-              transactionId: "tx_test123",
+              transactionId: "oz-tx-123",
             }),
           },
         },
@@ -45,15 +45,32 @@ describe("WebhooksController", () => {
   });
 
   describe("handleOzRelayerWebhook", () => {
+    /**
+     * Create valid OZ Relayer webhook payload with nested structure
+     *
+     * OZ Relayer webhook structure:
+     * {
+     *   id: "event-uuid",
+     *   event: "transaction_update",
+     *   payload: { id: oz-tx-id, status, hash, created_at, ... },
+     *   timestamp: "ISO8601"
+     * }
+     */
     const createValidPayload = (): OzRelayerWebhookDto => ({
-      transactionId: "tx_test123",
-      hash: "0xabcd1234",
-      status: "confirmed",
-      from: "0x1234",
-      to: "0x5678",
-      value: "1000000000000000000",
-      createdAt: "2025-12-30T10:00:00.000Z",
-      confirmedAt: "2025-12-30T10:05:00.000Z",
+      id: "event-uuid-123",
+      event: "transaction_update",
+      payload: {
+        payload_type: "transaction",
+        id: "oz-tx-123", // OZ Relayer's transaction ID (maps to ozRelayerTxId)
+        hash: "0xabcd1234",
+        status: "confirmed",
+        from: "0x1234",
+        to: "0x5678",
+        value: "1000000000000000000",
+        created_at: "2025-12-30T10:00:00.000Z",
+        confirmed_at: "2025-12-30T10:05:00.000Z",
+      },
+      timestamp: "2025-12-30T10:05:00.000Z",
     });
 
     it("should process valid webhook payload successfully", async () => {
@@ -62,7 +79,7 @@ describe("WebhooksController", () => {
       const result = await controller.handleOzRelayerWebhook(payload);
 
       expect(result.success).toBe(true);
-      expect(result.transactionId).toBe(payload.transactionId);
+      expect(result.transactionId).toBe(payload.payload.id);
       expect(webhooksService.handleWebhook).toHaveBeenCalledWith(payload);
     });
 
@@ -77,34 +94,50 @@ describe("WebhooksController", () => {
 
     it("should handle confirmed status", async () => {
       const payload: OzRelayerWebhookDto = {
-        transactionId: "tx_confirmed",
-        hash: "0xhash123",
-        status: "confirmed",
-        createdAt: "2025-12-30T10:00:00.000Z",
-        confirmedAt: "2025-12-30T10:05:00.000Z",
+        id: "event-uuid-456",
+        event: "transaction_update",
+        payload: {
+          payload_type: "transaction",
+          id: "oz-tx-confirmed-123",
+          hash: "0xhash123",
+          status: "confirmed",
+          created_at: "2025-12-30T10:00:00.000Z",
+          confirmed_at: "2025-12-30T10:05:00.000Z",
+        },
+        timestamp: "2025-12-30T10:05:00.000Z",
       };
 
       await controller.handleOzRelayerWebhook(payload);
 
       expect(webhooksService.handleWebhook).toHaveBeenCalledWith(
         expect.objectContaining({
-          status: "confirmed",
+          payload: expect.objectContaining({
+            status: "confirmed",
+          }),
         }),
       );
     });
 
     it("should handle failed status", async () => {
       const payload: OzRelayerWebhookDto = {
-        transactionId: "tx_failed",
-        status: "failed",
-        createdAt: "2025-12-30T10:00:00.000Z",
+        id: "event-uuid-789",
+        event: "transaction_update",
+        payload: {
+          payload_type: "transaction",
+          id: "oz-tx-failed-123",
+          status: "failed",
+          created_at: "2025-12-30T10:00:00.000Z",
+        },
+        timestamp: "2025-12-30T10:00:00.000Z",
       };
 
       await controller.handleOzRelayerWebhook(payload);
 
       expect(webhooksService.handleWebhook).toHaveBeenCalledWith(
         expect.objectContaining({
-          status: "failed",
+          payload: expect.objectContaining({
+            status: "failed",
+          }),
         }),
       );
     });

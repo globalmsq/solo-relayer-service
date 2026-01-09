@@ -30,6 +30,10 @@ model Transaction {
   // If set, consumer should poll for status instead of re-submitting
   ozRelayerTxId String?   @unique @map("oz_relayer_tx_id")
 
+  // SPEC-ROUTING-001 DC-005: Track which relayer handled the transaction
+  // Stores the URL of the OZ Relayer that processed this TX for debugging/audit
+  ozRelayerUrl  String?   @map("oz_relayer_url")
+
   createdAt     DateTime  @default(now())
   updatedAt     DateTime  @updatedAt
   confirmedAt   DateTime?

@@ -363,4 +363,187 @@ export class OzRelayerClient {
     this.logger.log(`Polling existing OZ Relayer transaction: ${ozTxId}`);
     return await this.pollForConfirmation(ozTxId);
   }
+
+  /**
+   * SPEC-ROUTING-001 FR-002: Fire-and-Forget Direct Transaction
+   *
+   * Sends transaction to OZ Relayer and returns immediately after submission.
+   * No polling - Webhook handles status updates.
+   *
+   * @param request - Direct transaction request
+   * @param relayerUrl - Target relayer URL (from Smart Routing)
+   * @param providedRelayerId - Optional relayer ID (if already known, skips API call)
+   * @returns OZ Relayer's transaction ID (for tracking)
+   */
+  async sendDirectTransactionAsync(
+    request: {
+      to: string;
+      data: string;
+      value?: string;
+      gasLimit?: string;
+      speed?: string;
+    },
+    relayerUrl: string,
+    providedRelayerId?: string,
+  ): Promise<{ transactionId: string; relayerUrl: string }> {
+    try {
+      // Use provided relayerId or fetch from API
+      const relayerId =
+        providedRelayerId || (await this.getRelayerIdFromUrl(relayerUrl));
+      const endpoint = `${relayerUrl}/api/v1/relayers/${relayerId}/transactions`;
+
+      this.logger.debug(`[Fire-and-Forget] Sending direct TX to: ${endpoint}`);
+
+      const ozRequest = {
+        to: request.to,
+        data: request.data,
+        value: request.value ? parseInt(request.value, 10) : 0,
+        gas_limit: request.gasLimit ? parseInt(request.gasLimit, 10) : 100000,
+        speed: request.speed || 'average',
+      };
+
+      const response = await axios.post(endpoint, ozRequest, {
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${this.apiKey}`,
+        },
+        timeout: 30000,
+      });
+
+      const txData = response.data.data;
+      const ozTxId = txData.id;
+
+      this.logger.log(
+        `[Fire-and-Forget] Direct TX submitted: ${ozTxId} (no polling)`,
+      );
+
+      // FR-002: Return immediately, no polling
+      return {
+        transactionId: ozTxId,
+        relayerUrl,
+      };
+    } catch (error) {
+      if (axios.isAxiosError(error)) {
+        this.invalidateRelayerIdCache(error);
+      }
+      throw error;
+    }
+  }
+
+  /**
+   * SPEC-ROUTING-001 FR-002: Fire-and-Forget Gasless Transaction
+   *
+   * Sends gasless transaction via Forwarder.execute() and returns immediately.
+   * No polling - Webhook handles status updates.
+   *
+   * @param request - Gasless transaction request
+   * @param forwarderAddress - ERC2771Forwarder contract address
+   * @param relayerUrl - Target relayer URL (from Smart Routing)
+   * @param providedRelayerId - Optional relayer ID (if already known, skips API call)
+   * @returns OZ Relayer's transaction ID (for tracking)
+   */
+  async sendGaslessTransactionAsync(
+    request: {
+      request: {
+        from: string;
+        to: string;
+        value: string;
+        gas: string;
+        nonce: string;
+        deadline: string;
+        data: string;
+      };
+      signature: string;
+    },
+    forwarderAddress: string,
+    relayerUrl: string,
+    providedRelayerId?: string,
+  ): Promise<{ transactionId: string; relayerUrl: string }> {
+    try {
+      // Use provided relayerId or fetch from API
+      const relayerId =
+        providedRelayerId || (await this.getRelayerIdFromUrl(relayerUrl));
+      const endpoint = `${relayerUrl}/api/v1/relayers/${relayerId}/transactions`;
+
+      this.logger.debug(`[Fire-and-Forget] Sending gasless TX to: ${endpoint}`);
+      this.logger.debug(`Forwarder address: ${forwarderAddress}`);
+
+      // Build the execute() calldata
+      const executeCalldata = this.buildForwarderExecuteCalldata(
+        request.request,
+        request.signature,
+      );
+
+      // Calculate gas limit for forwarder call (inner gas + overhead)
+      const innerGas = BigInt(request.request.gas);
+      const forwarderOverhead = BigInt(50000); // Forwarder execution overhead
+      const totalGas = innerGas + forwarderOverhead;
+
+      const ozRequest = {
+        to: forwarderAddress,
+        data: executeCalldata,
+        value: parseInt(request.request.value, 10),
+        gas_limit: Number(totalGas),
+        speed: 'average',
+      };
+
+      const response = await axios.post(endpoint, ozRequest, {
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${this.apiKey}`,
+        },
+        timeout: 30000,
+      });
+
+      const txData = response.data.data;
+      const ozTxId = txData.id;
+
+      this.logger.log(
+        `[Fire-and-Forget] Gasless TX submitted: ${ozTxId} (no polling)`,
+      );
+
+      // FR-002: Return immediately, no polling
+      return {
+        transactionId: ozTxId,
+        relayerUrl,
+      };
+    } catch (error) {
+      if (axios.isAxiosError(error)) {
+        this.invalidateRelayerIdCache(error);
+      }
+      throw error;
+    }
+  }
+
+  /**
+   * Get relayer ID from a specific relayer URL
+   * Used by Fire-and-Forget methods with Smart Routing
+   */
+  private async getRelayerIdFromUrl(relayerUrl: string): Promise<string> {
+    try {
+      this.logger.debug(`Fetching relayer ID from: ${relayerUrl}/api/v1/relayers`);
+
+      const response = await axios.get<{ data: Array<{ id: string }> }>(
+        `${relayerUrl}/api/v1/relayers`,
+        {
+          headers: {
+            Authorization: `Bearer ${this.apiKey}`,
+          },
+          timeout: 10000,
+        },
+      );
+
+      if (response.data?.data?.[0]?.id) {
+        return response.data.data[0].id;
+      }
+
+      throw new Error('No relayer found in response');
+    } catch (error) {
+      const axiosError = error as AxiosError;
+      this.logger.error(
+        `Failed to discover relayer ID from ${relayerUrl}: ${axiosError.message}`,
+      );
+      throw new Error(`Failed to discover OZ Relayer ID from ${relayerUrl}`);
+    }
+  }
 }

@@ -616,6 +616,192 @@ docker compose exec relay-api npm run prisma:status
 
 ---
 
+## Multi-Relayer Configuration (SPEC-ROUTING-001)
+
+### Overview
+
+The system supports 3 OZ Relayer instances with separate configurations for load distribution and failover.
+
+### Environment Variables
+
+Each OZ Relayer instance requires unique REDIS_KEY_PREFIX to isolate cache data:
+
+#### Relayer 1
+
+```bash
+REDIS_KEY_PREFIX=relayer-1
+OZ_RELAYER_API_URL=http://oz-relayer-1:8080
+OZ_RELAYER_SIGNING_KEY=docker/keys/relayer-1/key1.json
+OZ_RELAYER_ID=relayer-1
+```
+
+#### Relayer 2
+
+```bash
+REDIS_KEY_PREFIX=relayer-2
+OZ_RELAYER_API_URL=http://oz-relayer-2:8080
+OZ_RELAYER_SIGNING_KEY=docker/keys/relayer-2/key2.json
+OZ_RELAYER_ID=relayer-2
+```
+
+#### Relayer 3
+
+```bash
+REDIS_KEY_PREFIX=relayer-3
+OZ_RELAYER_API_URL=http://oz-relayer-3:8080
+OZ_RELAYER_SIGNING_KEY=docker/keys/relayer-3/key3.json
+OZ_RELAYER_ID=relayer-3
+```
+
+### Docker Compose Configuration
+
+```yaml
+# docker/docker-compose.yaml
+
+oz-relayer-1:
+  image: oz-relayer:latest
+  container_name: oz-relayer-1
+  ports:
+    - "8081:8080"
+  environment:
+    REDIS_KEY_PREFIX: relayer-1
+    OZ_RELAYER_API_URL: http://oz-relayer-1:8080
+    OZ_RELAYER_ID: relayer-1
+    # ... other config
+  volumes:
+    - ./config/oz-relayer/relayer-1.json:/app/config.json
+    - ./keys/relayer-1:/app/keys:ro
+  depends_on:
+    - redis
+    - mysql
+
+oz-relayer-2:
+  image: oz-relayer:latest
+  container_name: oz-relayer-2
+  ports:
+    - "8082:8080"
+  environment:
+    REDIS_KEY_PREFIX: relayer-2
+    OZ_RELAYER_API_URL: http://oz-relayer-2:8080
+    OZ_RELAYER_ID: relayer-2
+  volumes:
+    - ./config/oz-relayer/relayer-2.json:/app/config.json
+    - ./keys/relayer-2:/app/keys:ro
+  depends_on:
+    - redis
+    - mysql
+
+oz-relayer-3:
+  image: oz-relayer:latest
+  container_name: oz-relayer-3
+  ports:
+    - "8083:8080"
+  environment:
+    REDIS_KEY_PREFIX: relayer-3
+    OZ_RELAYER_API_URL: http://oz-relayer-3:8080
+    OZ_RELAYER_ID: relayer-3
+  volumes:
+    - ./config/oz-relayer/relayer-3.json:/app/config.json
+    - ./keys/relayer-3:/app/keys:ro
+  depends_on:
+    - redis
+    - mysql
+```
+
+### Consumer Configuration
+
+The queue-consumer must be aware of all 3 relayer instances:
+
+```bash
+# packages/queue-consumer/.env
+
+# Relayer URLs (comma-separated)
+OZ_RELAYER_URLS=http://oz-relayer-1:8080,http://oz-relayer-2:8080,http://oz-relayer-3:8080
+
+# Smart Routing Configuration
+SMART_ROUTING_ENABLED=true
+HEALTH_CHECK_TIMEOUT_MS=500
+HEALTH_CHECK_CACHE_TTL_SECONDS=10
+
+# Round-Robin Fallback
+FALLBACK_MODE=round-robin
+```
+
+### Port Mapping
+
+| Relayer | Container Port | Host Port | URL |
+|---------|----------------|-----------|-----|
+| relayer-1 | 8080 | 8081 | http://oz-relayer-1:8080 |
+| relayer-2 | 8080 | 8082 | http://oz-relayer-2:8080 |
+| relayer-3 | 8080 | 8083 | http://oz-relayer-3:8080 |
+
+### Health Check Verification
+
+```bash
+# Check health of all 3 relayers
+curl http://localhost:8081/health
+curl http://localhost:8082/health
+curl http://localhost:8083/health
+
+# Expected response
+{
+  "status": "healthy",
+  "version": "1.0.0",
+  "uptime": 3600
+}
+
+# Check pending transaction count
+curl http://localhost:8081/api/v1/relayers/relayer-1/pending_txs
+curl http://localhost:8082/api/v1/relayers/relayer-2/pending_txs
+curl http://localhost:8083/api/v1/relayers/relayer-3/pending_txs
+```
+
+### Redis Key Isolation
+
+Each relayer uses unique Redis key prefix to avoid conflicts:
+
+```bash
+# Relayer 1 keys
+KEYS relayer-1:*     # health:relayer-1, pending_txs:relayer-1, etc.
+
+# Relayer 2 keys
+KEYS relayer-2:*     # health:relayer-2, pending_txs:relayer-2, etc.
+
+# Relayer 3 keys
+KEYS relayer-3:*     # health:relayer-3, pending_txs:relayer-3, etc.
+
+# Check cache in redis-cli
+redis-cli
+> KEYS relayer-*
+> GET relayer-1:health
+> GET relayer-2:health
+```
+
+### Smart Routing in Production
+
+Configure smart routing parameters in queue-consumer:
+
+```typescript
+// packages/queue-consumer/src/relay/relayer-router.service.ts
+
+const RELAYER_SELECTION_CONFIG = {
+  // Health check configuration
+  healthCheckTimeoutMs: process.env.HEALTH_CHECK_TIMEOUT_MS || 500,
+  healthCheckCacheTtlSeconds: process.env.HEALTH_CHECK_CACHE_TTL_SECONDS || 10,
+
+  // Selection strategy
+  selectionStrategy: 'least-pending-tx', // or 'round-robin', 'weighted'
+
+  // Fallback behavior
+  fallbackMode: process.env.FALLBACK_MODE || 'round-robin',
+
+  // Performance target
+  performanceTargetMs: 100, // 95th percentile selection time
+};
+```
+
+---
+
 ## Summary
 
 Deployment Guide covers:

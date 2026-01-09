@@ -14,24 +14,52 @@ import { TEST_CONFIG } from "../fixtures/test-config";
 describe("Webhooks E2E Tests", () => {
   let app: INestApplication;
 
+  /**
+   * Generate HMAC-SHA256 signature for webhook payload
+   * OZ Relayer sends Base64 encoded HMAC-SHA256 signature
+   */
   const generateSignature = (body: object): string => {
     const payload = JSON.stringify(body);
     return crypto
       .createHmac("sha256", TEST_CONFIG.webhook.signing_key)
       .update(payload)
-      .digest("hex");
+      .digest("base64");
   };
 
-  const createWebhookPayload = (overrides: object = {}) => ({
-    transactionId: randomUUID(),
-    hash: "0x" + "1".repeat(64),
-    status: "confirmed",
-    from: "0x" + "a".repeat(40),
-    to: "0x" + "b".repeat(40),
-    value: "1000000000000000000",
-    createdAt: new Date().toISOString(),
-    confirmedAt: new Date().toISOString(),
-    ...overrides,
+  /**
+   * Create OZ Relayer webhook event structure
+   *
+   * OZ Relayer webhook has nested structure:
+   * {
+   *   id: "event-uuid",
+   *   event: "transaction_update",
+   *   payload: { id: "oz-tx-id", status, hash, created_at, ... },
+   *   timestamp: "ISO8601"
+   * }
+   */
+  const createWebhookPayload = (payloadOverrides: object = {}, eventOverrides: object = {}) => ({
+    id: randomUUID(), // Webhook event ID
+    event: "transaction_update",
+    payload: {
+      payload_type: "transaction",
+      id: randomUUID(), // OZ Relayer's transaction ID (ozRelayerTxId in our DB)
+      hash: "0x" + "1".repeat(64),
+      status: "confirmed",
+      status_reason: null,
+      from: "0x" + "a".repeat(40),
+      to: "0x" + "b".repeat(40),
+      value: "0x38d7ea4c68000",
+      gas_price: "1000000000",
+      gas_limit: 21000,
+      nonce: 0,
+      relayer_id: "relayer-1",
+      created_at: new Date().toISOString(),
+      sent_at: new Date().toISOString(),
+      confirmed_at: new Date().toISOString(),
+      ...payloadOverrides,
+    },
+    timestamp: new Date().toISOString(),
+    ...eventOverrides,
   });
 
   beforeAll(async () => {
@@ -65,7 +93,7 @@ describe("Webhooks E2E Tests", () => {
         expect(response.body).toHaveProperty("success", true);
         expect(response.body).toHaveProperty(
           "transactionId",
-          payload.transactionId,
+          payload.payload.id, // OZ Relayer's transaction ID from nested payload
         );
       });
 
@@ -107,7 +135,10 @@ describe("Webhooks E2E Tests", () => {
         const signature = generateSignature(originalPayload);
 
         // Tamper the payload after signing
-        const tamperedPayload = { ...originalPayload, status: "failed" };
+        const tamperedPayload = {
+          ...originalPayload,
+          payload: { ...originalPayload.payload, status: "failed" },
+        };
 
         // When: POST with original signature but tampered payload
         const response = await request(app.getHttpServer())
@@ -125,9 +156,15 @@ describe("Webhooks E2E Tests", () => {
       it("TC-E2E-W005: should accept minimal valid payload", async () => {
         // Given: Minimal required fields only
         const payload = {
-          transactionId: randomUUID(),
-          status: "pending",
-          createdAt: new Date().toISOString(),
+          id: randomUUID(),
+          event: "transaction_update",
+          payload: {
+            payload_type: "transaction",
+            id: randomUUID(),
+            status: "pending",
+            created_at: new Date().toISOString(),
+          },
+          timestamp: new Date().toISOString(),
         };
         const signature = generateSignature(payload);
 
@@ -142,15 +179,21 @@ describe("Webhooks E2E Tests", () => {
         expect(response.body).toHaveProperty("success", true);
       });
 
-      it("TC-E2E-W006: should reject payload without transactionId", async () => {
-        // Given: Missing required transactionId
+      it("TC-E2E-W006: should reject payload without nested payload.id (ozRelayerTxId)", async () => {
+        // Given: Missing required payload.id
         const payload = {
-          status: "confirmed",
-          createdAt: new Date().toISOString(),
+          id: randomUUID(),
+          event: "transaction_update",
+          payload: {
+            payload_type: "transaction",
+            status: "confirmed",
+            created_at: new Date().toISOString(),
+          },
+          timestamp: new Date().toISOString(),
         };
         const signature = generateSignature(payload);
 
-        // When: POST without transactionId
+        // When: POST without payload.id
         const response = await request(app.getHttpServer())
           .post("/api/v1/webhooks/oz-relayer")
           .set("x-oz-signature", signature)
@@ -164,9 +207,15 @@ describe("Webhooks E2E Tests", () => {
       it("TC-E2E-W007: should reject payload with invalid status", async () => {
         // Given: Invalid status value
         const payload = {
-          transactionId: randomUUID(),
-          status: "invalid-status",
-          createdAt: new Date().toISOString(),
+          id: randomUUID(),
+          event: "transaction_update",
+          payload: {
+            payload_type: "transaction",
+            id: randomUUID(),
+            status: "invalid-status",
+            created_at: new Date().toISOString(),
+          },
+          timestamp: new Date().toISOString(),
         };
         const signature = generateSignature(payload);
 
@@ -194,9 +243,15 @@ describe("Webhooks E2E Tests", () => {
 
         for (const status of validStatuses) {
           const payload = {
-            transactionId: randomUUID(),
-            status,
-            createdAt: new Date().toISOString(),
+            id: randomUUID(),
+            event: "transaction_update",
+            payload: {
+              payload_type: "transaction",
+              id: randomUUID(),
+              status,
+              created_at: new Date().toISOString(),
+            },
+            timestamp: new Date().toISOString(),
           };
           const signature = generateSignature(payload);
 
@@ -223,25 +278,38 @@ describe("Webhooks E2E Tests", () => {
           .set("x-oz-signature", signature)
           .send(payload);
 
-        // Then: MySQL upsert should be called
-        expect(defaultPrismaMock.transaction.upsert).toHaveBeenCalledWith(
+        // Then: MySQL update should be called (FR-003: update, not upsert)
+        // Uses ozRelayerTxId for lookup (payload.id is OZ Relayer's internal ID)
+        expect(defaultPrismaMock.transaction.update).toHaveBeenCalledWith(
           expect.objectContaining({
-            where: { id: payload.transactionId },
-            update: expect.objectContaining({
-              status: payload.status,
-            }),
-            create: expect.objectContaining({
-              id: payload.transactionId,
-              status: payload.status,
+            where: { ozRelayerTxId: payload.payload.id },
+            data: expect.objectContaining({
+              status: payload.payload.status,
             }),
           }),
         );
       });
 
       it("TC-E2E-W010: should update Redis cache on webhook receipt", async () => {
-        // Given: Valid webhook payload
-        const payload = createWebhookPayload();
+        // Given: Valid webhook payload with known internal transaction ID
+        const ozRelayerTxId = randomUUID();
+        const internalTxId = "our-internal-uuid-w010"; // Internal DB transaction ID
+        const payload = createWebhookPayload({ id: ozRelayerTxId });
         const signature = generateSignature(payload);
+
+        // SPEC-ROUTING-001: Mock update to return transaction with internal ID
+        defaultPrismaMock.transaction.update.mockResolvedValueOnce({
+          id: internalTxId, // Our internal DB ID
+          ozRelayerTxId,
+          hash: payload.payload.hash,
+          status: payload.payload.status,
+          from: payload.payload.from,
+          to: payload.payload.to,
+          value: payload.payload.value,
+          createdAt: new Date(),
+          updatedAt: new Date(),
+          confirmedAt: new Date(),
+        });
 
         // When: POST webhook
         await request(app.getHttpServer())
@@ -249,10 +317,14 @@ describe("Webhooks E2E Tests", () => {
           .set("x-oz-signature", signature)
           .send(payload);
 
-        // Then: Redis set should be called with TTL
+        // Then: Redis set should be called with internal txId (not ozRelayerTxId)
+        // SPEC-ROUTING-001: Cache key uses internal txId for consistency with StatusService
         expect(defaultRedisMock.set).toHaveBeenCalledWith(
-          `tx:status:${payload.transactionId}`,
-          expect.any(Object),
+          `tx:status:${internalTxId}`,
+          expect.objectContaining({
+            transactionId: internalTxId,
+            ozRelayerTxId,
+          }),
           600, // TTL in seconds
         );
       });
@@ -276,8 +348,8 @@ describe("Webhooks E2E Tests", () => {
         expect(response.status).toBe(200);
         expect(response.body).toHaveProperty("success", true);
 
-        // And MySQL should still be updated
-        expect(defaultPrismaMock.transaction.upsert).toHaveBeenCalled();
+        // And MySQL should still be updated (using update, not upsert - FR-003)
+        expect(defaultPrismaMock.transaction.update).toHaveBeenCalled();
       });
     });
 
@@ -298,8 +370,8 @@ describe("Webhooks E2E Tests", () => {
           TEST_CONFIG.webhook.client_url,
           expect.objectContaining({
             event: "transaction.status.updated",
-            transactionId: payload.transactionId,
-            status: payload.status,
+            transactionId: payload.payload.id, // Uses OZ Relayer's transaction ID
+            status: payload.payload.status,
           }),
           expect.any(Object),
         );
@@ -341,7 +413,7 @@ describe("Webhooks E2E Tests", () => {
         const payload = createWebhookPayload({
           status: "confirmed",
           hash: "0x" + "c".repeat(64),
-          confirmedAt: new Date().toISOString(),
+          confirmed_at: new Date().toISOString(),
         });
         const signature = generateSignature(payload);
 
@@ -353,11 +425,13 @@ describe("Webhooks E2E Tests", () => {
 
         // Then: Should succeed
         expect(response.status).toBe(200);
-        expect(defaultPrismaMock.transaction.upsert).toHaveBeenCalledWith(
+        // FR-003: Uses update, not upsert - looks up by ozRelayerTxId
+        expect(defaultPrismaMock.transaction.update).toHaveBeenCalledWith(
           expect.objectContaining({
-            update: expect.objectContaining({
+            where: { ozRelayerTxId: payload.payload.id },
+            data: expect.objectContaining({
               status: "confirmed",
-              hash: payload.hash,
+              hash: payload.payload.hash,
             }),
           }),
         );
@@ -368,9 +442,8 @@ describe("Webhooks E2E Tests", () => {
         const payload = createWebhookPayload({
           status: "failed",
           hash: null,
-          confirmedAt: undefined,
+          confirmed_at: null,
         });
-        delete (payload as any).confirmedAt;
         const signature = generateSignature(payload);
 
         // When: POST webhook
@@ -381,9 +454,11 @@ describe("Webhooks E2E Tests", () => {
 
         // Then: Should succeed
         expect(response.status).toBe(200);
-        expect(defaultPrismaMock.transaction.upsert).toHaveBeenCalledWith(
+        // FR-003: Uses update, not upsert - looks up by ozRelayerTxId
+        expect(defaultPrismaMock.transaction.update).toHaveBeenCalledWith(
           expect.objectContaining({
-            update: expect.objectContaining({
+            where: { ozRelayerTxId: payload.payload.id },
+            data: expect.objectContaining({
               status: "failed",
             }),
           }),
@@ -393,8 +468,8 @@ describe("Webhooks E2E Tests", () => {
 
     describe("Error Handling", () => {
       it("TC-E2E-W016: should return 500 when MySQL fails", async () => {
-        // Given: MySQL will fail
-        defaultPrismaMock.transaction.upsert.mockRejectedValueOnce(
+        // Given: MySQL will fail (update, not upsert - FR-003)
+        defaultPrismaMock.transaction.update.mockRejectedValueOnce(
           new Error("Database connection failed"),
         );
 

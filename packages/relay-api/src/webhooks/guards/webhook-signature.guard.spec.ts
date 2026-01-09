@@ -13,10 +13,15 @@ describe("WebhookSignatureGuard", () => {
   const createMockExecutionContext = (
     body: object,
     signature?: string,
+    includeRawBody = true,
   ): ExecutionContext => {
+    // SPEC-ROUTING-001: rawBody is required for HMAC signature verification
+    // The guard uses rawBody (Buffer) instead of JSON.stringify(body) for security
+    const rawBody = Buffer.from(JSON.stringify(body));
     const mockRequest = {
       body,
       headers: signature ? { "x-oz-signature": signature } : {},
+      ...(includeRawBody && { rawBody }),
     };
 
     return {
@@ -28,10 +33,11 @@ describe("WebhookSignatureGuard", () => {
 
   const generateValidSignature = (body: object): string => {
     const payload = JSON.stringify(body);
+    // OZ Relayer sends Base64 encoded HMAC-SHA256 signature
     return crypto
       .createHmac("sha256", signingKey)
       .update(payload)
-      .digest("hex");
+      .digest("base64");
   };
 
   beforeEach(async () => {
@@ -100,6 +106,18 @@ describe("WebhookSignatureGuard", () => {
 
       const body = { transactionId: "tx_test123", status: "confirmed" };
       const context = createMockExecutionContext(body, "any-signature");
+
+      expect(() => guard.canActivate(context)).toThrow(UnauthorizedException);
+      expect(() => guard.canActivate(context)).toThrow(
+        "Webhook signature verification failed",
+      );
+    });
+
+    it("should throw UnauthorizedException when rawBody is not available", () => {
+      const body = { transactionId: "tx_test123", status: "confirmed" };
+      const signature = generateValidSignature(body);
+      // SPEC-ROUTING-001: rawBody is required for secure HMAC verification
+      const context = createMockExecutionContext(body, signature, false);
 
       expect(() => guard.canActivate(context)).toThrow(UnauthorizedException);
       expect(() => guard.canActivate(context)).toThrow(

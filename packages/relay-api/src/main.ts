@@ -1,6 +1,7 @@
 import { NestFactory } from "@nestjs/core";
 import { Logger } from "@nestjs/common";
 import { DocumentBuilder, SwaggerModule } from "@nestjs/swagger";
+import * as bodyParser from "body-parser";
 import { AppModule } from "./app.module";
 
 const logger = new Logger("Bootstrap");
@@ -33,7 +34,22 @@ async function bootstrap() {
   // Validate environment variables
   validateEnvironmentVariables();
 
-  const app = await NestFactory.create(AppModule);
+  const app = await NestFactory.create(AppModule, {
+    // Disable built-in body parsing to allow custom raw body preservation
+    bodyParser: false,
+  });
+
+  // Configure body parsers with raw body preservation for webhook signature verification
+  // SPEC-ROUTING-001: HMAC signature must be computed on exact raw bytes
+  app.use(
+    bodyParser.json({
+      verify: (req: any, _res, buf) => {
+        // Store raw body for webhook signature verification
+        req.rawBody = buf;
+      },
+    }),
+  );
+  app.use(bodyParser.urlencoded({ extended: true }));
 
   // Global prefix for all routes
   app.setGlobalPrefix("api/v1");

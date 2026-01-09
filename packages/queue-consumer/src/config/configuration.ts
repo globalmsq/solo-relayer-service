@@ -21,6 +21,8 @@ export default () => ({
 
   relayer: {
     url: process.env.OZ_RELAYER_URL || 'http://localhost:8081',
+    // SPEC-ROUTING-001 FR-005: Multi-relayer configuration from comma-separated URLs
+    urls: process.env.OZ_RELAYER_URLS || '',
     apiKey: process.env.OZ_RELAYER_API_KEY || 'oz-relayer-shared-api-key-local-dev',
     // Polling configuration for transaction confirmation
     polling: {

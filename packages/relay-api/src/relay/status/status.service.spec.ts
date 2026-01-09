@@ -49,6 +49,7 @@ describe("StatusService", () => {
           provide: OzRelayerService,
           useValue: {
             getRelayerId: jest.fn(),
+            getRelayerIdFromUrl: jest.fn(),
           },
         },
         {
@@ -127,6 +128,7 @@ describe("StatusService", () => {
         result: null,
         error_message: null,
         ozRelayerTxId: null,
+        ozRelayerUrl: null, // SPEC-ROUTING-001 DC-005
       };
 
       jest.spyOn(redisService, "get").mockResolvedValueOnce(null);
@@ -153,12 +155,36 @@ describe("StatusService", () => {
 
     /**
      * Test Tier 3: OZ Relayer fetch and storage
+     * SPEC-ROUTING-001: Uses ozRelayerTxId and ozRelayerUrl from MySQL for OZ Relayer lookup
      */
     it("should fetch from OZ Relayer and store in Redis + MySQL (Tier 3)", async () => {
+      const ozRelayerTxId = "oz-relayer-tx-uuid";
+      const ozRelayerUrl = "http://oz-relayer-1:8080";
+
+      // MySQL returns non-terminal status with ozRelayerTxId
+      const storedData = {
+        id: validTxId,
+        hash: null,
+        status: "submitted",
+        createdAt: new Date("2025-12-22T10:00:00.000Z"),
+        updatedAt: new Date(),
+        confirmedAt: null,
+        from: "0xUser123...",
+        to: "0xContract456...",
+        value: "1000000000000000000",
+        data: null,
+        type: "direct",
+        request: null,
+        result: null,
+        error_message: null,
+        ozRelayerTxId: ozRelayerTxId,
+        ozRelayerUrl: ozRelayerUrl,
+      };
+
       const mockResponse = {
         data: {
           data: {
-            id: validTxId,
+            id: ozRelayerTxId,
             hash: "0x123456789...",
             status: "confirmed",
             created_at: "2025-12-22T10:00:00.000Z",
@@ -177,8 +203,12 @@ describe("StatusService", () => {
       jest.spyOn(redisService, "get").mockResolvedValueOnce(null);
       jest
         .spyOn(prismaService.transaction, "findUnique")
-        .mockResolvedValueOnce(null);
+        .mockResolvedValueOnce(storedData);
       jest.spyOn(ozRelayerService, "getRelayerId").mockResolvedValue(relayerId);
+      // SPEC-ROUTING-001 FIX: Mock getRelayerIdFromUrl for multi-relayer support
+      jest
+        .spyOn(ozRelayerService, "getRelayerIdFromUrl")
+        .mockResolvedValue(relayerId);
       jest.spyOn(configService, "get").mockImplementation((key: string) => {
         if (key === "OZ_RELAYER_URL") return relayerUrl;
         if (key === "OZ_RELAYER_API_KEY") return apiKey;
@@ -188,6 +218,7 @@ describe("StatusService", () => {
 
       const result = await service.getTransactionStatus(validTxId);
 
+      // SPEC-ROUTING-001: Response uses our internal txId, not OZ Relayer's ozRelayerTxId
       expect(result).toEqual({
         transactionId: validTxId,
         hash: "0x123456789...",
@@ -198,6 +229,12 @@ describe("StatusService", () => {
         to: "0xContract456...",
         value: "1000000000000000000",
       });
+
+      // Should use ozRelayerTxId in OZ Relayer API call
+      expect(httpService.get).toHaveBeenCalledWith(
+        expect.stringContaining(ozRelayerTxId),
+        expect.any(Object),
+      );
 
       // Should store in both Redis and MySQL
       expect(redisService.set).toHaveBeenCalled();
@@ -239,14 +276,37 @@ describe("StatusService", () => {
 
     /**
      * Test: OZ Relayer unavailable throws ServiceUnavailableException
+     * SPEC-ROUTING-001: Requires ozRelayerTxId in MySQL to reach OZ Relayer API
      */
     it("should throw ServiceUnavailableException when OZ Relayer unavailable", async () => {
+      const ozRelayerTxId = "oz-relayer-tx-uuid";
+      const ozRelayerUrl = "http://oz-relayer-1:8080";
       const networkError = new Error("ECONNREFUSED");
 
-      jest.spyOn(redisService, "get").mockResolvedValueOnce(null);
+      // MySQL returns non-terminal status with ozRelayerTxId
+      const storedData = {
+        id: validTxId,
+        hash: null,
+        status: "submitted",
+        createdAt: new Date("2025-12-22T10:00:00.000Z"),
+        updatedAt: new Date(),
+        confirmedAt: null,
+        from: "0xUser123...",
+        to: "0xContract456...",
+        value: "1000000000000000000",
+        data: null,
+        type: "direct",
+        request: null,
+        result: null,
+        error_message: null,
+        ozRelayerTxId: ozRelayerTxId,
+        ozRelayerUrl: ozRelayerUrl,
+      };
+
+      jest.spyOn(redisService, "get").mockResolvedValue(null);
       jest
         .spyOn(prismaService.transaction, "findUnique")
-        .mockResolvedValueOnce(null);
+        .mockResolvedValue(storedData);
       jest.spyOn(ozRelayerService, "getRelayerId").mockResolvedValue(relayerId);
       jest.spyOn(configService, "get").mockImplementation((key: string) => {
         if (key === "OZ_RELAYER_URL") return relayerUrl;
@@ -267,12 +327,36 @@ describe("StatusService", () => {
 
     /**
      * Test: Response transformation correctness
+     * SPEC-ROUTING-001: Requires ozRelayerTxId in MySQL to reach OZ Relayer API
      */
     it("should correctly transform OZ Relayer response to DTO", async () => {
+      const ozRelayerTxId = "oz-relayer-tx-uuid";
+      const ozRelayerUrl = "http://oz-relayer-1:8080";
+
+      // MySQL returns non-terminal status with ozRelayerTxId
+      const storedData = {
+        id: validTxId,
+        hash: null,
+        status: "submitted",
+        createdAt: new Date("2025-12-22T10:00:00.000Z"),
+        updatedAt: new Date(),
+        confirmedAt: null,
+        from: "0xUser123...",
+        to: "0xContract456...",
+        value: "1000000000000000000",
+        data: null,
+        type: "direct",
+        request: null,
+        result: null,
+        error_message: null,
+        ozRelayerTxId: ozRelayerTxId,
+        ozRelayerUrl: ozRelayerUrl,
+      };
+
       const mockResponse = {
         data: {
           data: {
-            id: validTxId,
+            id: ozRelayerTxId,
             hash: null,
             status: "pending",
             created_at: "2025-12-22T10:00:00.000Z",
@@ -287,8 +371,12 @@ describe("StatusService", () => {
       jest.spyOn(redisService, "get").mockResolvedValueOnce(null);
       jest
         .spyOn(prismaService.transaction, "findUnique")
-        .mockResolvedValueOnce(null);
+        .mockResolvedValueOnce(storedData);
       jest.spyOn(ozRelayerService, "getRelayerId").mockResolvedValue(relayerId);
+      // SPEC-ROUTING-001 FIX: Mock getRelayerIdFromUrl for multi-relayer support
+      jest
+        .spyOn(ozRelayerService, "getRelayerIdFromUrl")
+        .mockResolvedValue(relayerId);
       jest.spyOn(configService, "get").mockImplementation((key: string) => {
         if (key === "OZ_RELAYER_URL") return relayerUrl;
         if (key === "OZ_RELAYER_API_KEY") return apiKey;

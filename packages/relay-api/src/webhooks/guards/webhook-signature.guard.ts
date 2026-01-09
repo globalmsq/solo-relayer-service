@@ -31,12 +31,28 @@ export class WebhookSignatureGuard implements CanActivate {
 
   canActivate(context: ExecutionContext): boolean {
     const request = context.switchToHttp().getRequest<Request>();
-    const signature = request.headers["x-oz-signature"] as string;
+
+    // DEBUG: Log all incoming headers to find the correct signature header name
+    this.logger.debug(
+      `Incoming webhook headers: ${JSON.stringify(request.headers, null, 2)}`,
+    );
+
+    // Try multiple possible header names (OZ Relayer might use different names)
+    const signature =
+      (request.headers["x-oz-signature"] as string) ||
+      (request.headers["x-signature"] as string) ||
+      (request.headers["x-webhook-signature"] as string) ||
+      (request.headers["x-hub-signature-256"] as string) ||
+      (request.headers["signature"] as string);
 
     if (!signature) {
-      this.logger.warn("Webhook request missing X-OZ-Signature header");
+      this.logger.warn(
+        `Webhook request missing signature header. Available headers: ${Object.keys(request.headers).join(", ")}`,
+      );
       throw new UnauthorizedException("Missing webhook signature");
     }
+
+    this.logger.debug(`Found signature in header: ${signature.substring(0, 20)}...`);
 
     const signingKey = this.configService.get<string>("WEBHOOK_SIGNING_KEY");
 
@@ -45,11 +61,22 @@ export class WebhookSignatureGuard implements CanActivate {
       throw new UnauthorizedException("Webhook signature verification failed");
     }
 
-    const payload = JSON.stringify(request.body);
+    // SPEC-ROUTING-001: Use raw body for HMAC calculation
+    // JSON.stringify(request.body) is insecure - it may produce different bytes than original
+    // Raw body preserves exact bytes sent by OZ Relayer
+    const rawBody = (request as any).rawBody as Buffer | undefined;
+    if (!rawBody) {
+      this.logger.error(
+        "Raw body not available for signature verification. Ensure body-parser is configured with verify callback.",
+      );
+      throw new UnauthorizedException("Webhook signature verification failed");
+    }
+
+    // OZ Relayer sends Base64 encoded HMAC-SHA256 signature
     const expectedSignature = crypto
       .createHmac("sha256", signingKey)
-      .update(payload)
-      .digest("hex");
+      .update(rawBody)
+      .digest("base64");
 
     // Use timing-safe comparison to prevent timing attacks
     const isValid = this.timingSafeEqual(signature, expectedSignature);

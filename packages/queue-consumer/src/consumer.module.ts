@@ -4,6 +4,7 @@ import { HttpModule } from '@nestjs/axios';
 import { ConsumerService } from './consumer.service';
 import { SqsAdapter } from './sqs/sqs.adapter';
 import { OzRelayerClient } from './relay/oz-relayer.client';
+import { RelayerRouterService } from './relay/relayer-router.service';
 import { PrismaService } from './prisma/prisma.service';
 import { HealthModule } from './health/health.module';
 import configuration from './config/configuration';
@@ -21,6 +22,7 @@ import configuration from './config/configuration';
     ConsumerService,
     SqsAdapter,
     OzRelayerClient,
+    RelayerRouterService,
     PrismaService,
   ],
 })

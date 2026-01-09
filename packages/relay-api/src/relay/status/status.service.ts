@@ -115,8 +115,21 @@ export class StatusService {
     }
 
     // Tier 3: OZ Relayer API fallback (~200ms)
-    this.logger.debug(`Fetching from OZ Relayer for ${txId}`);
-    const fresh = await this.fetchFromOzRelayer(txId);
+    // SPEC-ROUTING-001: Use ozRelayerTxId and ozRelayerUrl from MySQL for correct relayer lookup
+    const ozRelayerTxId = stored?.ozRelayerTxId;
+    const ozRelayerUrl = stored?.ozRelayerUrl;
+
+    if (!ozRelayerTxId) {
+      this.logger.warn(
+        `No ozRelayerTxId found for ${txId}, cannot query OZ Relayer`,
+      );
+      throw new NotFoundException("Transaction not found");
+    }
+
+    this.logger.debug(
+      `Fetching from OZ Relayer for ${txId} (ozRelayerTxId: ${ozRelayerTxId}, relayerUrl: ${ozRelayerUrl})`,
+    );
+    const fresh = await this.fetchFromOzRelayer(txId, ozRelayerTxId, ozRelayerUrl);
 
     // Update both Redis and MySQL (Write-through)
     // Use upsert for MySQL to handle existing records
@@ -158,26 +171,43 @@ export class StatusService {
   /**
    * Fetch transaction status directly from OZ Relayer
    *
-   * @param txId - Transaction ID
+   * SPEC-ROUTING-001: Use ozRelayerTxId and ozRelayerUrl for correct relayer lookup
+   *
+   * @param txId - Internal transaction ID (relay-api UUID)
+   * @param ozRelayerTxId - OZ Relayer's transaction ID (required for API lookup)
+   * @param ozRelayerUrl - The specific relayer URL that handled this transaction
    * @returns TxStatusResponseDto from OZ Relayer
    * @throws NotFoundException if transaction not found (HTTP 404)
    * @throws ServiceUnavailableException if OZ Relayer unavailable
    */
-  private async fetchFromOzRelayer(txId: string): Promise<TxStatusResponseDto> {
+  private async fetchFromOzRelayer(
+    txId: string,
+    ozRelayerTxId: string,
+    ozRelayerUrl?: string | null,
+  ): Promise<TxStatusResponseDto> {
     try {
-      const relayerId = await this.ozRelayerService.getRelayerId();
-      const relayerUrl = this.configService.get<string>(
-        "OZ_RELAYER_URL",
-        "http://oz-relayer-lb:8080",
-      );
+      // SPEC-ROUTING-001: Use stored ozRelayerUrl if available, otherwise fall back to env
+      const relayerUrl =
+        ozRelayerUrl ||
+        this.configService.get<string>(
+          "OZ_RELAYER_URL",
+          "http://oz-relayer-lb:8080",
+        );
+      // SPEC-ROUTING-001 FIX: Get relayer ID from the specific URL
+      // Previously used getRelayerId() which always returned default relayer's ID
+      // This caused mismatch when querying oz-relayer-2 with oz-relayer-1's ID
+      const relayerId = ozRelayerUrl
+        ? await this.ozRelayerService.getRelayerIdFromUrl(relayerUrl)
+        : await this.ozRelayerService.getRelayerId();
       const apiKey = this.configService.get<string>(
         "OZ_RELAYER_API_KEY",
         "oz-relayer-shared-api-key-local-dev",
       );
 
+      // SPEC-ROUTING-001: Use ozRelayerTxId for OZ Relayer API lookup
       const response = await firstValueFrom(
         this.httpService.get(
-          `${relayerUrl}/api/v1/relayers/${relayerId}/transactions/${txId}`,
+          `${relayerUrl}/api/v1/relayers/${relayerId}/transactions/${ozRelayerTxId}`,
           {
             headers: {
               Authorization: `Bearer ${apiKey}`,
@@ -190,8 +220,10 @@ export class StatusService {
       // Transform OZ Relayer response to standardized DTO
       const data = response.data.data || response.data;
 
+      // SPEC-ROUTING-001: Always use our internal txId in response for consistency
+      // data.id is the OZ Relayer's ID (ozRelayerTxId), not our internal ID
       return {
-        transactionId: data.id || txId,
+        transactionId: txId,
         hash: data.hash || null,
         status: data.status || "unknown",
         createdAt: data.created_at || new Date().toISOString(),

@@ -87,8 +87,17 @@ export class WebhooksController {
   async handleOzRelayerWebhook(
     @Body() payload: OzRelayerWebhookDto,
   ): Promise<WebhookResponseDto> {
+    // DEBUG: Log raw payload to understand OZ Relayer's actual structure
+    this.logger.debug(
+      `Raw webhook payload: ${JSON.stringify(payload, null, 2)}`,
+    );
+
+    // Extract transaction ID from nested payload structure
+    const ozRelayerTxId = payload.payload?.id;
+    const status = payload.payload?.status;
+
     this.logger.log(
-      `Received webhook for transaction ${payload.transactionId}: status=${payload.status}`,
+      `Received webhook event=${payload.event} for ozRelayerTxId=${ozRelayerTxId}: status=${status}`,
     );
 
     return this.webhooksService.handleWebhook(payload);

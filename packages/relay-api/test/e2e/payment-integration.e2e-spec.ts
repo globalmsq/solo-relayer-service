@@ -5,6 +5,7 @@ import {
   createTestApp,
   getHttpServiceMock,
   resetMocks,
+  defaultPrismaMock,
 } from "../utils/test-app.factory";
 import { TEST_WALLETS, TEST_ADDRESSES } from "../fixtures/test-wallets";
 import {
@@ -108,12 +109,32 @@ describe("Payment Integration E2E Tests", () => {
       const transactionId = submitResponse.body.transactionId;
 
       // Step 4: Query status
-      // Setup HttpService.get() mock for confirmed status
+      // SPEC-ROUTING-001: MySQL must have record with ozRelayerTxId + non-terminal status
+      // for OZ Relayer lookup to be triggered
+      const ozRelayerTxId = "oz-relayer-tx-" + transactionId.substring(0, 8);
+
+      // Mock MySQL to return record with ozRelayerTxId and non-terminal status
+      defaultPrismaMock.transaction.findUnique.mockResolvedValueOnce({
+        id: transactionId,
+        ozRelayerTxId,
+        ozRelayerUrl: "http://oz-relayer-1:8080",
+        hash: null,
+        status: "pending", // Non-terminal status triggers OZ Relayer lookup
+        from: userAddress,
+        to: recipientAddress,
+        value: "0",
+        data: forwardRequest.data,
+        createdAt: new Date(),
+        updatedAt: new Date(),
+        confirmedAt: null,
+      });
+
+      // Setup HttpService.get() mock for OZ Relayer confirmed status
       const httpMock = getHttpServiceMock(app);
       httpMock.get.mockReturnValueOnce(
         of({
           data: {
-            id: transactionId,
+            id: ozRelayerTxId,
             hash: "0x" + "1".repeat(64),
             status: "confirmed",
             created_at: new Date().toISOString(),

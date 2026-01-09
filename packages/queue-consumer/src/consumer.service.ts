@@ -7,6 +7,7 @@ import {
 import { ConfigService } from '@nestjs/config';
 import { SqsAdapter } from './sqs/sqs.adapter';
 import { OzRelayerClient } from './relay/oz-relayer.client';
+import { RelayerRouterService } from './relay/relayer-router.service';
 import { PrismaService } from './prisma/prisma.service';
 
 /**
@@ -44,6 +45,25 @@ interface GaslessMessage {
 
 type QueueMessage = DirectMessage | GaslessMessage;
 
+/**
+ * ConsumerService - SQS Message Processing with Fire-and-Forget Pattern
+ *
+ * SPEC-ROUTING-001: Smart Routing + Fire-and-Forget Implementation
+ *
+ * Key Changes from SPEC-QUEUE-001:
+ * - FR-001: Smart Routing - Uses RelayerRouterService to select least busy relayer
+ * - FR-002: Fire-and-Forget - No polling, immediate SQS delete after submission
+ * - DC-004: Hash Field Separation - Consumer sets ozRelayerTxId only, NOT hash
+ *
+ * Flow:
+ * 1. Receive SQS message
+ * 2. Check idempotency (already processed or submitted)
+ * 3. Smart Route to least busy relayer (via RelayerRouterService)
+ * 4. Submit TX (Fire-and-Forget, no polling)
+ * 5. Save ozRelayerTxId + ozRelayerUrl to DB
+ * 6. Delete SQS message immediately
+ * 7. Webhook handles status update (hash, confirmedAt)
+ */
 @Injectable()
 export class ConsumerService implements OnModuleInit, OnModuleDestroy {
   private readonly logger = new Logger(ConsumerService.name);
@@ -53,6 +73,7 @@ export class ConsumerService implements OnModuleInit, OnModuleDestroy {
   constructor(
     private sqsAdapter: SqsAdapter,
     private relayerClient: OzRelayerClient,
+    private relayerRouter: RelayerRouterService,
     private prisma: PrismaService,
     private configService: ConfigService,
   ) {}
@@ -125,6 +146,15 @@ export class ConsumerService implements OnModuleInit, OnModuleDestroy {
     }
   }
 
+  /**
+   * Handle individual SQS message with Fire-and-Forget pattern
+   *
+   * SPEC-ROUTING-001 Implementation:
+   * - FR-001: Smart Routing via RelayerRouterService
+   * - FR-002: Fire-and-Forget (no polling)
+   * - FR-004: Idempotency (check ozRelayerTxId)
+   * - DC-004: Hash Field Separation (Consumer sets ozRelayerTxId only)
+   */
   private async handleMessage(message: any): Promise<void> {
     const { MessageId, Body, ReceiptHandle } = message;
 
@@ -147,28 +177,14 @@ export class ConsumerService implements OnModuleInit, OnModuleDestroy {
         return;
       }
 
-      // CRITICAL: Check if OZ Relayer TX was already submitted (race condition prevention)
-      // If ozRelayerTxId exists, the TX was submitted but confirmation polling failed
-      // In this case, we should only poll for status, not re-submit
+      // FR-004: Idempotency - Check if TX was already submitted to OZ Relayer
+      // If ozRelayerTxId exists, TX was submitted but SQS delete failed
+      // Fire-and-Forget: Just delete SQS message, Webhook will handle status update
       if (transaction?.ozRelayerTxId) {
         this.logger.log(
-          `Transaction ${transactionId} already submitted to OZ Relayer (${transaction.ozRelayerTxId}), polling for status`,
+          `[Fire-and-Forget] Transaction ${transactionId} already submitted (${transaction.ozRelayerTxId}), deleting SQS message`,
         );
-        const result = await this.relayerClient.pollExistingTransaction(
-          transaction.ozRelayerTxId,
-        );
-
-        await this.prisma.transaction.update({
-          where: { id: transactionId },
-          data: {
-            status: 'confirmed',
-            hash: result.txHash,
-            result,
-          },
-        });
-
         await this.sqsAdapter.deleteMessage(ReceiptHandle);
-        this.logger.log(`Message processed successfully (resumed): ${transactionId}`);
         return;
       }
 
@@ -178,39 +194,52 @@ export class ConsumerService implements OnModuleInit, OnModuleDestroy {
         data: { status: 'processing' },
       });
 
-      // Send to OZ Relayer based on transaction type
-      let result: any;
+      // FR-001: Smart Routing - Get least busy relayer
+      const { url: relayerUrl, relayerId } =
+        await this.relayerRouter.getAvailableRelayer();
+      this.logger.log(`[Smart Routing] Selected relayer: ${relayerUrl}`);
+
+      // FR-002: Fire-and-Forget - Send TX and return immediately
+      let result: { transactionId: string; relayerUrl: string };
 
       if (type === 'direct') {
         const directMessage = messageBody as DirectMessage;
-        result = await this.relayerClient.sendDirectTransaction(
+        result = await this.relayerClient.sendDirectTransactionAsync(
           directMessage.request,
+          relayerUrl,
+          relayerId, // Optimization: Pass relayerId to avoid redundant API call
         );
       } else if (type === 'gasless') {
         const gaslessMessage = messageBody as GaslessMessage;
-        result = await this.relayerClient.sendGaslessTransaction(
+        result = await this.relayerClient.sendGaslessTransactionAsync(
           gaslessMessage.request,
           gaslessMessage.forwarderAddress,
+          relayerUrl,
+          relayerId, // Optimization: Pass relayerId to avoid redundant API call
         );
       } else {
         throw new Error(`Unknown transaction type: ${type}`);
       }
 
-      // Update transaction status to confirmed with hash from OZ Relayer
+      // DC-004: Hash Field Separation
+      // Consumer ONLY sets: ozRelayerTxId, ozRelayerUrl, status='submitted'
+      // Consumer does NOT set: hash (Webhook will set this)
       await this.prisma.transaction.update({
         where: { id: transactionId },
         data: {
-          status: 'confirmed',
-          hash: result.txHash, // Store actual tx hash in hash column
-          ozRelayerTxId: result.transactionId, // Store OZ Relayer's TX ID for idempotency
-          result,
+          status: 'submitted', // NOT 'confirmed' - Webhook will update to confirmed
+          ozRelayerTxId: result.transactionId,
+          ozRelayerUrl: result.relayerUrl, // DC-005: Track which relayer handled TX
+          // hash: undefined - DO NOT set hash here, Webhook is source of truth
         },
       });
 
-      // Delete message from SQS
+      // FR-002: Delete SQS message immediately (Fire-and-Forget)
       await this.sqsAdapter.deleteMessage(ReceiptHandle);
 
-      this.logger.log(`Message processed successfully: ${transactionId}`);
+      this.logger.log(
+        `[Fire-and-Forget] Message processed: ${transactionId} -> ${result.transactionId} (Webhook will update status)`,
+      );
     } catch (error: unknown) {
       const err = error as Error;
       this.logger.error(
