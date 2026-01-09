@@ -753,6 +753,149 @@ describe('Consumer End-to-End', () => {
 
 ---
 
+## Fire-and-Forget Pattern (SPEC-ROUTING-001)
+
+### Overview
+
+The Fire-and-Forget pattern combines the queue system with immediate response to clients. The API returns `202 Accepted` immediately after enqueueing, then processes the transaction asynchronously via the consumer.
+
+### Request Flow
+
+```
+Client                Relay API               SQS Queue          Queue Consumer         OZ Relayer
+  │                       │                      │                    │                     │
+  ├─ POST /direct ────────>│                      │                    │                     │
+  │                        │                      │                    │                     │
+  │                        ├─ Validate
+  │                        ├─ Store MySQL
+  │                        ├─ Publish ────────────>│                    │                     │
+  │<─ 202 Accepted ───────┤                      │                    │                     │
+  │ {transactionId}        │ (< 200ms)            │                    │                     │
+  │                        │                      │                    │                     │
+  │                        │                      ├─ Receive <────────┤                     │
+  │                        │                      │   (long-poll)      │                     │
+  │                        │                      │                    ├─ Process
+  │                        │                      │                    ├─ Smart Routing
+  │                        │                      │                    ├─ Submit ───────────>│
+  │                        │                      │                    │ (fire-and-forget)   │
+  │                        │                      │                    │                     ├─ Sign
+  │                        │                      │                    │                     ├─ Submit
+  │                        │                      │                    │<─ Webhook ─────────┤
+  │<─ Webhook (optional) ──────────────────────────────────────────────┤ {status, hash}     │
+  │ {transactionId,        │                      │                    │                     │
+  │  status, hash}         │                      │                    │                     │
+```
+
+### Implementation
+
+**Queue Consumer Processing**:
+
+```typescript
+// File: packages/queue-consumer/src/consumer.service.ts
+
+async processQueueMessage(message: QueueMessage): Promise<void> {
+  const { transactionId, clientId, txData } = message;
+
+  try {
+    // Step 1: Select best relayer (Smart Routing)
+    const relayerUrl = await this.relayerRouter.getAvailableRelayer();
+
+    // Step 2: Submit fire-and-forget (no polling)
+    const result = await this.ozRelayerClient.sendDirectTransactionAsync(
+      txData,
+      relayerUrl,
+    );
+
+    // Step 3: Store OZ Relayer TX ID for webhook matching
+    await this.repository.updateTransaction(transactionId, {
+      ozRelayerTxId: result.transactionId,
+      relayerUrl: relayerUrl,
+      status: 'submitted', // Waiting for webhook confirmation
+    });
+
+    // Step 4: Delete from queue (fire-and-forget complete)
+    await this.sqsAdapter.deleteMessage(message.receiptHandle);
+
+    this.logger.log(
+      `[Fire-and-Forget] TX ${transactionId} submitted to ${relayerUrl}`,
+    );
+  } catch (error) {
+    this.logger.error(`Failed to submit TX ${transactionId}:`, error);
+    // Message will be retried by SQS (visibility timeout)
+    // Eventually sent to DLQ if max retries exceeded
+  }
+}
+```
+
+### Benefits
+
+| Benefit | Impact |
+|---------|--------|
+| **API Latency** | 200-300ms (vs. 2-5s with polling) |
+| **Throughput** | 12x improvement (32 TPS vs. 2.6 TPS) |
+| **CPU Usage** | Lower (no blocking polling) |
+| **Scalability** | Easier to scale consumers |
+
+### Webhook-Based Status Updates
+
+Transactions submitted via Fire-and-Forget receive status updates through webhooks:
+
+```typescript
+// File: packages/relay-api/src/webhooks/webhooks.controller.ts
+
+@Post('oz-relayer')
+@UseGuards(WebhookSignatureGuard)
+async handleOzRelayerWebhook(
+  @Body() payload: OzRelayerWebhookDto,
+): Promise<void> {
+  const { ozRelayerTxId, status, hash, oz_relayer_url } = payload;
+
+  // Find transaction by OZ Relayer TX ID
+  const transaction = await this.repository.findByOzRelayerTxId(
+    ozRelayerTxId,
+  );
+
+  if (!transaction) {
+    this.logger.warn(`TX not found: ${ozRelayerTxId}`);
+    return; // Idempotent: ignore unknown TX
+  }
+
+  // Update transaction status
+  await this.repository.updateTransaction(transaction.id, {
+    status: status,
+    hash: hash,
+    confirmedAt: new Date(),
+    oz_relayer_url: oz_relayer_url,
+  });
+
+  // Invalidate Redis cache
+  await this.cache.invalidate(`tx:${transaction.id}`);
+
+  this.logger.log(`Updated TX ${transaction.id} → ${status}`);
+}
+```
+
+### Idempotency
+
+Fire-and-Forget processing is idempotent at multiple levels:
+
+1. **Transaction ID**: Unique per submission
+2. **SQS Message ID**: Unique per queue message
+3. **Webhook Idempotency**: Status updates are idempotent (same final state)
+
+### Comparison: Fire-and-Forget vs. Polling
+
+| Aspect | Polling (OLD) | Fire-and-Forget (NEW) |
+|--------|---------------|----------------------|
+| API Response Time | 2-5 seconds | 200-300ms |
+| Worker Blocking | Yes (8 blocked) | No (0.5-1 blocked) |
+| Throughput | 2.6 TPS | 32 TPS |
+| Complexity | Simple | Requires webhooks |
+| Error Handling | Retry in API | Retry via SQS |
+| Status Tracking | Poll-based | Event-based |
+
+---
+
 ## Summary
 
 The Queue Integration Guide provides:

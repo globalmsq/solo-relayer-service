@@ -8,9 +8,12 @@ A self-hosted blockchain transaction relay system built on OZ Relayer (Rust) wit
 
 - **Direct Transaction**: Automated blockchain transaction relay
 - **Gasless Transaction**: EIP-712 meta-transaction with gas sponsorship
+- **Smart Routing**: Intelligent multi-relayer selection based on health & load (SPEC-ROUTING-001)
+- **Fire-and-Forget Pattern**: Non-blocking transaction submission with webhook updates (SPEC-ROUTING-001)
 - **3-Tier Lookup**: Redis L1 → MySQL L2 → OZ Relayer L3 for fast status queries
-- **Multi-Relayer Pool**: 3 OZ Relayers with Nginx load balancing
+- **Multi-Relayer Pool**: 3 OZ Relayers with intelligent load balancing
 - **Async Queue System**: AWS SQS with LocalStack support for asynchronous processing
+- **Health Check Caching**: 10-second TTL caching for < 100ms routing performance
 
 ## Quick Start
 
@@ -81,19 +84,55 @@ curl http://localhost:3000/api/v1/relay/status/550e8400-e29b-41d4-a716-446655440
 
 ## Documentation Index
 
+### Core Architecture & Design
+
+| Document | Description | SPEC |
+|----------|-------------|------|
+| [docs/product.md](./docs/product.md) | Business requirements, goals, user stories | WHAT/WHY |
+| [docs/structure.md](./docs/structure.md) | System architecture, directory structure, module organization | WHERE |
+| [docs/tech.md](./docs/tech.md) | Technical specifications, API details, implementation guide | HOW |
+| [docs/ARCHITECTURE.md](./docs/ARCHITECTURE.md) | Queue system architecture, integration patterns, message flows | SPEC-QUEUE-001 |
+
+### SPEC-ROUTING-001 Documentation (Smart Routing & Fire-and-Forget)
+
+| Document | Description | Topic |
+|----------|-------------|-------|
+| [docs/SMART_ROUTING_GUIDE.md](./docs/SMART_ROUTING_GUIDE.md) | Smart routing implementation, health checks, load balancing | Smart Routing (FR-001~FR-004) |
+| [docs/FIRE_AND_FORGET_PATTERN.md](./docs/FIRE_AND_FORGET_PATTERN.md) | Fire-and-forget pattern, non-blocking submission, webhook updates | Fire-and-Forget (FR-002) |
+| [docs/SPEC_ROUTING_001_IMPLEMENTATION.md](./docs/SPEC_ROUTING_001_IMPLEMENTATION.md) | Implementation-to-spec mapping, test coverage, validation checklist | Traceability |
+
+### Queue System & Integration
+
+| Document | Description | Topic |
+|----------|-------------|-------|
+| [docs/QUEUE_INTEGRATION.md](./docs/QUEUE_INTEGRATION.md) | Queue integration guide, SQS adapter usage, fire-and-forget flow | Queue System |
+| [docs/SQS_SETUP.md](./docs/SQS_SETUP.md) | SQS/LocalStack setup, queue configuration, queue management | Infrastructure Setup |
+| [docs/WEBHOOK_INTEGRATION.md](./docs/WEBHOOK_INTEGRATION.md) | Webhook signature verification, security, oz_relayer_url tracking | Webhooks |
+
+### Deployment & Operations
+
 | Document | Description | Purpose |
 |----------|-------------|---------|
-| [docs/product.md](./docs/product.md) | Business requirements, goals, user stories | WHAT/WHY - Requirements |
-| [docs/structure.md](./docs/structure.md) | System architecture, directory structure, module organization | WHERE - Architecture |
-| [docs/tech.md](./docs/tech.md) | Technical specifications, API details, implementation guide | HOW - Implementation |
-| [docs/ARCHITECTURE.md](./docs/ARCHITECTURE.md) | Queue system architecture, integration patterns, message flows | Queue System Design |
-| [docs/QUEUE_INTEGRATION.md](./docs/QUEUE_INTEGRATION.md) | Queue integration guide, SQS adapter usage, migration guide | Queue Integration |
-| [docs/SQS_SETUP.md](./docs/SQS_SETUP.md) | SQS/LocalStack setup, queue configuration, queue management | Infrastructure Setup |
-| [docs/DEPLOYMENT.md](./docs/DEPLOYMENT.md) | Docker Compose setup, environment variables, deployment procedures | Deployment |
-| [docs/TESTING.md](./docs/TESTING.md) | Testing guide (unit, E2E, integration) | Quality Assurance |
-| [docs/DOCKER_SETUP.md](./docs/DOCKER_SETUP.md) | Docker installation, configuration, troubleshooting | Docker Guide |
-| [packages/relay-api/README.md](./packages/relay-api/README.md) | Relay API service documentation | Producer Service |
-| [packages/queue-consumer/README.md](./packages/queue-consumer/README.md) | Queue Consumer service documentation | Consumer Service |
+| [docs/DEPLOYMENT.md](./docs/DEPLOYMENT.md) | Docker Compose setup, multi-relayer config, environment variables | Deployment |
+| [docs/TESTING.md](./docs/TESTING.md) | Testing guide (unit, E2E, integration), 74 test cases | Quality Assurance |
+| [docs/DOCKER_SETUP.md](./docs/DOCKER_SETUP.md) | Docker installation, configuration, 3-relayer setup, troubleshooting | Docker Guide |
+| [docs/CONTRACTS_GUIDE.md](./docs/CONTRACTS_GUIDE.md) | Smart contract integration, ERC2771Forwarder, meta-transactions | Smart Contracts |
+| [docs/operations.md](./docs/operations.md) | Monitoring, metrics, alerting, operational runbooks | Operations |
+
+### Service Documentation
+
+| Document | Description | Service |
+|----------|-------------|---------|
+| [packages/relay-api/README.md](./packages/relay-api/README.md) | Relay API service documentation, endpoints, architecture | Producer Service |
+| [packages/queue-consumer/README.md](./packages/queue-consumer/README.md) | Queue Consumer service documentation, async processing | Consumer Service |
+
+### Specifications
+
+| Document | Status | Version |
+|----------|--------|---------|
+| [.moai/specs/SPEC-ROUTING-001/spec.md](./.moai/specs/SPEC-ROUTING-001/spec.md) | Complete ✓ | 1.1.0 |
+| [.moai/specs/SPEC-QUEUE-001/spec.md](./.moai/specs/SPEC-QUEUE-001/spec.md) | Complete ✓ | 1.0.0 |
+| [.moai/specs/SPEC-WEBHOOK-001/spec.md](./.moai/specs/SPEC-WEBHOOK-001/spec.md) | Complete ✓ | 1.0.0 |
 
 ## Project Structure
 
