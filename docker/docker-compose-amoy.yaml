@@ -170,8 +170,8 @@ services:
       retries: 3
       start_period: 30s
 
-  # === OZ Relayer (Single Instance - Phase 1 MVP) ===
-  # Phase 2+: Queue system (BullMQ/SQS) with multiple instances
+  # === OZ Relayer Pool (3 Instances) ===
+  # SPEC-ROUTING-001: Multi-relayer smart routing with fire-and-forget pattern
   oz-relayer-1:
     <<: *relayer-common
     container_name: oz-relayer-amoy-1
@@ -184,6 +184,35 @@ services:
     environment:
       <<: *relayer-env
       API_KEY: ${OZ_RELAYER_API_KEY:-amoy-oz-relayer-shared-api-key-32ch}
+      REDIS_KEY_PREFIX: oz-relayer-1
+
+  oz-relayer-2:
+    <<: *relayer-common
+    container_name: oz-relayer-amoy-2
+    ports:
+      - "8082:8080"
+      - "8092:8081"
+    volumes:
+      - ./config/oz-relayer/relayer-2-amoy.json:/app/config/config.json:ro
+      - ./keys-amoy/relayer-2:/app/config/keys:ro
+    environment:
+      <<: *relayer-env
+      API_KEY: ${OZ_RELAYER_API_KEY:-amoy-oz-relayer-shared-api-key-32ch}
+      REDIS_KEY_PREFIX: oz-relayer-2
+
+  oz-relayer-3:
+    <<: *relayer-common
+    container_name: oz-relayer-amoy-3
+    ports:
+      - "8083:8080"
+      - "8093:8081"
+    volumes:
+      - ./config/oz-relayer/relayer-3-amoy.json:/app/config/config.json:ro
+      - ./keys-amoy/relayer-3:/app/config/keys:ro
+    environment:
+      <<: *relayer-env
+      API_KEY: ${OZ_RELAYER_API_KEY:-amoy-oz-relayer-shared-api-key-32ch}
+      REDIS_KEY_PREFIX: oz-relayer-3
 
   # === Queue Consumer (SPEC-QUEUE-001 + SPEC-ROUTING-001) ===
   queue-consumer:
@@ -201,6 +230,10 @@ services:
         condition: service_healthy
       oz-relayer-1:
         condition: service_healthy
+      oz-relayer-2:
+        condition: service_healthy
+      oz-relayer-3:
+        condition: service_healthy
     environment:
       NODE_ENV: staging
       # Database
@@ -217,8 +250,8 @@ services:
       # SPEC-ROUTING-001: Multi-Relayer Smart Routing
       # OZ_RELAYER_URL kept for backward compatibility (single relayer fallback)
       OZ_RELAYER_URL: http://oz-relayer-1:8080
-      # FR-005: Comma-separated URLs for Smart Routing
-      OZ_RELAYER_URLS: http://oz-relayer-1:8080
+      # FR-005: Comma-separated URLs for Smart Routing (3 relayers)
+      OZ_RELAYER_URLS: http://oz-relayer-1:8080,http://oz-relayer-2:8080,http://oz-relayer-3:8080
       OZ_RELAYER_API_KEY: ${OZ_RELAYER_API_KEY:-amoy-oz-relayer-shared-api-key-32ch}
     networks:
       - msq-relayer-network
