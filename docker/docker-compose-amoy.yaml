@@ -1,3 +1,5 @@
+name: relayer
+
 # === YAML Anchors Definition (Top-level, outside services block) ===
 # Polygon Amoy Testnet Configuration
 # Same infrastructure as docker-compose.yaml but with Amoy RPC endpoints
@@ -11,6 +13,7 @@ x-relayer-common: &relayer-common
   restart: unless-stopped
   networks:
     - msq-relayer-network
+    - msq-network
   healthcheck:
     test: ["CMD-SHELL", "cat /proc/net/tcp | grep ':1F90' || exit 1"]
     interval: 10s
@@ -23,7 +26,7 @@ x-relayer-env: &relayer-env
   RELAY_API_KEY: ${RELAY_API_KEY:-amoy-dev-api-key}
   KEYSTORE_PASSPHRASE: ${KEYSTORE_PASSPHRASE:-amoy-test-passphrase}
   WEBHOOK_SIGNING_KEY: ${WEBHOOK_SIGNING_KEY:-amoy-dev-webhook-signing-key-32ch}
-  RPC_URL: https://rpc-amoy.polygon.technology
+  RPC_URL: ${RPC_URL:-https://rpc-amoy.polygon.technology}
   REDIS_URL: redis://redis:6379
 
 # === Services Block (after anchors definition) ===
@@ -47,6 +50,73 @@ services:
       - msq-relayer-network
     restart: unless-stopped
 
+  # === MySQL Database (Phase 2+) ===
+  mysql:
+    image: mysql:8.0
+    ports:
+      - "3307:3306"
+    environment:
+      MYSQL_ROOT_PASSWORD: pass
+      MYSQL_DATABASE: msq_relayer
+    volumes:
+      - msq-relayer-mysql-data-amoy:/var/lib/mysql
+      # Note: Schema initialization moved to relay-api entrypoint (prisma migrate deploy)
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-u", "root", "-ppass"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+    networks:
+      - msq-relayer-network
+    restart: unless-stopped
+
+  # === LocalStack (AWS SQS Emulation) - SPEC-QUEUE-001 ===
+  localstack:
+    image: localstack/localstack:3.0
+    ports:
+      - "4566:4566"
+    environment:
+      SERVICES: sqs
+      DEBUG: "0"
+      AWS_DEFAULT_REGION: ap-northeast-2
+      AWS_ACCESS_KEY_ID: test
+      AWS_SECRET_ACCESS_KEY: test
+      SQS_ENDPOINT_URL: http://localhost:4566
+    volumes:
+      # SECURITY WARNING: Docker socket mount grants container full host Docker access.
+      # In production, use LOCALSTACK_DOCKER_SOCK_DIR env var to specify a restricted socket
+      # or consider using LocalStack Pro with ECS/Lambda isolation features.
+      # For local development only - do NOT use in production without proper isolation.
+      - "${LOCALSTACK_DOCKER_SOCK_DIR:-/var/run/docker.sock}:/var/run/docker.sock"
+      - ./scripts/init-localstack.sh:/etc/localstack/init/ready.d/init-localstack.sh
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:4566/_localstack/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 15s
+    networks:
+      - msq-relayer-network
+    restart: unless-stopped
+
+  # === SQS Admin UI - SPEC-QUEUE-001 ===
+  # Web UI for managing LocalStack SQS queues
+  # Access: http://localhost:3999
+  sqs-admin:
+    image: pacovk/sqs-admin:latest
+    ports:
+      - "3999:3999"
+    depends_on:
+      localstack:
+        condition: service_healthy
+    environment:
+      SQS_ENDPOINT_URL: http://localstack:4566
+      SQS_AWS_REGION: ap-northeast-2
+    networks:
+      - msq-relayer-network
+    restart: unless-stopped
+
   # === Relay API (NestJS) ===
   relay-api:
     build:
@@ -59,13 +129,19 @@ services:
     depends_on:
       redis:
         condition: service_healthy
+      mysql:
+        condition: service_healthy
       oz-relayer-1:
+        condition: service_healthy
+      localstack:
         condition: service_healthy
     environment:
       PORT: 8080
       NODE_ENV: staging
       REDIS_URL: redis://redis:6379
-      RPC_URL: https://rpc-amoy.polygon.technology
+      REDIS_STATUS_TTL_SECONDS: ${REDIS_STATUS_TTL_SECONDS:-600}
+      DATABASE_URL: ${DATABASE_URL:-mysql://root:pass@mysql:3306/msq_relayer}
+      RPC_URL: ${RPC_URL:-https://rpc-amoy.polygon.technology}
       RELAY_API_KEY: ${RELAY_API_KEY:-amoy-dev-api-key}
       CHAIN_ID: 80002
       FORWARDER_ADDRESS: "0xF034a404241707F347A952Cd4095f9035AF877Bf"
@@ -73,8 +149,19 @@ services:
       # (Load balancer causes ID mismatch between getRelayerId and sendTransaction)
       OZ_RELAYER_URL: http://oz-relayer-1:8080
       OZ_RELAYER_API_KEY: ${OZ_RELAYER_API_KEY:-amoy-oz-relayer-shared-api-key-32ch}
+      # Phase 2: Webhook & Notification settings
+      WEBHOOK_SIGNING_KEY: ${WEBHOOK_SIGNING_KEY:-amoy-dev-webhook-signing-key-32ch}
+      CLIENT_WEBHOOK_URL: ${CLIENT_WEBHOOK_URL:-http://host.docker.internal:9000/webhooks/transaction-updates}
+      # SPEC-QUEUE-001: SQS Configuration
+      AWS_REGION: ap-northeast-2
+      AWS_ACCESS_KEY_ID: test
+      AWS_SECRET_ACCESS_KEY: test
+      SQS_ENDPOINT_URL: http://localstack:4566
+      SQS_QUEUE_URL: http://localstack:4566/000000000000/relay-transactions
+      SQS_DLQ_URL: http://localstack:4566/000000000000/relay-transactions-dlq
     networks:
       - msq-relayer-network
+      - msq-network
     restart: unless-stopped
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8080/api/v1/health"]
@@ -93,10 +180,50 @@ services:
       - "8091:8081"
     volumes:
       - ./config/oz-relayer/relayer-1-amoy.json:/app/config/config.json:ro
-      - ./keys/relayer-1:/app/config/keys:ro
+      - ./keys-amoy/relayer-1:/app/config/keys:ro
     environment:
       <<: *relayer-env
       API_KEY: ${OZ_RELAYER_API_KEY:-amoy-oz-relayer-shared-api-key-32ch}
+
+  # === Queue Consumer (SPEC-QUEUE-001 + SPEC-ROUTING-001) ===
+  queue-consumer:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile.packages
+      target: queue-consumer
+    command: ["pnpm", "run", "start"]
+    depends_on:
+      redis:
+        condition: service_healthy
+      mysql:
+        condition: service_healthy
+      localstack:
+        condition: service_healthy
+      oz-relayer-1:
+        condition: service_healthy
+    environment:
+      NODE_ENV: staging
+      # Database
+      DATABASE_URL: ${DATABASE_URL:-mysql://root:pass@mysql:3306/msq_relayer}
+      # Redis
+      REDIS_URL: redis://redis:6379
+      # SQS Configuration
+      AWS_REGION: ap-northeast-2
+      AWS_ACCESS_KEY_ID: test
+      AWS_SECRET_ACCESS_KEY: test
+      SQS_ENDPOINT_URL: http://localstack:4566
+      SQS_QUEUE_URL: http://localstack:4566/000000000000/relay-transactions
+      SQS_DLQ_URL: http://localstack:4566/000000000000/relay-transactions-dlq
+      # SPEC-ROUTING-001: Multi-Relayer Smart Routing
+      # OZ_RELAYER_URL kept for backward compatibility (single relayer fallback)
+      OZ_RELAYER_URL: http://oz-relayer-1:8080
+      # FR-005: Comma-separated URLs for Smart Routing
+      OZ_RELAYER_URLS: http://oz-relayer-1:8080
+      OZ_RELAYER_API_KEY: ${OZ_RELAYER_API_KEY:-amoy-oz-relayer-shared-api-key-32ch}
+    networks:
+      - msq-relayer-network
+    restart: unless-stopped
+    stop_grace_period: 30s
 
   # === Integration Tests (profile: manual) ===
   # Run with: docker compose -f docker-compose-amoy.yaml run --rm integration-tests
@@ -112,7 +239,7 @@ services:
       oz-relayer-1:
         condition: service_healthy
     environment:
-      RPC_URL: https://rpc-amoy.polygon.technology
+      RPC_URL: ${RPC_URL:-https://rpc-amoy.polygon.technology}
       CHAIN_ID: 80002
       FORWARDER_ADDRESS: "0xF034a404241707F347A952Cd4095f9035AF877Bf"
       RELAY_API_URL: http://relay-api:8080
@@ -121,11 +248,16 @@ services:
       OZ_RELAYER_API_KEY: ${OZ_RELAYER_API_KEY:-amoy-oz-relayer-shared-api-key-32ch}
     networks:
       - msq-relayer-network
+      - msq-network
 
 networks:
   msq-relayer-network:
     driver: bridge
+  msq-network:
+    external: true
 
 volumes:
   msq-relayer-redis-data-amoy:
+    driver: local
+  msq-relayer-mysql-data-amoy:
     driver: local
