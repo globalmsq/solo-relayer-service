@@ -17,7 +17,7 @@ x-relayer-common: &relayer-common
     test: ["CMD-SHELL", "cat /proc/net/tcp | grep ':1F90' || exit 1"]
     interval: 10s
     timeout: 5s
-    retries: 3
+    retries: 5
     start_period: 30s
 
 x-relayer-env: &relayer-env
@@ -124,6 +124,7 @@ services:
     environment:
       SERVICES: sqs
       DEBUG: "0"
+      LS_LOG: error
       AWS_DEFAULT_REGION: ap-northeast-2
       AWS_ACCESS_KEY_ID: test
       AWS_SECRET_ACCESS_KEY: test
