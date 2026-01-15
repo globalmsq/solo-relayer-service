@@ -9,7 +9,21 @@
       "deployer": "0x9B00bF7321e8Dc5f253Ab73c95D2b5b573a5e3bb",
       "verified": true,
       "verifiedUrl": "https://amoy.polygonscan.com/address/0xF034a404241707F347A952Cd4095f9035AF877Bf#code"
+    },
+    "SampleToken": {
+      "address": "0x1F89f1C43dc1fbF335A7131BcCe87e9c1AE49c4f",
+      "constructorArgs": ["0xF034a404241707F347A952Cd4095f9035AF877Bf"],
+      "deployedAt": "2025-01-15",
+      "deployer": "0x9B00bF7321e8Dc5f253Ab73c95D2b5b573a5e3bb",
+      "verified": false
+    },
+    "SampleNFT": {
+      "address": "0x7c126B0E79912966Ffd08911CbA6cEA2D9Cd40B2",
+      "constructorArgs": ["0xF034a404241707F347A952Cd4095f9035AF877Bf"],
+      "deployedAt": "2025-01-15",
+      "deployer": "0x9B00bF7321e8Dc5f253Ab73c95D2b5b573a5e3bb",
+      "verified": false
     }
   },
-  "notes": "ERC2771Forwarder is a stateless utility contract. Once deployed, it can be used permanently by any contract that trusts it."
+  "notes": "ERC2771Forwarder is a stateless utility contract. Once deployed, it can be used permanently by any contract that trusts it. SampleToken and SampleNFT are for integration testing purposes."
 }
