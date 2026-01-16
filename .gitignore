@@ -155,6 +155,7 @@ coverage.json
 !**/*-key.guard.ts
 !**/*-key.guard.spec.ts
 !**/api-key*.ts
+!scripts/*.js
 
 # ===========================================
 # MoAI Directory Management
