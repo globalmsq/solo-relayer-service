@@ -1,9 +1,9 @@
 ---
 id: SPEC-DISCOVERY-001
-version: "1.0.0"
+version: "1.0.1"
 status: "draft"
 created: "2026-01-17"
-updated: "2026-01-17"
+updated: "2026-01-19"
 author: "MoAI-ADK"
 priority: "high"
 ---
@@ -12,6 +12,7 @@ priority: "high"
 
 | Version | Date | Author | Changes |
 |---------|------|--------|---------|
+| 1.0.1 | 2026-01-19 | MoAI-ADK | Fix test coverage targets, add missing IRs, improve acceptance criteria |
 | 1.0.0 | 2026-01-17 | MoAI-ADK | Initial SPEC creation for Relayer Discovery Service |
 
 # SPEC-DISCOVERY-001: Relayer Discovery Service
@@ -222,6 +223,20 @@ Health check failures SHOULD be logged and metrics SHOULD be collected.
 - Use structured logging format (JSON)
 - Integrate with existing logging infrastructure
 
+### NFR-006: Test Coverage Target
+
+Unit test coverage SHOULD be >= 90% for core services and >= 80% for integration tests.
+
+**Rationale:**
+- Align with project constitution (config.json: test_coverage_target = 90)
+- Ensure high code quality and reliability
+- Enable confident refactoring and maintenance
+
+**Implementation:**
+- Use Jest coverage reporting
+- Set coverage thresholds in jest.config.js
+- Gate CI/CD pipeline on coverage requirements
+
 ---
 
 ## 4. Interface Requirements (IR - SHALL)
@@ -253,9 +268,11 @@ Redis SHALL use a predictable key schema for relayer discovery.
 
 **Details:**
 - Active list key: `relayer:active` (Redis Set)
-- Status key pattern: `relayer:status:{N}` (Redis Hash, optional for detailed status)
+- Status key pattern: `relayer:status:{N}` (Redis Hash, **Phase 2 - Future Enhancement**)
 - TTL: No expiration (persistent state)
 - Namespace: Consider using `REDIS_KEY_PREFIX` for multi-tenancy (optional)
+
+**Note:** `relayer:status:{N}` keys are not implemented in Phase 1. They are reserved for future detailed status tracking (last check time, error count, etc.) in Phase 2.
 
 ### IR-004: Health Check Interval Configuration
 
@@ -305,6 +322,40 @@ The monitoring endpoint SHALL return JSON format with the following structure:
 - `totalConfigured`: Value of `RELAYER_COUNT`
 - `totalActive`: Number of relayers in `relayer:active` Redis set
 - `healthCheckInterval`: Value of `HEALTH_CHECK_INTERVAL_MS`
+
+**Status Determination:**
+- `healthy`: totalActive >= totalConfigured (all relayers active)
+- `degraded`: 0 < totalActive < totalConfigured (some relayers down)
+- `unhealthy`: totalActive = 0 (no active relayers available)
+
+**Status Transition Logic:**
+- healthy → degraded: When any relayer fails health check
+- degraded → healthy: When all relayers recover
+- degraded → unhealthy: When last active relayer fails
+- unhealthy → degraded: When first relayer recovers
+
+### IR-006: Health Check Timeout Configuration
+
+The relayer-discovery service SHALL read the `HEALTH_CHECK_TIMEOUT_MS` environment variable for health check timeout configuration.
+
+**Details:**
+- Variable name: `HEALTH_CHECK_TIMEOUT_MS`
+- Type: Integer
+- Default: 500 (500ms)
+- Unit: Milliseconds
+- Validation: 100 <= value <= 5000
+- Purpose: Fail-fast behavior for unresponsive relayers
+
+### IR-007: relayer-discovery Service Port
+
+The relayer-discovery service SHALL listen on port 3001 for HTTP requests.
+
+**Details:**
+- Port: 3001
+- Protocol: HTTP
+- Access: Internal network only (not exposed to public internet)
+- Endpoint: GET /status (see IR-005)
+- Purpose: Operational monitoring and health check status
 
 ---
 

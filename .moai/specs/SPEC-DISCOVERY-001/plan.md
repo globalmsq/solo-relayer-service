@@ -254,7 +254,6 @@ export default registerAs('discovery', () => ({
   relayerCount: parseInt(process.env.RELAYER_COUNT || '3', 10),
   healthCheckInterval: parseInt(process.env.HEALTH_CHECK_INTERVAL_MS || '10000', 10),
   healthCheckTimeout: parseInt(process.env.HEALTH_CHECK_TIMEOUT_MS || '500', 10),
-  relayerUrlTemplate: process.env.RELAYER_URL_TEMPLATE || 'http://oz-relayer-{N}:3000',
   redis: {
     host: process.env.REDIS_HOST || 'localhost',
     port: parseInt(process.env.REDIS_PORT || '6379', 10),
@@ -516,6 +515,7 @@ services:
       - REDIS_KEY_PREFIX=oz-relayer-0
     volumes:
       - ./keystore/relayer-0.json:/app/keystore.json
+    # Note: Container always uses /app/keystore.json regardless of host filename
 
   oz-relayer-1:
     image: openzeppelin/defender-relay-client:latest
@@ -523,6 +523,7 @@ services:
       - REDIS_KEY_PREFIX=oz-relayer-1
     volumes:
       - ./keystore/relayer-1.json:/app/keystore.json
+    # Note: Container always uses /app/keystore.json regardless of host filename
 
   oz-relayer-2:
     image: openzeppelin/defender-relay-client:latest
@@ -530,6 +531,7 @@ services:
       - REDIS_KEY_PREFIX=oz-relayer-2
     volumes:
       - ./keystore/relayer-2.json:/app/keystore.json
+    # Note: Container always uses /app/keystore.json regardless of host filename
 ```
 
 #### Step 3.2: Add relayer-discovery Service
@@ -871,7 +873,7 @@ redis-cli KEYS "oz-relayer-*"
 |----------|---------|---------|-------------|
 | `RELAYER_COUNT` | relayer-discovery | 3 | Number of relayers to monitor |
 | `HEALTH_CHECK_INTERVAL_MS` | relayer-discovery | 10000 | Health check interval (ms) |
-| `HEALTH_CHECK_TIMEOUT_MS` | relayer-discovery | 500 | Health check timeout (ms) |
+| `HEALTH_CHECK_TIMEOUT_MS` | relayer-discovery | 500 | Health check timeout (ms) - See IR-006 |
 | `REDIS_HOST` | relayer-discovery, queue-consumer | localhost | Redis host |
 | `REDIS_PORT` | relayer-discovery, queue-consumer | 6379 | Redis port |
 | `REDIS_KEY_PREFIX` | oz-relayer-* | oz-relayer-{N} | Redis key prefix for relayer state |

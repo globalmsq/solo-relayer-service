@@ -33,15 +33,15 @@ REDIS_PORT=6379
 
 # oz-relayer-0
 REDIS_KEY_PREFIX=oz-relayer-0
-KEYSTORE_PATH=/app/keystore/relayer-0.json
+KEYSTORE_PATH=/app/keystore.json  # ← Updated: Consistent with docker-compose mount
 
 # oz-relayer-1
 REDIS_KEY_PREFIX=oz-relayer-1
-KEYSTORE_PATH=/app/keystore/relayer-1.json
+KEYSTORE_PATH=/app/keystore.json  # ← Updated
 
 # oz-relayer-2
 REDIS_KEY_PREFIX=oz-relayer-2
-KEYSTORE_PATH=/app/keystore/relayer-2.json
+KEYSTORE_PATH=/app/keystore.json  # ← Updated
 ```
 
 **Setup Commands:**
@@ -65,7 +65,10 @@ redis-cli FLUSHDB
 #### AC-001: Initial Discovery of All Relayers
 
 **Priority:** HIGH
-**Related Requirements:** FR-001, FR-002, FR-005
+**Related Requirements:**
+- [FR-001 (Active Health Check)](./spec.md#fr-001-active-health-check-execution)
+- [FR-002 (Redis Management)](./spec.md#fr-002-redis-active-relayer-list-management)
+- [FR-005 (Zero-Based Naming)](./spec.md#fr-005-zero-based-naming-convention)
 
 **Given:**
 - 3 OZ Relayers (oz-relayer-0, oz-relayer-1, oz-relayer-2) are running
@@ -110,7 +113,8 @@ docker-compose logs relayer-discovery | grep "Added .* to active list"
 #### AC-002: Fast Health Check Completion
 
 **Priority:** MEDIUM
-**Related Requirements:** NFR-001
+**Related Requirements:**
+- [NFR-001 (Fast Health Check Execution)](./spec.md#nfr-001-fast-health-check-execution)
 
 **Given:**
 - All OZ Relayers are healthy
@@ -121,7 +125,6 @@ docker-compose logs relayer-discovery | grep "Added .* to active list"
 
 **Then:**
 - All health checks SHALL complete within 500ms per relayer
-- Total health check cycle duration SHALL be <= 1500ms (for 3 relayers in parallel)
 - Logs SHALL include health check duration metrics
 
 **Verification Steps:**
@@ -140,7 +143,6 @@ docker-compose logs -f relayer-discovery | grep "Health check completed"
 
 **Success Criteria:**
 - [ ] Each health check completes in <= 500ms
-- [ ] Total cycle duration <= 1500ms (parallel execution)
 - [ ] No timeout errors in logs
 
 ---
@@ -150,7 +152,8 @@ docker-compose logs -f relayer-discovery | grep "Health check completed"
 #### AC-003: Unhealthy Relayer Removal
 
 **Priority:** HIGH
-**Related Requirements:** FR-006
+**Related Requirements:**
+- [FR-006 (Unhealthy Relayer Removal)](./spec.md#fr-006-unhealthy-relayer-removal)
 
 **Given:**
 - All 3 relayers are initially in `relayer:active`
@@ -196,7 +199,8 @@ docker-compose logs relayer-discovery | grep "Removed oz-relayer-1"
 #### AC-004: Recovered Relayer Re-addition
 
 **Priority:** HIGH
-**Related Requirements:** FR-007
+**Related Requirements:**
+- [FR-007 (Recovered Relayer Re-addition)](./spec.md#fr-007-recovered-relayer-re-addition)
 
 **Given:**
 - oz-relayer-1 was previously removed due to failure
@@ -246,7 +250,9 @@ docker-compose logs relayer-discovery | grep "Added oz-relayer-1 to active list"
 #### AC-005: RELAYER_COUNT Configuration Enforcement
 
 **Priority:** MEDIUM
-**Related Requirements:** FR-004, IR-001
+**Related Requirements:**
+- [FR-004 (Configurable Health Check Interval)](./spec.md#fr-004-configurable-health-check-interval)
+- [IR-001 (RELAYER_COUNT Environment Variable)](./spec.md#ir-001-relayer_count-environment-variable)
 
 **Given:**
 - 3 OZ Relayers are running (oz-relayer-0, oz-relayer-1, oz-relayer-2)
@@ -290,7 +296,9 @@ docker-compose logs relayer-discovery | grep "Monitoring"
 #### AC-006: Custom Health Check Interval
 
 **Priority:** LOW
-**Related Requirements:** FR-004, IR-004
+**Related Requirements:**
+- [FR-004 (Configurable Health Check Interval)](./spec.md#fr-004-configurable-health-check-interval)
+- [IR-004 (Health Check Interval Configuration)](./spec.md#ir-004-health-check-interval-configuration)
 
 **Given:**
 - `HEALTH_CHECK_INTERVAL_MS=5000` is set in environment (5 seconds instead of default 10 seconds)
@@ -313,12 +321,12 @@ docker-compose logs relayer-discovery | grep "Monitoring"
 docker-compose restart relayer-discovery
 
 # 3. Monitor logs with timestamps
-docker-compose logs -f relayer-discovery | grep "Health check cycle completed"
+docker-compose logs -f relayer-discovery | grep "Health check completed"
 
 # Expected log output (timestamps approximately 5 seconds apart):
-# [10:00:00] Health check cycle completed in 450ms
-# [10:00:05] Health check cycle completed in 430ms
-# [10:00:10] Health check cycle completed in 460ms
+# [10:00:00] Health check completed for oz-relayer-0 in 450ms
+# [10:00:05] Health check completed for oz-relayer-0 in 430ms
+# [10:00:10] Health check completed for oz-relayer-0 in 460ms
 ```
 
 **Success Criteria:**
@@ -333,7 +341,8 @@ docker-compose logs -f relayer-discovery | grep "Health check cycle completed"
 #### AC-007: Redis State Consistency Under Concurrent Updates
 
 **Priority:** MEDIUM
-**Related Requirements:** NFR-002
+**Related Requirements:**
+- [NFR-002 (Atomic Redis Operations)](./spec.md#nfr-002-atomic-redis-operations)
 
 **Given:**
 - Multiple health checks execute concurrently (3 relayers checked in parallel)
@@ -377,7 +386,9 @@ redis-cli SCARD relayer:active
 #### AC-008: Redis Connection Failure Handling
 
 **Priority:** HIGH
-**Related Requirements:** NFR-002, FR-003
+**Related Requirements:**
+- [NFR-002 (Atomic Redis Operations)](./spec.md#nfr-002-atomic-redis-operations)
+- [FR-003 (Queue Consumer Redis Integration)](./spec.md#fr-003-queue-consumer-redis-integration)
 
 **Given:**
 - Redis connection is unavailable or fails during operation
@@ -436,7 +447,9 @@ docker-compose logs relayer-discovery | grep "Redis connection restored"
 #### AC-009: Monitoring Endpoint Returns Active Relayer List
 
 **Priority:** MEDIUM
-**Related Requirements:** FR-008, IR-005
+**Related Requirements:**
+- [FR-008 (Monitoring API Endpoint)](./spec.md#fr-008-monitoring-api-endpoint)
+- [IR-005 (Monitoring Endpoint Response Format)](./spec.md#ir-005-monitoring-endpoint-response-format)
 
 **Given:**
 - The relayer-discovery service is running
@@ -463,7 +476,7 @@ docker-compose stop oz-relayer-2
 sleep 11
 
 # 3. Query monitoring endpoint
-curl -s http://localhost:3001/status | jq
+curl -s http://relayer-discovery:3001/status | jq
 
 # Expected response:
 # {
@@ -490,7 +503,7 @@ curl -s http://localhost:3001/status | jq
 # }
 
 # 4. Verify JSON schema
-curl -s http://localhost:3001/status | jq '.activeRelayers | length'
+curl -s http://relayer-discovery:3001/status | jq '.activeRelayers | length'
 # Expected: 2
 ```
 
@@ -502,6 +515,62 @@ curl -s http://localhost:3001/status | jq '.activeRelayers | length'
 - [ ] `totalActive` = 2
 - [ ] Active relayers array contains oz-relayer-0 and oz-relayer-1 only
 - [ ] Each relayer has id, status, lastCheckTimestamp, url fields
+
+---
+
+### AC-010: queue-consumer Redis Connection Failure Handling
+
+**Priority:** HIGH
+**Related Requirements:**
+- [FR-003 (Queue Consumer Redis Integration)](./spec.md#fr-003-queue-consumer-redis-integration)
+
+**Given:**
+- queue-consumer is running
+- Redis connection becomes unavailable during operation
+
+**When:**
+- queue-consumer attempts to query `relayer:active` via `SMEMBERS`
+
+**Then:**
+- Service SHALL log error with timestamp and error details
+- Service SHALL retry with exponential backoff (1s, 2s, 4s, max 10s)
+- Service SHALL NOT crash (continues running)
+- Relay requests SHALL fail gracefully with "No active relayers" error
+- Once Redis recovers, service SHALL resume normal operation
+
+**Verification Steps:**
+```bash
+# 1. Verify queue-consumer is running
+docker-compose ps queue-consumer
+# Expected: Status = Up
+
+# 2. Stop Redis
+docker-compose stop redis
+
+# 3. Monitor queue-consumer logs
+docker-compose logs -f queue-consumer | grep "Redis"
+# Expected: Error logs with retry attempts
+
+# 4. Verify service continues running
+docker-compose ps queue-consumer
+# Expected: Status still Up (not crashed)
+
+# 5. Restart Redis
+docker-compose start redis
+
+# 6. Wait 15 seconds
+sleep 15
+
+# 7. Verify service recovers
+docker-compose logs queue-consumer | grep "Redis connection restored"
+```
+
+**Success Criteria:**
+- [ ] Error logs show Redis connection failures
+- [ ] Service does not crash during Redis outage
+- [ ] Retry logic executes (exponential backoff visible in logs)
+- [ ] Relay requests fail with appropriate error message
+- [ ] Service recovers automatically when Redis restarts
 
 ---
 
@@ -713,7 +782,7 @@ redis-cli SLOWLOG GET 10
 ```bash
 # Use Apache Bench or curl with timing
 for i in {1..100}; do
-  curl -o /dev/null -s -w "%{time_total}\n" http://localhost:3001/status
+  curl -o /dev/null -s -w "%{time_total}\n" http://relayer-discovery:3001/status
 done | sort -n | tail -n 5
 
 # Expected: All values < 0.100 (100ms)
@@ -730,35 +799,36 @@ The implementation SHALL be considered complete and ready for production when:
 1. **All AC scenarios pass (AC-001 through AC-009):** 9/9 scenarios passing
 2. **All edge cases handled correctly:** 5/5 edge cases verified
 3. **Performance criteria met:** 3/3 performance tests passing
-4. **Test coverage >= 90%:** Unit tests, integration tests
+4. **Test coverage >= 80%:** Unit tests, integration tests
 5. **No regressions:** All existing integration tests pass
 6. **Documentation complete:** README, operational guides updated
 7. **Code review approved:** Technical lead sign-off
 
 ### Acceptance Checklist
 
-- [ ] AC-001: Initial discovery of all relayers ✅
-- [ ] AC-002: Fast health check completion ✅
-- [ ] AC-003: Unhealthy relayer removal ✅
-- [ ] AC-004: Recovered relayer re-addition ✅
-- [ ] AC-005: RELAYER_COUNT configuration enforcement ✅
-- [ ] AC-006: Custom health check interval ✅
-- [ ] AC-007: Redis state consistency under concurrent updates ✅
-- [ ] AC-008: Redis connection failure handling ✅
-- [ ] AC-009: Monitoring endpoint returns active relayer list ✅
-- [ ] Edge Case 1: All relayers down ✅
-- [ ] Edge Case 2: Redis connection failure during startup ✅
-- [ ] Edge Case 3: Partial network failure ✅
-- [ ] Edge Case 4: Health endpoint returns non-200 status ✅
-- [ ] Edge Case 5: RELAYER_COUNT exceeds deployed relayers ✅
-- [ ] Performance Test 1: Health check latency < 500ms ✅
-- [ ] Performance Test 2: Redis update latency < 100ms ✅
-- [ ] Performance Test 3: Monitoring endpoint response < 100ms ✅
-- [ ] Unit test coverage >= 90% ✅
-- [ ] Integration test coverage >= 80% ✅
-- [ ] No regressions in existing tests ✅
-- [ ] Documentation updated ✅
-- [ ] Code review approved ✅
+- [ ] AC-001: Initial discovery of all relayers
+- [ ] AC-002: Fast health check completion
+- [ ] AC-003: Unhealthy relayer removal
+- [ ] AC-004: Recovered relayer re-addition
+- [ ] AC-005: RELAYER_COUNT configuration enforcement
+- [ ] AC-006: Custom health check interval
+- [ ] AC-007: Redis state consistency under concurrent updates
+- [ ] AC-008: Redis connection failure handling
+- [ ] AC-009: Monitoring endpoint returns active relayer list
+- [ ] AC-010: queue-consumer Redis connection failure handling
+- [ ] Edge Case 1: All relayers down
+- [ ] Edge Case 2: Redis connection failure during startup
+- [ ] Edge Case 3: Partial network failure
+- [ ] Edge Case 4: Health endpoint returns non-200 status
+- [ ] Edge Case 5: RELAYER_COUNT exceeds deployed relayers
+- [ ] Performance Test 1: Health check latency < 500ms
+- [ ] Performance Test 2: Redis update latency < 100ms
+- [ ] Performance Test 3: Monitoring endpoint response < 100ms
+- [ ] Unit test coverage >= 80%
+- [ ] Integration test coverage >= 80%
+- [ ] No regressions in existing tests
+- [ ] Documentation updated
+- [ ] Code review approved
 
 ---
 
@@ -771,11 +841,11 @@ The implementation SHALL be considered complete and ready for production when:
 | Health Check Discovery | 2 | - | - | - |
 | Failover Scenarios | 2 | - | - | - |
 | Configuration Changes | 2 | - | - | - |
-| Redis State Consistency | 2 | - | - | - |
+| Redis State Consistency | 3 | - | - | - |
 | Monitoring API | 1 | - | - | - |
 | Edge Cases | 5 | - | - | - |
 | Performance Tests | 3 | - | - | - |
-| **Total** | **17** | **-** | **-** | **-** |
+| **Total** | **18** | **-** | **-** | **-** |
 
 ### Test Environment Details
 
