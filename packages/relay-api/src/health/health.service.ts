@@ -31,6 +31,11 @@ export interface HealthCheckResponse {
 export class HealthService {
   private readonly relayerEndpoints = [
     {
+      id: "oz-relayer-0",
+      url: "http://oz-relayer-0:8080/api/v1/health",
+      apiKey: "test-api-key-relayer-0-local-dev-32ch",
+    },
+    {
       id: "oz-relayer-1",
       url: "http://oz-relayer-1:8080/api/v1/health",
       apiKey: "test-api-key-relayer-1-local-dev-32ch",
@@ -39,11 +44,6 @@ export class HealthService {
       id: "oz-relayer-2",
       url: "http://oz-relayer-2:8080/api/v1/health",
       apiKey: "test-api-key-relayer-2-local-dev-32ch",
-    },
-    {
-      id: "oz-relayer-3",
-      url: "http://oz-relayer-3:8080/api/v1/health",
-      apiKey: "test-api-key-relayer-3-local-dev-32ch",
     },
   ];
 

@@ -11,9 +11,9 @@ describe('RelayerRouterService', () => {
   let configService: ConfigService;
 
   const mockRelayerUrls = [
+    'http://oz-relayer-0:8080',
     'http://oz-relayer-1:8080',
     'http://oz-relayer-2:8080',
-    'http://oz-relayer-3:8080',
   ];
 
   beforeEach(async () => {
@@ -28,7 +28,7 @@ describe('RelayerRouterService', () => {
                 return mockRelayerUrls.join(',');
               }
               if (key === 'relayer.url') {
-                return 'http://oz-relayer-1:8080';
+                return 'http://oz-relayer-0:8080';
               }
               if (key === 'relayer.apiKey') {
                 return 'test-api-key';
@@ -83,21 +83,21 @@ describe('RelayerRouterService', () => {
     it('should select the relayer with the lowest pending transactions', async () => {
       // Mock relayer responses with different pending TX counts
       mockedAxios.get.mockImplementation((url: string) => {
-        if (url.includes('oz-relayer-1')) {
+        if (url.includes('oz-relayer-0')) {
           return Promise.resolve({
             data: {
               data: [{ id: 'relayer-1-id', pending_transactions: 5, status: 'active' }],
             },
           });
         }
-        if (url.includes('oz-relayer-2')) {
+        if (url.includes('oz-relayer-1')) {
           return Promise.resolve({
             data: {
               data: [{ id: 'relayer-2-id', pending_transactions: 2, status: 'active' }], // Lowest
             },
           });
         }
-        if (url.includes('oz-relayer-3')) {
+        if (url.includes('oz-relayer-2')) {
           return Promise.resolve({
             data: {
               data: [{ id: 'relayer-3-id', pending_transactions: 8, status: 'active' }],
@@ -109,7 +109,7 @@ describe('RelayerRouterService', () => {
 
       const result = await service.getAvailableRelayer();
 
-      expect(result.url).toBe('http://oz-relayer-2:8080');
+      expect(result.url).toBe('http://oz-relayer-1:8080');
       expect(result.relayerId).toBe('relayer-2-id');
     });
 
@@ -122,27 +122,27 @@ describe('RelayerRouterService', () => {
 
       const result = await service.getAvailableRelayer();
 
-      // Should select the first one (oz-relayer-1) when all are equal
-      expect(result.url).toBe('http://oz-relayer-1:8080');
+      // Should select the first one (oz-relayer-0) when all are equal
+      expect(result.url).toBe('http://oz-relayer-0:8080');
     });
 
     it('should skip unhealthy relayers (paused status)', async () => {
       mockedAxios.get.mockImplementation((url: string) => {
-        if (url.includes('oz-relayer-1')) {
+        if (url.includes('oz-relayer-0')) {
           return Promise.resolve({
             data: {
               data: [{ id: 'relayer-1-id', pending_transactions: 1, status: 'paused' }], // Paused
             },
           });
         }
-        if (url.includes('oz-relayer-2')) {
+        if (url.includes('oz-relayer-1')) {
           return Promise.resolve({
             data: {
               data: [{ id: 'relayer-2-id', pending_transactions: 5, status: 'active' }],
             },
           });
         }
-        if (url.includes('oz-relayer-3')) {
+        if (url.includes('oz-relayer-2')) {
           return Promise.resolve({
             data: {
               data: [{ id: 'relayer-3-id', pending_transactions: 10, status: 'active' }],
@@ -155,7 +155,7 @@ describe('RelayerRouterService', () => {
       const result = await service.getAvailableRelayer();
 
       // Should skip paused relayer-1, select relayer-2 (lower pending than relayer-3)
-      expect(result.url).toBe('http://oz-relayer-2:8080');
+      expect(result.url).toBe('http://oz-relayer-1:8080');
       expect(result.relayerId).toBe('relayer-2-id');
     });
 
@@ -165,7 +165,7 @@ describe('RelayerRouterService', () => {
       const result = await service.getAvailableRelayer();
 
       // Should use round-robin fallback with default relayer ID
-      expect(result.url).toBe('http://oz-relayer-1:8080');
+      expect(result.url).toBe('http://oz-relayer-0:8080');
       expect(result.relayerId).toBe('default-relayer');
     });
   });
@@ -224,34 +224,34 @@ describe('RelayerRouterService', () => {
 
       // First call
       const result1 = await service.getAvailableRelayer();
-      expect(result1.url).toBe('http://oz-relayer-1:8080');
+      expect(result1.url).toBe('http://oz-relayer-0:8080');
 
       // Clear cache to force round-robin again
+      service.invalidateCache('http://oz-relayer-0:8080');
       service.invalidateCache('http://oz-relayer-1:8080');
       service.invalidateCache('http://oz-relayer-2:8080');
-      service.invalidateCache('http://oz-relayer-3:8080');
 
       // Second call - should advance to next relayer
       const result2 = await service.getAvailableRelayer();
-      expect(result2.url).toBe('http://oz-relayer-2:8080');
+      expect(result2.url).toBe('http://oz-relayer-1:8080');
 
       // Clear cache again
+      service.invalidateCache('http://oz-relayer-0:8080');
       service.invalidateCache('http://oz-relayer-1:8080');
       service.invalidateCache('http://oz-relayer-2:8080');
-      service.invalidateCache('http://oz-relayer-3:8080');
 
       // Third call
       const result3 = await service.getAvailableRelayer();
-      expect(result3.url).toBe('http://oz-relayer-3:8080');
+      expect(result3.url).toBe('http://oz-relayer-2:8080');
 
       // Clear cache again
+      service.invalidateCache('http://oz-relayer-0:8080');
       service.invalidateCache('http://oz-relayer-1:8080');
       service.invalidateCache('http://oz-relayer-2:8080');
-      service.invalidateCache('http://oz-relayer-3:8080');
 
       // Fourth call - should wrap around to first
       const result4 = await service.getAvailableRelayer();
-      expect(result4.url).toBe('http://oz-relayer-1:8080');
+      expect(result4.url).toBe('http://oz-relayer-0:8080');
     });
   });
 
@@ -270,7 +270,7 @@ describe('RelayerRouterService', () => {
       expect(mockedAxios.get).toHaveBeenCalledTimes(3);
 
       // Invalidate cache for one relayer
-      service.invalidateCache('http://oz-relayer-1:8080');
+      service.invalidateCache('http://oz-relayer-0:8080');
 
       // Second call - should only refresh the invalidated relayer
       await service.getAvailableRelayer();
@@ -289,16 +289,16 @@ describe('RelayerRouterService', () => {
       const cacheState = service.getCacheState();
 
       expect(cacheState.size).toBe(3);
+      expect(cacheState.has('http://oz-relayer-0:8080')).toBe(true);
       expect(cacheState.has('http://oz-relayer-1:8080')).toBe(true);
       expect(cacheState.has('http://oz-relayer-2:8080')).toBe(true);
-      expect(cacheState.has('http://oz-relayer-3:8080')).toBe(true);
     });
   });
 
   describe('error handling', () => {
     it('should mark relayer as unhealthy when API returns error', async () => {
       mockedAxios.get.mockImplementation((url: string) => {
-        if (url.includes('oz-relayer-1')) {
+        if (url.includes('oz-relayer-0')) {
           return Promise.reject(new Error('Connection refused'));
         }
         return Promise.resolve({
@@ -311,12 +311,12 @@ describe('RelayerRouterService', () => {
       const result = await service.getAvailableRelayer();
 
       // Should select healthy relayer, not the failed one
-      expect(result.url).not.toBe('http://oz-relayer-1:8080');
+      expect(result.url).not.toBe('http://oz-relayer-0:8080');
     });
 
     it('should mark relayer as unhealthy when response has no relayer data', async () => {
       mockedAxios.get.mockImplementation((url: string) => {
-        if (url.includes('oz-relayer-1')) {
+        if (url.includes('oz-relayer-0')) {
           return Promise.resolve({ data: { data: [] } }); // Empty response
         }
         return Promise.resolve({
@@ -329,7 +329,7 @@ describe('RelayerRouterService', () => {
       const result = await service.getAvailableRelayer();
 
       // Should select healthy relayer, not the one with empty response
-      expect(result.url).not.toBe('http://oz-relayer-1:8080');
+      expect(result.url).not.toBe('http://oz-relayer-0:8080');
     });
   });
 

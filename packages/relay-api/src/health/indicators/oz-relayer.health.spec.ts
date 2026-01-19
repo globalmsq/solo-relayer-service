@@ -43,7 +43,7 @@ describe("OzRelayerHealthIndicator", () => {
           useValue: {
             get: jest.fn((key: string, defaultValue?: string) => {
               if (key === "OZ_RELAYER_URL") {
-                return "http://oz-relayer-1:8080";
+                return "http://oz-relayer-0:8080";
               }
               if (key === "OZ_RELAYER_API_KEY") {
                 return "oz-relayer-shared-api-key-local-dev";
@@ -75,7 +75,7 @@ describe("OzRelayerHealthIndicator", () => {
       expect(result["oz-relayer"].status).toBe("up");
       expect(result["oz-relayer"].relayerCount).toBe(1);
       expect(httpService.get).toHaveBeenCalledWith(
-        "http://oz-relayer-1:8080/api/v1/relayers",
+        "http://oz-relayer-0:8080/api/v1/relayers",
         expect.objectContaining({
           headers: {
             Authorization: "Bearer oz-relayer-shared-api-key-local-dev",

@@ -1,7 +1,8 @@
 /**
  * Batch Keystore Generation Script for OZ Relayers
  *
- * Generates keystores for relayer-2 and relayer-3 using Hardhat test accounts
+ * Generates keystores for relayer-1 and relayer-2 using Hardhat test accounts
+ * SPEC-DISCOVERY-001: Zero-based naming (relayer-0, relayer-1, relayer-2)
  * Usage: node scripts/generate-keystores.js
  */
 
@@ -12,17 +13,17 @@ const path = require('path');
 // Hardhat test accounts (standard well-known test keys)
 // These are publicly known test keys - NEVER use in production!
 const HARDHAT_ACCOUNTS = {
-  // Account #1 - Used by relayer-1
-  1: {
-    address: '0x70997970C51812dc3A010C7d01b50e0d17dc79C8',
-    privateKey: '0x59c6995e998f97a5a0044966f0945389dc9e86dae88c7a8412f4603b6b78690d'
+  // Account #10 - Used by relayer-0
+  10: {
+    address: '0x3C44CdDdB6a900fa2b585dd299e03d12FA4293BC',
+    privateKey: '0x5de4111afa1a4b94908f83103eb1f1706367c2e68ca870fc3fb9a804cdab365a'
   },
-  // Account #11 - Used by relayer-2
+  // Account #11 - Used by relayer-1
   11: {
     address: '0x71bE63f3384f5fb98995898A86B02Fb2426c5788',
     privateKey: '0x701b615bbdfb9de65240bc28bd21bbc0d996645a3dd57e7b12bc2bdf6f192c82'
   },
-  // Account #12 - Used by relayer-3
+  // Account #12 - Used by relayer-2
   12: {
     address: '0xFABB0ac9d68B0B445fB7357272Ff202C5651694a',
     privateKey: '0xa267530f49f8280200edf313ee7af6b827f2a8bce2897751d06a843f644967b1'
@@ -86,10 +87,10 @@ async function main() {
 
   const results = [];
 
-  // Generate keystores for relayer-2 and relayer-3
-  // (relayer-1 keystore is already valid)
-  results.push(await generateKeystore(2, 11));  // relayer-2 uses Account #11
-  results.push(await generateKeystore(3, 12));  // relayer-3 uses Account #12
+  // Generate keystores for relayer-1 and relayer-2
+  // (relayer-0 keystore is already valid)
+  results.push(await generateKeystore(1, 11));  // relayer-1 uses Account #11
+  results.push(await generateKeystore(2, 12));  // relayer-2 uses Account #12
 
   console.log('\n========================================');
   console.log('Summary');

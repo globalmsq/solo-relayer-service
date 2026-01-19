@@ -14,7 +14,7 @@ import { firstValueFrom } from "rxjs";
  * SPEC-PROXY-001: OZ Relayer Health Check
  * - Supports both direct relayer connection and Nginx LB
  * - Uses /api/v1/relayers endpoint with Bearer token authentication
- * - Works with single relayer (oz-relayer-1) or load balancer (oz-relayer-lb)
+ * - Works with single relayer (oz-relayer-0) or load balancer (oz-relayer-lb)
  *
  * Health Check Strategy:
  * - Direct Relayer: GET /api/v1/relayers with Authorization header

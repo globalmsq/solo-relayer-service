@@ -103,9 +103,9 @@ ls -la docker/
 # ├── docker-compose-amoy.yaml
 # ├── config/
 # │   └── oz-relayer/
+# │       ├── relayer-0.json
 # │       ├── relayer-1.json
-# │       ├── relayer-2.json
-# │       └── relayer-3.json
+# │       └── relayer-2.json
 # ├── keys-example/
 # │   ├── relayer-1/keystore.json
 # │   ├── relayer-2/keystore.json
@@ -181,7 +181,7 @@ To change environment variables, edit `docker/docker-compose.yaml`:
 
 ```yaml
 services:
-  oz-relayer-1:
+  oz-relayer-0:
     environment:
       RUST_LOG: debug  # Change to debug for verbose logs
       KEYSTORE_PASSPHRASE: your-custom-passphrase
@@ -208,9 +208,9 @@ networks:
 - `hardhat-node:8545` - Hardhat blockchain RPC
 - `redis:6379` - Redis cache
 - `relay-api:3000` - API Gateway
-- `oz-relayer-1:8080` - Relayer 1
-- `oz-relayer-2:8080` - Relayer 2
-- `oz-relayer-3:8080` - Relayer 3
+- `oz-relayer-0:8080` - Relayer 1
+- `oz-relayer-1:8080` - Relayer 2
+- `oz-relayer-2:8080` - Relayer 3
 
 ### Volume Configuration
 
@@ -231,7 +231,7 @@ volumes:
 ```yaml
 volumes:
   - ../packages/relay-api/config:/app/config  # Config files
-  - ./config/oz-relayer/relayer-1.json:/app/config/config.json:ro  # Read-only relayer config
+  - ./config/oz-relayer/relayer-0.json:/app/config/config.json:ro  # Read-only relayer config
   - ./keys/relayer-1:/app/config/keys:ro  # Read-only keystores
 ```
 
@@ -253,7 +253,7 @@ docker compose -f docker/docker-compose.yaml logs -f
 
 # View specific service logs
 docker compose -f docker/docker-compose.yaml logs relay-api
-docker compose -f docker/docker-compose.yaml logs oz-relayer-1
+docker compose -f docker/docker-compose.yaml logs oz-relayer-0
 docker compose -f docker/docker-compose.yaml logs redis
 docker compose -f docker/docker-compose.yaml logs hardhat-node
 ```
@@ -281,7 +281,7 @@ docker compose -f docker/docker-compose.yaml ps
 docker compose -f docker/docker-compose.yaml ps --format "table {{.Service}}\t{{.Status}}"
 
 # Restart specific service
-docker compose -f docker/docker-compose.yaml restart oz-relayer-1
+docker compose -f docker/docker-compose.yaml restart oz-relayer-0
 
 # Stop all services
 docker compose -f docker/docker-compose.yaml down

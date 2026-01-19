@@ -14,7 +14,7 @@ describe('ConsumerService (Fire-and-Forget Pattern)', () => {
   let prisma: PrismaService;
   let configService: ConfigService;
 
-  const mockRelayerUrl = 'http://oz-relayer-1:8080';
+  const mockRelayerUrl = 'http://oz-relayer-0:8080';
 
   beforeEach(async () => {
     const module: TestingModule = await Test.createTestingModule({
@@ -223,7 +223,7 @@ describe('ConsumerService (Fire-and-Forget Pattern)', () => {
 
     it('should track ozRelayerUrl for debugging (DC-005)', async () => {
       const transactionId = 'tx-123';
-      const selectedRelayerUrl = 'http://oz-relayer-2:8080';
+      const selectedRelayerUrl = 'http://oz-relayer-1:8080';
       const mockMessage = {
         MessageId: 'msg-1',
         Body: JSON.stringify({

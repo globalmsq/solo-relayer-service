@@ -66,31 +66,31 @@ describe("DiscoveryService Integration Tests", () => {
 
     it("should add relayers to Redis active list", async () => {
       await redisService.sadd("relayer:active", "oz-relayer-0");
-      await redisService.sadd("relayer:active", "oz-relayer-1");
+      await redisService.sadd("relayer:active", "oz-relayer-0");
 
       const activeRelayers = await redisService.smembers("relayer:active");
 
       expect(activeRelayers).toHaveLength(2);
       expect(activeRelayers).toContain("oz-relayer-0");
-      expect(activeRelayers).toContain("oz-relayer-1");
+      expect(activeRelayers).toContain("oz-relayer-0");
     });
 
     it("should remove relayers from Redis active list", async () => {
       await redisService.sadd("relayer:active", "oz-relayer-0");
-      await redisService.sadd("relayer:active", "oz-relayer-1");
+      await redisService.sadd("relayer:active", "oz-relayer-0");
 
       await redisService.srem("relayer:active", "oz-relayer-0");
 
       const activeRelayers = await redisService.smembers("relayer:active");
 
       expect(activeRelayers).toHaveLength(1);
-      expect(activeRelayers).toContain("oz-relayer-1");
+      expect(activeRelayers).toContain("oz-relayer-0");
       expect(activeRelayers).not.toContain("oz-relayer-0");
     });
 
     it("should get cardinality of Redis set", async () => {
       await redisService.sadd("relayer:active", "oz-relayer-0");
-      await redisService.sadd("relayer:active", "oz-relayer-1");
+      await redisService.sadd("relayer:active", "oz-relayer-0");
 
       const count = await redisService.scard("relayer:active");
 
@@ -120,19 +120,19 @@ describe("DiscoveryService Integration Tests", () => {
 
       expect(activeRelayers).toHaveLength(3);
       expect(activeRelayers).toContain("oz-relayer-0");
+      expect(activeRelayers).toContain("oz-relayer-0");
       expect(activeRelayers).toContain("oz-relayer-1");
-      expect(activeRelayers).toContain("oz-relayer-2");
     });
 
     it("should remove unhealthy relayers from Redis", async () => {
       // First, add all relayers
       await redisService.sadd("relayer:active", "oz-relayer-0");
+      await redisService.sadd("relayer:active", "oz-relayer-0");
       await redisService.sadd("relayer:active", "oz-relayer-1");
-      await redisService.sadd("relayer:active", "oz-relayer-2");
 
-      // Mock HTTP service to simulate oz-relayer-1 is down
+      // Mock HTTP service to simulate oz-relayer-0 is down
       jest.spyOn(httpService, "get").mockImplementation((url: string) => {
-        if (url.includes("oz-relayer-1")) {
+        if (url.includes("oz-relayer-0")) {
           throw new Error("Connection refused");
         }
         return of({
@@ -152,8 +152,8 @@ describe("DiscoveryService Integration Tests", () => {
 
       expect(activeRelayers).toHaveLength(2);
       expect(activeRelayers).toContain("oz-relayer-0");
-      expect(activeRelayers).not.toContain("oz-relayer-1");
-      expect(activeRelayers).toContain("oz-relayer-2");
+      expect(activeRelayers).not.toContain("oz-relayer-0");
+      expect(activeRelayers).toContain("oz-relayer-1");
     });
 
     it("should re-add recovered relayers to Redis", async () => {
@@ -180,8 +180,8 @@ describe("DiscoveryService Integration Tests", () => {
 
       expect(activeRelayers).toHaveLength(3);
       expect(activeRelayers).toContain("oz-relayer-0");
+      expect(activeRelayers).toContain("oz-relayer-0");
       expect(activeRelayers).toContain("oz-relayer-1");
-      expect(activeRelayers).toContain("oz-relayer-2");
     });
   });
 
@@ -189,7 +189,7 @@ describe("DiscoveryService Integration Tests", () => {
     it("should return status from real Redis data", async () => {
       // Add relayers to Redis
       await redisService.sadd("relayer:active", "oz-relayer-0");
-      await redisService.sadd("relayer:active", "oz-relayer-2");
+      await redisService.sadd("relayer:active", "oz-relayer-1");
 
       const status = await discoveryService.getStatus();
 
@@ -201,13 +201,13 @@ describe("DiscoveryService Integration Tests", () => {
 
       const relayerIds = status.activeRelayers.map((r) => r.id);
       expect(relayerIds).toContain("oz-relayer-0");
-      expect(relayerIds).toContain("oz-relayer-2");
+      expect(relayerIds).toContain("oz-relayer-1");
     });
 
     it("should return healthy status when all relayers active in Redis", async () => {
       await redisService.sadd("relayer:active", "oz-relayer-0");
+      await redisService.sadd("relayer:active", "oz-relayer-0");
       await redisService.sadd("relayer:active", "oz-relayer-1");
-      await redisService.sadd("relayer:active", "oz-relayer-2");
 
       const status = await discoveryService.getStatus();
 

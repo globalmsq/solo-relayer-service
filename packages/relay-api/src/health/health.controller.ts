@@ -47,20 +47,20 @@ export class HealthController {
             totalCount: 3,
             relayers: [
               {
-                id: "oz-relayer-1",
-                url: "http://oz-relayer-1:8080/api/v1/health",
+                id: "oz-relayer-0",
+                url: "http://oz-relayer-0:8080/api/v1/health",
                 status: "healthy",
                 responseTime: 45,
               },
               {
-                id: "oz-relayer-2",
-                url: "http://oz-relayer-2:8080/api/v1/health",
+                id: "oz-relayer-1",
+                url: "http://oz-relayer-1:8080/api/v1/health",
                 status: "healthy",
                 responseTime: 52,
               },
               {
-                id: "oz-relayer-3",
-                url: "http://oz-relayer-3:8080/api/v1/health",
+                id: "oz-relayer-2",
+                url: "http://oz-relayer-2:8080/api/v1/health",
                 status: "healthy",
                 responseTime: 48,
               },
@@ -79,20 +79,20 @@ export class HealthController {
             totalCount: 3,
             relayers: [
               {
-                id: "oz-relayer-1",
-                url: "http://oz-relayer-1:8080/api/v1/health",
+                id: "oz-relayer-0",
+                url: "http://oz-relayer-0:8080/api/v1/health",
                 status: "healthy",
                 responseTime: 45,
               },
               {
-                id: "oz-relayer-2",
-                url: "http://oz-relayer-2:8080/api/v1/health",
+                id: "oz-relayer-1",
+                url: "http://oz-relayer-1:8080/api/v1/health",
                 status: "healthy",
                 responseTime: 52,
               },
               {
-                id: "oz-relayer-3",
-                url: "http://oz-relayer-3:8080/api/v1/health",
+                id: "oz-relayer-2",
+                url: "http://oz-relayer-2:8080/api/v1/health",
                 status: "healthy",
                 responseTime: 48,
               },

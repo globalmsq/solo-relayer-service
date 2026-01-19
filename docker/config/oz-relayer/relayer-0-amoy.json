@@ -1,11 +1,11 @@
 {
   "relayers": [
     {
-      "id": "relayer-3",
-      "name": "MSQ Relayer 3 (Amoy Testnet)",
+      "id": "relayer-0",
+      "name": "MSQ Relayer 0 (Amoy Testnet)",
       "network": "amoy",
       "network_type": "evm",
-      "signer_id": "relayer-3-signer",
+      "signer_id": "relayer-0-signer",
       "paused": false,
       "custom_rpc_urls": [
         {
@@ -21,7 +21,7 @@
   ],
   "signers": [
     {
-      "id": "relayer-3-signer",
+      "id": "relayer-0-signer",
       "type": "local",
       "config": {
         "path": "/app/config/keys/keystore.json",

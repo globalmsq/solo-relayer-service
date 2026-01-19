@@ -159,7 +159,7 @@ describe("StatusService", () => {
      */
     it("should fetch from OZ Relayer and store in Redis + MySQL (Tier 3)", async () => {
       const ozRelayerTxId = "oz-relayer-tx-uuid";
-      const ozRelayerUrl = "http://oz-relayer-1:8080";
+      const ozRelayerUrl = "http://oz-relayer-0:8080";
 
       // MySQL returns non-terminal status with ozRelayerTxId
       const storedData = {
@@ -280,7 +280,7 @@ describe("StatusService", () => {
      */
     it("should throw ServiceUnavailableException when OZ Relayer unavailable", async () => {
       const ozRelayerTxId = "oz-relayer-tx-uuid";
-      const ozRelayerUrl = "http://oz-relayer-1:8080";
+      const ozRelayerUrl = "http://oz-relayer-0:8080";
       const networkError = new Error("ECONNREFUSED");
 
       // MySQL returns non-terminal status with ozRelayerTxId
@@ -331,7 +331,7 @@ describe("StatusService", () => {
      */
     it("should correctly transform OZ Relayer response to DTO", async () => {
       const ozRelayerTxId = "oz-relayer-tx-uuid";
-      const ozRelayerUrl = "http://oz-relayer-1:8080";
+      const ozRelayerUrl = "http://oz-relayer-0:8080";
 
       // MySQL returns non-terminal status with ozRelayerTxId
       const storedData = {

@@ -115,11 +115,11 @@ describe("DiscoveryService", () => {
         { timeout: 500 },
       );
       expect(httpService.get).toHaveBeenCalledWith(
-        "http://oz-relayer-1:3000/health",
+        "http://oz-relayer-0:3000/health",
         { timeout: 500 },
       );
       expect(httpService.get).toHaveBeenCalledWith(
-        "http://oz-relayer-2:3000/health",
+        "http://oz-relayer-1:3000/health",
         { timeout: 500 },
       );
     });
@@ -144,17 +144,17 @@ describe("DiscoveryService", () => {
       );
       expect(redisService.sadd).toHaveBeenCalledWith(
         "relayer:active",
-        "oz-relayer-1",
+        "oz-relayer-0",
       );
       expect(redisService.sadd).toHaveBeenCalledWith(
         "relayer:active",
-        "oz-relayer-2",
+        "oz-relayer-1",
       );
     });
 
     it("should remove unhealthy relayers from Redis active list", async () => {
       jest.spyOn(httpService, "get").mockImplementation((url: string) => {
-        if (url.includes("oz-relayer-1")) {
+        if (url.includes("oz-relayer-0")) {
           return throwError(() => new Error("Connection refused"));
         }
         return of({
@@ -168,11 +168,11 @@ describe("DiscoveryService", () => {
 
       await service["performHealthChecks"]();
 
-      expect(redisService.sadd).toHaveBeenCalledWith(
+      expect(redisService.srem).toHaveBeenCalledWith(
         "relayer:active",
         "oz-relayer-0",
       );
-      expect(redisService.srem).toHaveBeenCalledWith(
+      expect(redisService.sadd).toHaveBeenCalledWith(
         "relayer:active",
         "oz-relayer-1",
       );
@@ -184,7 +184,7 @@ describe("DiscoveryService", () => {
 
     it("should handle non-200 HTTP status as unhealthy", async () => {
       jest.spyOn(httpService, "get").mockImplementation((url: string) => {
-        if (url.includes("oz-relayer-1")) {
+        if (url.includes("oz-relayer-0")) {
           return of({
             status: 500,
             data: {},
@@ -206,13 +206,13 @@ describe("DiscoveryService", () => {
 
       expect(redisService.srem).toHaveBeenCalledWith(
         "relayer:active",
-        "oz-relayer-1",
+        "oz-relayer-0",
       );
     });
 
     it("should handle timeout as unhealthy", async () => {
       jest.spyOn(httpService, "get").mockImplementation((url: string) => {
-        if (url.includes("oz-relayer-1")) {
+        if (url.includes("oz-relayer-0")) {
           return throwError(() => ({
             code: "ECONNABORTED",
             message: "timeout",
@@ -231,7 +231,7 @@ describe("DiscoveryService", () => {
 
       expect(redisService.srem).toHaveBeenCalledWith(
         "relayer:active",
-        "oz-relayer-1",
+        "oz-relayer-0",
       );
     });
 
@@ -251,8 +251,8 @@ describe("DiscoveryService", () => {
 
       expect(service["lastCheckTimestamps"].size).toBe(3);
       expect(service["lastCheckTimestamps"].has("oz-relayer-0")).toBe(true);
+      expect(service["lastCheckTimestamps"].has("oz-relayer-0")).toBe(true);
       expect(service["lastCheckTimestamps"].has("oz-relayer-1")).toBe(true);
-      expect(service["lastCheckTimestamps"].has("oz-relayer-2")).toBe(true);
     });
   });
 
@@ -260,7 +260,7 @@ describe("DiscoveryService", () => {
     it("should return service status with active relayers", async () => {
       jest
         .spyOn(redisService, "smembers")
-        .mockResolvedValue(["oz-relayer-0", "oz-relayer-2"]);
+        .mockResolvedValue(["oz-relayer-0", "oz-relayer-1"]);
 
       const status = await service.getStatus();
 
@@ -274,7 +274,7 @@ describe("DiscoveryService", () => {
     it("should determine status as healthy when all relayers active", async () => {
       jest
         .spyOn(redisService, "smembers")
-        .mockResolvedValue(["oz-relayer-0", "oz-relayer-1", "oz-relayer-2"]);
+        .mockResolvedValue(["oz-relayer-0", "oz-relayer-0", "oz-relayer-1"]);
 
       const status = await service.getStatus();
 
@@ -285,7 +285,7 @@ describe("DiscoveryService", () => {
     it("should determine status as degraded when some relayers active", async () => {
       jest
         .spyOn(redisService, "smembers")
-        .mockResolvedValue(["oz-relayer-0", "oz-relayer-2"]);
+        .mockResolvedValue(["oz-relayer-0", "oz-relayer-1"]);
 
       const status = await service.getStatus();
 
@@ -323,12 +323,12 @@ describe("DiscoveryService", () => {
     it("should construct correct relayer URLs", async () => {
       jest
         .spyOn(redisService, "smembers")
-        .mockResolvedValue(["oz-relayer-0", "oz-relayer-1"]);
+        .mockResolvedValue(["oz-relayer-0", "oz-relayer-0"]);
 
       const status = await service.getStatus();
 
       expect(status.activeRelayers[0].url).toBe("http://oz-relayer-0:3000");
-      expect(status.activeRelayers[1].url).toBe("http://oz-relayer-1:3000");
+      expect(status.activeRelayers[1].url).toBe("http://oz-relayer-0:3000");
     });
   });
 

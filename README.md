@@ -494,7 +494,7 @@ docker compose logs -f
 # Specific service
 docker compose logs -f relay-api
 docker compose logs -f queue-consumer
-docker compose logs -f oz-relayer-1
+docker compose logs -f oz-relayer-0
 ```
 
 ### Metrics

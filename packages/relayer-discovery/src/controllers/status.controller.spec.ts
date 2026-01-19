@@ -38,10 +38,10 @@ describe("StatusController", () => {
             url: "http://oz-relayer-0:3000",
           },
           {
-            id: "oz-relayer-1",
+            id: "oz-relayer-0",
             status: "healthy",
             lastCheckTimestamp: "2026-01-19T12:29:55.000Z",
-            url: "http://oz-relayer-1:3000",
+            url: "http://oz-relayer-0:3000",
           },
         ],
         totalConfigured: 3,

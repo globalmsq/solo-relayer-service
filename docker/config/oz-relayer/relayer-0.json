@@ -1,12 +1,12 @@
 {
   "relayers": [
     {
-      "id": "relayer-3",
-      "name": "MSQ Relayer 3 (Hardhat Account #12)",
+      "id": "relayer-0",
+      "name": "MSQ Relayer 0 (Hardhat Account #10)",
       "network": "hardhat",
       "network_type": "evm",
-      "signer_id": "relayer-3-signer",
-      "notification_id": "relayer-3-webhook",
+      "signer_id": "relayer-0-signer",
+      "notification_id": "relayer-0-webhook",
       "paused": false,
       "custom_rpc_urls": [
         {
@@ -22,7 +22,7 @@
   ],
   "signers": [
     {
-      "id": "relayer-3-signer",
+      "id": "relayer-0-signer",
       "type": "local",
       "config": {
         "path": "/app/config/keys/keystore.json",
@@ -35,7 +35,7 @@
   ],
   "notifications": [
     {
-      "id": "relayer-3-webhook",
+      "id": "relayer-0-webhook",
       "type": "webhook",
       "url": "http://relay-api:8080/api/v1/webhooks/oz-relayer",
       "signing_key": {
