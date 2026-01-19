@@ -12,11 +12,12 @@ const path = require('path');
 
 // Hardhat test accounts (standard well-known test keys)
 // These are publicly known test keys - NEVER use in production!
+// Reference: https://hardhat.org/hardhat-network/docs/reference#initial-state
 const HARDHAT_ACCOUNTS = {
   // Account #10 - Used by relayer-0
   10: {
-    address: '0x3C44CdDdB6a900fa2b585dd299e03d12FA4293BC',
-    privateKey: '0x5de4111afa1a4b94908f83103eb1f1706367c2e68ca870fc3fb9a804cdab365a'
+    address: '0xBcd4042DE499D14e55001CcbB24a551F3b954096',
+    privateKey: '0xf214f2b2cd398c806f84e317254e0f0b801d0643303237d97a22a48e01628897'
   },
   // Account #11 - Used by relayer-1
   11: {
@@ -87,8 +88,9 @@ async function main() {
 
   const results = [];
 
-  // Generate keystores for relayer-1 and relayer-2
-  // (relayer-0 keystore is already valid)
+  // Generate keystores for all relayers (relayer-0, relayer-1, relayer-2)
+  // SPEC-DISCOVERY-001: Zero-based naming convention
+  results.push(await generateKeystore(0, 10));  // relayer-0 uses Account #10
   results.push(await generateKeystore(1, 11));  // relayer-1 uses Account #11
   results.push(await generateKeystore(2, 12));  // relayer-2 uses Account #12
 

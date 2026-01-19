@@ -1,4 +1,4 @@
-import { ethers, JsonRpcProvider, Wallet } from 'ethers';
+import { ethers, JsonRpcProvider } from 'ethers';
 
 /**
  * Network Agnostic Configuration
@@ -42,15 +42,6 @@ export function createProvider(): JsonRpcProvider {
 }
 
 /**
- * Create a wallet connected to the configured network
- * @param privateKey - Private key for the wallet
- */
-export function createWallet(privateKey: string): Wallet {
-  const provider = createProvider();
-  return new Wallet(privateKey, provider);
-}
-
-/**
  * Check if the RPC endpoint is available
  * @returns true if the network is reachable
  */
@@ -61,18 +52,6 @@ export async function isNetworkAvailable(): Promise<boolean> {
     return true;
   } catch {
     return false;
-  } finally {
-    provider.destroy();
-  }
-}
-
-/**
- * Get the current block number from the network
- */
-export async function getBlockNumber(): Promise<number> {
-  const provider = createProvider();
-  try {
-    return await provider.getBlockNumber();
   } finally {
     provider.destroy();
   }
@@ -91,44 +70,3 @@ export async function getBalance(address: string): Promise<bigint> {
   }
 }
 
-/**
- * Wait for a transaction to be confirmed
- * @param txHash - Transaction hash to wait for
- * @param confirmations - Number of confirmations to wait for (default: 1)
- */
-export async function waitForTransaction(
-  txHash: string,
-  confirmations = 1,
-): Promise<ethers.TransactionReceipt | null> {
-  const provider = createProvider();
-  try {
-    return await provider.waitForTransaction(txHash, confirmations);
-  } finally {
-    provider.destroy();
-  }
-}
-
-/**
- * Skip test if network is not available
- * Use in beforeAll() to skip integration tests when RPC is unavailable
- */
-export async function skipIfNetworkUnavailable(): Promise<void> {
-  const available = await isNetworkAvailable();
-  if (!available) {
-    const { rpcUrl } = getNetworkConfig();
-    console.warn(`⚠️ Skipping integration tests: Network unavailable at ${rpcUrl}`);
-    // Jest will skip remaining tests in the suite
-    throw new Error(`Network unavailable at ${rpcUrl}. Skipping integration tests.`);
-  }
-}
-
-/**
- * Log network configuration for debugging
- */
-export function logNetworkConfig(): void {
-  const config = getNetworkConfig();
-  console.log('🔗 Network Configuration:');
-  console.log(`   RPC URL: ${config.rpcUrl}`);
-  console.log(`   Chain ID: ${config.chainId}`);
-  console.log(`   Forwarder: ${config.forwarderAddress}`);
-}

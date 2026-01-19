@@ -192,30 +192,6 @@ export function encodeTokenTransfer(to: string, amount: bigint): string {
 }
 
 /**
- * Encode ERC20 mint call data
- */
-export function encodeTokenMint(to: string, amount: bigint): string {
-  const iface = new Interface(SAMPLE_TOKEN_ABI);
-  return iface.encodeFunctionData('mint', [to, amount]);
-}
-
-/**
- * Encode ERC721 safeMint call data
- */
-export function encodeNFTMint(to: string): string {
-  const iface = new Interface(SAMPLE_NFT_ABI);
-  return iface.encodeFunctionData('safeMint', [to]);
-}
-
-/**
- * Encode ERC721 transferFrom call data
- */
-export function encodeNFTTransfer(from: string, to: string, tokenId: bigint): string {
-  const iface = new Interface(SAMPLE_NFT_ABI);
-  return iface.encodeFunctionData('transferFrom', [from, to, tokenId]);
-}
-
-/**
  * Hardhat deployer account (Account #0)
  * This is a well-known development key - NEVER use in production
  */
@@ -236,11 +212,6 @@ export const HARDHAT_RELAYER = {
 /**
  * Mint tokens directly using the deployer's private key
  * Used for test setup to pre-fund accounts before testing
- *
- * @param tokenAddress - SampleToken contract address
- * @param to - Address to mint tokens to
- * @param amount - Amount of tokens to mint (with decimals)
- * @returns Transaction hash
  */
 export async function mintTokensWithDeployer(
   tokenAddress: string,

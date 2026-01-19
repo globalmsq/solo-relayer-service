@@ -35,32 +35,6 @@ export function encodeTransfer(to: string, amount: bigint | string): string {
 }
 
 /**
- * Encode ERC-20 approve function call
- * @param spender - Address to approve
- * @param amount - Amount to approve (in smallest unit)
- */
-export function encodeApprove(spender: string, amount: bigint | string): string {
-  return erc20Interface.encodeFunctionData('approve', [spender, amount]);
-}
-
-/**
- * Encode balanceOf query
- * @param owner - Address to query balance of
- */
-export function encodeBalanceOf(owner: string): string {
-  return erc20Interface.encodeFunctionData('balanceOf', [owner]);
-}
-
-/**
- * Decode balanceOf result
- * @param data - Encoded result from balanceOf call
- */
-export function decodeBalanceOf(data: string): bigint {
-  const [balance] = erc20Interface.decodeFunctionResult('balanceOf', data);
-  return balance;
-}
-
-/**
  * Encode nonces query for Forwarder contract
  * @param owner - Address to query nonce for
  */
@@ -86,27 +60,3 @@ export function parseTokenAmount(amount: string | number, decimals = 18): bigint
   return ethers.parseUnits(String(amount), decimals);
 }
 
-/**
- * Format token amount for display
- * @param amount - Amount in smallest unit
- * @param decimals - Number of decimals (default: 18)
- */
-export function formatTokenAmount(amount: bigint, decimals = 18): string {
-  return ethers.formatUnits(amount, decimals);
-}
-
-/**
- * Create a deadline timestamp (seconds since epoch)
- * @param minutes - Minutes from now (default: 60)
- */
-export function createDeadline(minutes = 60): number {
-  return Math.floor(Date.now() / 1000) + minutes * 60;
-}
-
-/**
- * Check if a deadline has expired
- * @param deadline - Deadline timestamp (seconds since epoch)
- */
-export function isDeadlineExpired(deadline: number): boolean {
-  return Math.floor(Date.now() / 1000) > deadline;
-}

@@ -27,17 +27,6 @@ export interface TxStatusResult {
 }
 
 /**
- * Default polling config for production networks
- */
-export const DEFAULT_POLLING_CONFIG: PollingConfig = {
-  maxAttempts: 30,
-  initialDelayMs: 500,
-  maxDelayMs: 5000,
-  backoffMultiplier: 1.5,
-  terminalStatuses: ['confirmed', 'mined', 'failed', 'reverted'],
-};
-
-/**
  * Optimized polling config for Hardhat local network
  * Balanced for Docker Compose environment:
  * - maxAttempts: 20 (allows ~12 seconds total polling time)
@@ -135,13 +124,10 @@ export async function pollTransactionStatus(
         return status;
       }
 
-      // Log progress for debugging
-      if (attempt % 3 === 0) {
-        console.log(`   Polling [${attempt + 1}/${config.maxAttempts}]: status=${status.status}`);
-      }
+      // Log progress
+      console.log(`Polling [${attempt + 1}/${config.maxAttempts}]: status=${status.status}`);
     } catch (error) {
-      // Log error but continue polling (transient failures)
-      console.warn(`   Polling error [${attempt + 1}]: ${error instanceof Error ? error.message : error}`);
+      console.log(`Polling [${attempt + 1}]: waiting...`);
     }
 
     // Wait with exponential backoff
@@ -156,22 +142,8 @@ export async function pollTransactionStatus(
 }
 
 /**
- * Check if a status is terminal (no further changes expected)
- */
-export function isTerminalStatus(status: string): boolean {
-  return DEFAULT_POLLING_CONFIG.terminalStatuses.includes(status);
-}
-
-/**
  * Check if a status indicates success
  */
 export function isSuccessStatus(status: string): boolean {
   return ['confirmed', 'mined'].includes(status);
-}
-
-/**
- * Check if a status indicates failure
- */
-export function isFailureStatus(status: string): boolean {
-  return ['failed', 'reverted'].includes(status);
 }

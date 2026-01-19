@@ -83,15 +83,3 @@ export function createForwardRequest(
   };
 }
 
-/**
- * Create an expired ForwardRequest (for testing deadline validation)
- */
-export function createExpiredForwardRequest(
-  from: string,
-  to: string,
-): ForwardRequest {
-  return {
-    ...createForwardRequest(from, to),
-    deadline: String(Math.floor(Date.now() / 1000) - 3600), // 1 hour ago (expired)
-  };
-}
