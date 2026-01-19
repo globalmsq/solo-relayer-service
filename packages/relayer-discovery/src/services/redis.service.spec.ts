@@ -3,9 +3,7 @@ import { ConfigService } from "@nestjs/config";
 import { RedisService } from "./redis.service";
 
 // Mock ioredis to use ioredis-mock
-import Redis from "ioredis-mock";
-
-jest.mock("ioredis", () => Redis);
+jest.mock("ioredis", () => require("ioredis-mock"));
 
 describe("RedisService", () => {
   let service: RedisService;
@@ -37,7 +35,9 @@ describe("RedisService", () => {
 
   afterEach(async () => {
     // Clean up all keys before destroying
-    const client = new Redis();
+    // eslint-disable-next-line @typescript-eslint/no-var-requires
+    const MockRedis = require("ioredis-mock");
+    const client = new MockRedis();
     await client.flushall();
     await client.quit();
 

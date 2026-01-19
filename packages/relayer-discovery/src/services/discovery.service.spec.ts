@@ -49,7 +49,6 @@ describe("DiscoveryService", () => {
     service = module.get<DiscoveryService>(DiscoveryService);
     redisService = module.get<RedisService>(RedisService);
     httpService = module.get<HttpService>(HttpService);
-    configService = module.get<ConfigService>(ConfigService);
   });
 
   afterEach(async () => {
