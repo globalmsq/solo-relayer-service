@@ -54,23 +54,6 @@ async function main() {
   const nftAddr = await sampleNFT.getAddress();
   console.log(`SampleNFT deployed to: ${nftAddr}`);
 
-  // Step 4: Mint tokens to OZ Relayer accounts for testing
-  // These addresses match the keystores in docker/keys/relayer-{0,1,2}/
-  // Using Hardhat Accounts #10, #11, #12
-  // IMPORTANT: Minting AFTER all contract deployments to keep addresses deterministic
-  const relayerAccounts = [
-    "0xBcd4042DE499D14e55001CcbB24a551F3b954096",  // Account #10 (oz-relayer-0)
-    "0x71bE63f3384f5fb98995898A86B02Fb2426c5788",  // Account #11 (oz-relayer-1)
-    "0xFABB0ac9d68B0B445fB7357272Ff202C5651694a",  // Account #12 (oz-relayer-2)
-  ];
-  const mintAmount = ethers.parseEther("10000");  // 10,000 SMPL each
-
-  console.log("\nMinting tokens to OZ Relayer accounts...");
-  for (let i = 0; i < relayerAccounts.length; i++) {
-    await sampleToken.mint(relayerAccounts[i], mintAmount);
-    console.log(`  oz-relayer-${i} (${relayerAccounts[i]}): ${ethers.formatEther(mintAmount)} SMPL`);
-  }
-
   console.log("\n" + "=".repeat(60));
   console.log("Deployment Summary");
   console.log("=".repeat(60));

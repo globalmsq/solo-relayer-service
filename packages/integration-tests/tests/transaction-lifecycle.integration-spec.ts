@@ -13,7 +13,7 @@ import {
   encodeTokenTransfer,
   ContractAddresses,
   mintTokensWithDeployer,
-  HARDHAT_RELAYER,
+  HARDHAT_RELAYERS,
 } from '../src/helpers/contracts';
 import {
   pollTransactionStatus,
@@ -66,10 +66,14 @@ describe('Transaction Lifecycle Tests', () => {
     if (contractsDeployed) {
       try {
         const mintAmount = parseTokenAmount('10000');
-        await mintTokensWithDeployer(contracts.sampleToken, HARDHAT_RELAYER.address, mintAmount);
+        // Mint to all relayer accounts
+        for (const relayerAddress of HARDHAT_RELAYERS) {
+          await mintTokensWithDeployer(contracts.sampleToken, relayerAddress, mintAmount);
+        }
+        // Mint to test user
         await mintTokensWithDeployer(contracts.sampleToken, TEST_ADDRESSES.user, mintAmount);
-      } catch {
-        // Ignore pre-fund errors
+      } catch (error) {
+        console.warn('Pre-fund warning:', error);
       }
     }
   }, 60000);

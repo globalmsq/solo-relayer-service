@@ -201,12 +201,21 @@ export const HARDHAT_DEPLOYER = {
 };
 
 /**
- * Hardhat OZ Relayer account (Account #1)
- * This is a well-known development key - NEVER use in production
+ * Hardhat OZ Relayer accounts (Account #10, #11, #12)
+ * These are well-known development keys - NEVER use in production
+ */
+export const HARDHAT_RELAYERS = [
+  '0xBcd4042DE499D14e55001CcbB24a551F3b954096', // Account #10 (oz-relayer-0)
+  '0x71bE63f3384f5fb98995898A86B02Fb2426c5788', // Account #11 (oz-relayer-1)
+  '0xFABB0ac9d68B0B445fB7357272Ff202C5651694a', // Account #12 (oz-relayer-2)
+];
+
+/**
+ * @deprecated Use HARDHAT_RELAYERS instead
  */
 export const HARDHAT_RELAYER = {
-  address: '0x70997970C51812dc3A010C7d01b50e0d17dc79C8',
-  privateKey: '0x59c6995e998f97a5a0044966f0945389dc9e86dae88c7a8412f4603b6b78690d',
+  address: HARDHAT_RELAYERS[0],
+  privateKey: '', // Not needed - relayers use keystore
 };
 
 /**
