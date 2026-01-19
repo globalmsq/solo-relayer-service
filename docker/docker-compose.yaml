@@ -298,10 +298,11 @@ services:
       SQS_ENDPOINT_URL: http://localstack:4566
       SQS_QUEUE_URL: http://localstack:4566/000000000000/relay-transactions
       SQS_DLQ_URL: http://localstack:4566/000000000000/relay-transactions-dlq
-      # SPEC-ROUTING-001: Multi-Relayer Smart Routing
-      # OZ_RELAYER_URL kept for backward compatibility (single relayer fallback)
+      # SPEC-ROUTING-001 + SPEC-DISCOVERY-001: Multi-Relayer Smart Routing
+      # Primary: Queue-consumer queries Redis 'relayer:active' Set for active relayers
+      # Fallback: OZ_RELAYER_URLS used when Redis is unavailable
       OZ_RELAYER_URL: http://oz-relayer-0:8080
-      # FR-005: Comma-separated URLs for Smart Routing
+      # SPEC-DISCOVERY-001 Phase 2: Fallback URLs when Redis is unavailable
       OZ_RELAYER_URLS: http://oz-relayer-0:8080,http://oz-relayer-1:8080,http://oz-relayer-2:8080
       OZ_RELAYER_API_KEY: ${OZ_RELAYER_API_KEY:-oz-relayer-shared-api-key-local-dev}
     networks:

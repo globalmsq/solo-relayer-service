@@ -1,6 +1,7 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { ConfigService } from '@nestjs/config';
 import { RelayerRouterService } from './relayer-router.service';
+import { RedisService } from '../redis/redis.service';
 import axios from 'axios';
 
 jest.mock('axios');
@@ -9,6 +10,7 @@ const mockedAxios = axios as jest.Mocked<typeof axios>;
 describe('RelayerRouterService', () => {
   let service: RelayerRouterService;
   let configService: ConfigService;
+  let redisService: RedisService;
 
   const mockRelayerUrls = [
     'http://oz-relayer-0:8080',
@@ -16,7 +18,22 @@ describe('RelayerRouterService', () => {
     'http://oz-relayer-2:8080',
   ];
 
+  // SPEC-DISCOVERY-001: Mock Redis active relayers
+  const mockActiveRelayers = ['oz-relayer-0', 'oz-relayer-1', 'oz-relayer-2'];
+
+  // Mock RedisService
+  const mockRedisService = {
+    smembers: jest.fn().mockResolvedValue(mockActiveRelayers),
+    scard: jest.fn().mockResolvedValue(3),
+    isAvailable: jest.fn().mockReturnValue(true),
+    ping: jest.fn().mockResolvedValue(true),
+  };
+
   beforeEach(async () => {
+    // Reset mock implementations
+    mockRedisService.smembers.mockResolvedValue(mockActiveRelayers);
+    mockRedisService.isAvailable.mockReturnValue(true);
+
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         RelayerRouterService,
@@ -37,11 +54,16 @@ describe('RelayerRouterService', () => {
             }),
           },
         },
+        {
+          provide: RedisService,
+          useValue: mockRedisService,
+        },
       ],
     }).compile();
 
     service = module.get<RelayerRouterService>(RelayerRouterService);
     configService = module.get<ConfigService>(ConfigService);
+    redisService = module.get<RedisService>(RedisService);
   });
 
   afterEach(() => {
@@ -71,11 +93,16 @@ describe('RelayerRouterService', () => {
               }),
             },
           },
+          {
+            provide: RedisService,
+            useValue: mockRedisService,
+          },
         ],
       }).compile();
 
       const singleUrlService = module.get<RelayerRouterService>(RelayerRouterService);
-      expect(singleUrlService.getRelayerUrls()).toEqual(['http://single-relayer:8080']);
+      // Initial state uses fallback URLs before Redis is queried
+      expect(singleUrlService.getFallbackRelayerUrls()).toEqual(['http://single-relayer:8080']);
     });
   });
 
@@ -344,6 +371,107 @@ describe('RelayerRouterService', () => {
       // This is tested indirectly through logging behavior
       // The service should not throw when processing URLs
       await expect(service.getAvailableRelayer()).resolves.toBeDefined();
+    });
+  });
+
+  describe('SPEC-DISCOVERY-001 Phase 2 - Redis Integration', () => {
+    it('should query Redis for active relayers on getAvailableRelayer call', async () => {
+      mockedAxios.get.mockResolvedValue({
+        data: {
+          data: [{ id: 'relayer-id', pending_transactions: 0, status: 'active' }],
+        },
+      });
+
+      await service.getAvailableRelayer();
+
+      // Verify Redis smembers was called with correct key
+      expect(mockRedisService.smembers).toHaveBeenCalledWith('relayer:active');
+    });
+
+    it('should construct URLs from Redis hostnames', async () => {
+      // Redis returns hostnames like 'oz-relayer-0'
+      mockRedisService.smembers.mockResolvedValue(['oz-relayer-0', 'oz-relayer-1']);
+
+      mockedAxios.get.mockResolvedValue({
+        data: {
+          data: [{ id: 'relayer-id', pending_transactions: 0, status: 'active' }],
+        },
+      });
+
+      await service.getAvailableRelayer();
+
+      // Verify URLs are constructed with port 8080
+      const urls = service.getRelayerUrls();
+      expect(urls).toContain('http://oz-relayer-0:8080');
+      expect(urls).toContain('http://oz-relayer-1:8080');
+    });
+
+    it('should fall back to environment config when Redis returns empty set', async () => {
+      // Redis returns empty set (no active relayers)
+      mockRedisService.smembers.mockResolvedValue([]);
+
+      mockedAxios.get.mockResolvedValue({
+        data: {
+          data: [{ id: 'relayer-id', pending_transactions: 0, status: 'active' }],
+        },
+      });
+
+      await service.getAvailableRelayer();
+
+      // Should use fallback URLs from config
+      const urls = service.getRelayerUrls();
+      expect(urls).toEqual(mockRelayerUrls);
+    });
+
+    it('should fall back to environment config when Redis throws error', async () => {
+      // Redis throws error
+      mockRedisService.smembers.mockRejectedValue(new Error('Redis connection failed'));
+
+      mockedAxios.get.mockResolvedValue({
+        data: {
+          data: [{ id: 'relayer-id', pending_transactions: 0, status: 'active' }],
+        },
+      });
+
+      await service.getAvailableRelayer();
+
+      // Should use fallback URLs from config
+      const urls = service.getRelayerUrls();
+      expect(urls).toEqual(mockRelayerUrls);
+    });
+
+    it('should sort relayer hostnames from Redis for consistent ordering', async () => {
+      // Redis returns unsorted hostnames
+      mockRedisService.smembers.mockResolvedValue(['oz-relayer-2', 'oz-relayer-0', 'oz-relayer-1']);
+
+      mockedAxios.get.mockResolvedValue({
+        data: {
+          data: [{ id: 'relayer-id', pending_transactions: 0, status: 'active' }],
+        },
+      });
+
+      await service.getAvailableRelayer();
+
+      // Verify URLs are sorted
+      const urls = service.getRelayerUrls();
+      expect(urls).toEqual([
+        'http://oz-relayer-0:8080',
+        'http://oz-relayer-1:8080',
+        'http://oz-relayer-2:8080',
+      ]);
+    });
+
+    it('should expose Redis discovery status', () => {
+      mockRedisService.isAvailable.mockReturnValue(true);
+      expect(service.isUsingRedisDiscovery()).toBe(true);
+
+      mockRedisService.isAvailable.mockReturnValue(false);
+      expect(service.isUsingRedisDiscovery()).toBe(false);
+    });
+
+    it('should expose fallback URLs from config', () => {
+      const fallbackUrls = service.getFallbackRelayerUrls();
+      expect(fallbackUrls).toEqual(mockRelayerUrls);
     });
   });
 });
