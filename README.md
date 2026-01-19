@@ -125,6 +125,7 @@ curl http://localhost:3000/api/v1/relay/status/550e8400-e29b-41d4-a716-446655440
 |----------|-------------|---------|
 | [packages/relay-api/README.md](./packages/relay-api/README.md) | Relay API service documentation, endpoints, architecture | Producer Service |
 | [packages/queue-consumer/README.md](./packages/queue-consumer/README.md) | Queue Consumer service documentation, async processing | Consumer Service |
+| [packages/relayer-discovery/README.md](./packages/relayer-discovery/README.md) | Relayer Discovery service, health checks, active list management | Discovery Service |
 
 ### Specifications
 
@@ -133,6 +134,7 @@ curl http://localhost:3000/api/v1/relay/status/550e8400-e29b-41d4-a716-446655440
 | [.moai/specs/SPEC-ROUTING-001/spec.md](./.moai/specs/SPEC-ROUTING-001/spec.md) | Complete ✓ | 1.1.0 |
 | [.moai/specs/SPEC-QUEUE-001/spec.md](./.moai/specs/SPEC-QUEUE-001/spec.md) | Complete ✓ | 1.0.0 |
 | [.moai/specs/SPEC-WEBHOOK-001/spec.md](./.moai/specs/SPEC-WEBHOOK-001/spec.md) | Complete ✓ | 1.0.0 |
+| [.moai/specs/SPEC-DISCOVERY-001/spec.md](./.moai/specs/SPEC-DISCOVERY-001/spec.md) | Complete ✓ | 1.0.1 |
 
 ## Project Structure
 
@@ -146,6 +148,7 @@ msq-relayer-service/
 ├── packages/
 │   ├── relay-api/                # NestJS API Gateway (Producer)
 │   ├── queue-consumer/           # Queue Consumer Service
+│   ├── relayer-discovery/        # Relayer Discovery Service (SPEC-DISCOVERY-001)
 │   ├── contracts/                # Smart Contracts (Hardhat)
 │   └── examples/                 # Integration examples
 ├── docs/                         # Documentation
@@ -158,7 +161,8 @@ msq-relayer-service/
 │   ├── DEPLOYMENT.md
 │   └── TESTING.md
 ├── .moai/specs/                  # SPEC documents
-│   └── SPEC-QUEUE-001/spec.md
+│   ├── SPEC-QUEUE-001/spec.md
+│   └── SPEC-DISCOVERY-001/spec.md
 └── README.md                     # This file
 ```
 
