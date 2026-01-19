@@ -1,17 +1,18 @@
 import { Module } from "@nestjs/common";
-import { HttpModule } from "@nestjs/axios";
 import { TerminusModule } from "@nestjs/terminus";
 import { HealthController } from "./health.controller";
-import {
-  OzRelayerHealthIndicator,
-  RedisHealthIndicator,
-  SqsHealthIndicator,
-} from "./indicators";
+import { RedisHealthIndicator, SqsHealthIndicator } from "./indicators";
 
+/**
+ * HealthModule - Health check endpoints
+ *
+ * SPEC-DISCOVERY-001: OzRelayerHealthIndicator and HealthService removed
+ * Health checks now only monitor Redis and SQS (queue-based architecture)
+ */
 @Module({
-  imports: [HttpModule, TerminusModule],
+  imports: [TerminusModule],
   controllers: [HealthController],
-  providers: [OzRelayerHealthIndicator, RedisHealthIndicator, SqsHealthIndicator],
-  exports: [OzRelayerHealthIndicator, RedisHealthIndicator, SqsHealthIndicator],
+  providers: [RedisHealthIndicator, SqsHealthIndicator],
+  exports: [RedisHealthIndicator, SqsHealthIndicator],
 })
 export class HealthModule {}

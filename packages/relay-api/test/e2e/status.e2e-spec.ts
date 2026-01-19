@@ -1,10 +1,8 @@
 import request from "supertest";
 import { INestApplication } from "@nestjs/common";
 import { randomUUID } from "crypto";
-import { of, throwError } from "rxjs";
 import {
   createTestApp,
-  getHttpServiceMock,
   resetMocks,
   defaultRedisMock,
   defaultPrismaMock,
@@ -28,12 +26,11 @@ describe("Status Polling E2E Tests", () => {
   describe("GET /api/v1/relay/status/:txId", () => {
     it("TC-E2E-S001: should query pending status", async () => {
       // Given: Valid UUID txId with pending status in MySQL
-      // SPEC-ROUTING-001: For non-terminal status (pending), service checks OZ Relayer
-      // Must have MySQL record with ozRelayerTxId to query OZ Relayer
+      // SPEC-DISCOVERY-001: 2-tier lookup (Redis → MySQL), no OZ Relayer
       const txId = randomUUID();
       const ozRelayerTxId = randomUUID();
 
-      // Mock MySQL to return non-terminal status with ozRelayerTxId
+      // Mock MySQL to return non-terminal status
       defaultPrismaMock.transaction.findUnique.mockResolvedValueOnce({
         id: txId,
         ozRelayerTxId,
@@ -49,26 +46,12 @@ describe("Status Polling E2E Tests", () => {
         confirmedAt: null,
       });
 
-      // Mock OZ Relayer response
-      const httpMock = getHttpServiceMock(app);
-      httpMock.get.mockReturnValueOnce(
-        of({
-          data: {
-            id: ozRelayerTxId,
-            hash: null,
-            status: "pending",
-            created_at: new Date().toISOString(),
-          },
-          status: 200,
-        }),
-      );
-
       // When: Call GET /api/v1/relay/status/:txId
       const response = await request(app.getHttpServer())
         .get(`/api/v1/relay/status/${txId}`)
         .set("x-api-key", "test-api-key");
 
-      // Then: Should return 200 with pending status
+      // Then: Should return 200 with pending status from MySQL
       expect(response.status).toBe(200);
       expect(response.body).toHaveProperty("status", "pending");
       expect(response.body).toHaveProperty("transactionId");
@@ -154,13 +137,15 @@ describe("Status Polling E2E Tests", () => {
       expect(response.body).toHaveProperty("message");
     });
 
-    it("TC-E2E-S005: should return 503 when OZ Relayer unavailable", async () => {
-      // Given: OZ Relayer service is unavailable
-      // SPEC-ROUTING-001: Must have MySQL record with ozRelayerTxId and non-terminal status
+    it("TC-E2E-S005: should return pending status from MySQL (no OZ Relayer lookup)", async () => {
+      // Given: MySQL has non-terminal status
+      // SPEC-DISCOVERY-001: 2-tier lookup (Redis → MySQL), no OZ Relayer lookup
+      // relay-api returns current MySQL data for non-terminal status
+      // Status updates come from queue-consumer via webhooks
       const txId = randomUUID();
       const ozRelayerTxId = randomUUID();
 
-      // Mock MySQL to return non-terminal status (pending) with ozRelayerTxId
+      // Mock MySQL to return non-terminal status (pending)
       defaultPrismaMock.transaction.findUnique.mockResolvedValueOnce({
         id: txId,
         ozRelayerTxId,
@@ -176,33 +161,26 @@ describe("Status Polling E2E Tests", () => {
         confirmedAt: null,
       });
 
-      // Mock OZ Relayer to return error
-      const httpMock = getHttpServiceMock(app);
-      httpMock.get.mockReturnValueOnce(
-        throwError(() => ({
-          response: { status: 500, data: { message: "Internal Server Error" } },
-        })),
-      );
-
       // When: Call GET /api/v1/relay/status/:txId
       const response = await request(app.getHttpServer())
         .get(`/api/v1/relay/status/${txId}`)
         .set("x-api-key", "test-api-key");
 
-      // Then: Should return 503 Service Unavailable
-      expect(response.status).toBe(503);
-      expect(response.body).toHaveProperty("message");
+      // Then: Should return MySQL data with pending status (no OZ Relayer lookup)
+      expect(response.status).toBe(200);
+      expect(response.body).toHaveProperty("status", "pending");
+      expect(response.body).toHaveProperty("transactionId");
     });
 
     it("TC-E2E-S006: should return 404 for non-existent txId", async () => {
-      // Given: Valid UUID but transaction not found
+      // Given: Valid UUID but transaction not found in MySQL
+      // SPEC-DISCOVERY-001: 2-tier lookup (Redis → MySQL), 404 if not found
       const txId = randomUUID();
-      const httpMock = getHttpServiceMock(app);
-      httpMock.get.mockReturnValueOnce(
-        throwError(() => ({
-          response: { status: 404, data: { message: "Not Found" } },
-        })),
-      );
+
+      // Redis miss
+      defaultRedisMock.get.mockResolvedValueOnce(null);
+      // MySQL miss
+      defaultPrismaMock.transaction.findUnique.mockResolvedValueOnce(null);
 
       // When: Call GET /api/v1/relay/status/:txId
       const response = await request(app.getHttpServer())
@@ -215,7 +193,8 @@ describe("Status Polling E2E Tests", () => {
     });
   });
 
-  describe("3-Tier Lookup Integration", () => {
+  // SPEC-DISCOVERY-001: Changed from 3-tier to 2-tier lookup (Redis → MySQL)
+  describe("2-Tier Lookup Integration", () => {
     beforeEach(() => {
       // Reset mock call counts for 3-tier tests
       jest.clearAllMocks();
@@ -284,21 +263,21 @@ describe("Status Polling E2E Tests", () => {
       );
     });
 
-    it("TC-E2E-S009: Tier 3 - should fetch from OZ Relayer and write-through", async () => {
-      // Given: Not in Redis, MySQL has non-terminal status with ozRelayerTxId
-      // SPEC-ROUTING-001: Must have MySQL record with ozRelayerTxId to query OZ Relayer
+    it("TC-E2E-S009: MySQL non-terminal status - should return current data and backfill Redis", async () => {
+      // Given: Not in Redis, MySQL has non-terminal status
+      // SPEC-DISCOVERY-001: 2-tier lookup (Redis → MySQL), no OZ Relayer
+      // Non-terminal status returns current MySQL data and backfills Redis
       const txId = randomUUID();
       const ozRelayerTxId = randomUUID();
-      const hash = "0x" + "e".repeat(64);
       defaultRedisMock.get.mockResolvedValueOnce(null); // Redis miss
 
-      // Mock MySQL to return non-terminal status with ozRelayerTxId
+      // Mock MySQL to return non-terminal status
       defaultPrismaMock.transaction.findUnique.mockResolvedValueOnce({
         id: txId,
         ozRelayerTxId,
         ozRelayerUrl: "http://oz-relayer-1:8080",
         hash: null,
-        status: "pending", // Non-terminal status triggers OZ Relayer lookup
+        status: "pending", // Non-terminal status
         from: "0x" + "f".repeat(40),
         to: "0x" + "1".repeat(40),
         value: "1000000000000000000",
@@ -308,41 +287,22 @@ describe("Status Polling E2E Tests", () => {
         confirmedAt: null,
       });
 
-      // Mock OZ Relayer response with updated status
-      const httpMock = getHttpServiceMock(app);
-      httpMock.get.mockReturnValueOnce(
-        of({
-          data: {
-            id: ozRelayerTxId,
-            hash,
-            status: "confirmed",
-            created_at: new Date().toISOString(),
-            confirmed_at: new Date().toISOString(),
-            from: "0x" + "f".repeat(40),
-            to: "0x" + "1".repeat(40),
-            value: "1000000000000000000",
-          },
-          status: 200,
-        }),
-      );
-
       // When: Call GET /api/v1/relay/status/:txId
       const response = await request(app.getHttpServer())
         .get(`/api/v1/relay/status/${txId}`)
         .set("x-api-key", "test-api-key");
 
-      // Then: Should return OZ Relayer data
+      // Then: Should return MySQL data (no OZ Relayer lookup)
       expect(response.status).toBe(200);
-      expect(response.body).toHaveProperty("status", "confirmed");
-      expect(response.body).toHaveProperty("hash", hash);
+      expect(response.body).toHaveProperty("status", "pending");
+      expect(response.body).toHaveProperty("transactionId", txId);
 
-      // And should write-through to both Redis and MySQL
+      // And should backfill Redis
       expect(defaultRedisMock.set).toHaveBeenCalledWith(
         `tx:status:${txId}`,
         expect.any(Object),
         600,
       );
-      expect(defaultPrismaMock.transaction.upsert).toHaveBeenCalled();
     });
 
     it("TC-E2E-S010: should gracefully degrade when Redis unavailable", async () => {

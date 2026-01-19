@@ -3,7 +3,6 @@ import { INestApplication, ServiceUnavailableException } from "@nestjs/common";
 import { throwError } from "rxjs";
 import {
   createTestApp,
-  getOzRelayerServiceMock,
   getGaslessServiceMock,
   getHttpServiceMock,
   getSqsAdapterMock,

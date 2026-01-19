@@ -2,7 +2,6 @@ import request from "supertest";
 import { INestApplication, ServiceUnavailableException } from "@nestjs/common";
 import {
   createTestApp,
-  getOzRelayerServiceMock,
   getGaslessServiceMock,
   getSqsAdapterMock,
   resetMocks,

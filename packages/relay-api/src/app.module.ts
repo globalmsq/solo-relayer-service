@@ -4,12 +4,16 @@ import { HealthModule } from "./health/health.module";
 import { AppConfigModule } from "./config/config.module";
 import { CommonModule } from "./common/common.module";
 import { AuthModule } from "./auth/auth.module";
-import { OzRelayerModule } from "./oz-relayer/oz-relayer.module";
 import { RelayModule } from "./relay/relay.module";
 import { RedisModule } from "./redis/redis.module";
 import { PrismaModule } from "./prisma/prisma.module";
 import { WebhooksModule } from "./webhooks/webhooks.module";
 
+/**
+ * AppModule - Root module for relay-api
+ *
+ * SPEC-DISCOVERY-001: OzRelayerModule removed - transactions processed via queue-consumer
+ */
 @Module({
   imports: [
     HttpModule,
@@ -18,7 +22,6 @@ import { WebhooksModule } from "./webhooks/webhooks.module";
     PrismaModule,
     CommonModule,
     AuthModule,
-    OzRelayerModule,
     RelayModule,
     WebhooksModule,
     HealthModule,
