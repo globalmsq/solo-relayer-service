@@ -69,13 +69,13 @@ Implement a **Relayer Discovery Service** with the following architecture:
 │  - Exposes GET /status for monitoring                        │
 └────────────────────────┬────────────────────────────────────┘
                          │
-                         │ HTTP GET /health
+                         │ HTTP GET /api/v1/relayers
                          ▼
 ┌─────────────────────────────────────────────────────────────┐
 │              OZ Relayers (0-based naming)                    │
-│  - oz-relayer-0 (http://oz-relayer-0:3000)                   │
-│  - oz-relayer-1 (http://oz-relayer-1:3000)                   │
-│  - oz-relayer-2 (http://oz-relayer-2:3000)                   │
+│  - oz-relayer-0 (http://oz-relayer-0:8080)                   │
+│  - oz-relayer-1 (http://oz-relayer-1:8080)                   │
+│  - oz-relayer-2 (http://oz-relayer-2:8080)                   │
 └─────────────────────────────────────────────────────────────┘
 ```
 
@@ -85,7 +85,7 @@ Implement a **Relayer Discovery Service** with the following architecture:
 
 **Responsibilities:**
 - Read `RELAYER_COUNT` and `HEALTH_CHECK_INTERVAL_MS` from environment
-- Construct relayer URLs: `http://oz-relayer-{0..N-1}:3000/health`
+- Construct relayer URLs: `http://oz-relayer-{0..N-1}:8080/api/v1/relayers`
 - Execute HTTP health checks with 500ms timeout
 - Update Redis `relayer:active` set (SADD for healthy, SREM for unhealthy)
 - Expose GET /status endpoint for monitoring
@@ -141,7 +141,7 @@ TTL: None (persistent)
 #### Health Check Flow
 
 1. **relayer-discovery** reads `RELAYER_COUNT=3` from environment
-2. **relayer-discovery** constructs URLs: `["http://oz-relayer-0:3000/health", "http://oz-relayer-1:3000/health", "http://oz-relayer-2:3000/health"]`
+2. **relayer-discovery** constructs URLs: `["http://oz-relayer-0:8080/api/v1/relayers", "http://oz-relayer-1:8080/api/v1/relayers", "http://oz-relayer-2:8080/api/v1/relayers"]`
 3. **relayer-discovery** sends parallel HTTP GET requests with 500ms timeout
 4. For each successful response (HTTP 200):
    - Execute `SADD relayer:active oz-relayer-{N}`
@@ -443,8 +443,8 @@ async getAvailableRelayers(): Promise<string[]> {
     throw new Error('No active relayers available');
   }
 
-  // Construct URLs: oz-relayer-0 -> http://oz-relayer-0:3000
-  return activeRelayerIds.map(id => `http://${id}:3000`);
+  // Construct URLs: oz-relayer-0 -> http://oz-relayer-0:8080
+  return activeRelayerIds.map(id => `http://${id}:8080`);
 }
 ```
 

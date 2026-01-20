@@ -72,7 +72,7 @@ redis-cli FLUSHDB
 
 **Given:**
 - 3 OZ Relayers (oz-relayer-0, oz-relayer-1, oz-relayer-2) are running
-- All relayers are healthy (responding with HTTP 200 to GET /health)
+- All relayers are healthy (responding with HTTP 200 to GET /api/v1/relayers)
 - Redis key `relayer:active` is empty or does not exist
 
 **When:**
@@ -488,13 +488,13 @@ curl -s http://relayer-discovery:3001/status | jq
 #       "id": "oz-relayer-0",
 #       "status": "healthy",
 #       "lastCheckTimestamp": "2026-01-17T10:29:55.000Z",
-#       "url": "http://oz-relayer-0:3000"
+#       "url": "http://oz-relayer-0:8080"
 #     },
 #     {
 #       "id": "oz-relayer-1",
 #       "status": "healthy",
 #       "lastCheckTimestamp": "2026-01-17T10:29:55.000Z",
-#       "url": "http://oz-relayer-1:3000"
+#       "url": "http://oz-relayer-1:8080"
 #     }
 #   ],
 #   "totalConfigured": 3,

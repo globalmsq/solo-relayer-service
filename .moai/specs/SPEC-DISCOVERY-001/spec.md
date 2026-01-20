@@ -1,9 +1,9 @@
 ---
 id: SPEC-DISCOVERY-001
-version: "1.0.1"
+version: "1.0.2"
 status: "draft"
 created: "2026-01-17"
-updated: "2026-01-19"
+updated: "2026-01-20"
 author: "MoAI-ADK"
 priority: "high"
 ---
@@ -12,6 +12,7 @@ priority: "high"
 
 | Version | Date | Author | Changes |
 |---------|------|--------|---------|
+| 1.0.2 | 2026-01-20 | MoAI-ADK | Fix endpoint documentation: /health:3000 → /api/v1/relayers:8080 (matches implementation) |
 | 1.0.1 | 2026-01-19 | MoAI-ADK | Fix test coverage targets, add missing IRs, improve acceptance criteria |
 | 1.0.0 | 2026-01-17 | MoAI-ADK | Initial SPEC creation for Relayer Discovery Service |
 
@@ -70,7 +71,7 @@ This specification defines the architecture and implementation of a centralized 
 The relayer-discovery service MUST perform HTTP health checks on all configured OZ Relayers.
 
 **Details:**
-- Health check target: `http://oz-relayer-{N}:3000/health` endpoint
+- Health check target: `http://oz-relayer-{N}:8080/api/v1/relayers` endpoint
 - Health check frequency: Configurable via `HEALTH_CHECK_INTERVAL_MS` (default: 10000ms)
 - Health check method: HTTP GET request
 - Success criteria: HTTP 200 response status
@@ -254,13 +255,13 @@ The relayer-discovery service SHALL read the `RELAYER_COUNT` environment variabl
 
 ### IR-002: OZ Relayer Health Endpoint
 
-OZ Relayer instances SHALL expose a `/health` endpoint for health checks.
+OZ Relayer instances SHALL expose an `/api/v1/relayers` endpoint for health checks.
 
 **Details:**
-- Endpoint: `GET /health`
-- Port: 3000 (existing)
-- Response: HTTP 200 with JSON body (existing implementation)
-- No changes required (endpoint already exists)
+- Endpoint: `GET /api/v1/relayers`
+- Port: 8080 (configurable via `RELAYER_PORT`, default: 8080)
+- Response: HTTP 200 with JSON body containing relayer status
+- Note: OZ Relayer does not expose a dedicated `/health` endpoint; the `/api/v1/relayers` endpoint serves as both health check and pending transaction status endpoint
 
 ### IR-003: Redis Key Schema
 
@@ -299,13 +300,13 @@ The monitoring endpoint SHALL return JSON format with the following structure:
       "id": "oz-relayer-0",
       "status": "healthy",
       "lastCheckTimestamp": "2026-01-17T10:29:55.000Z",
-      "url": "http://oz-relayer-0:3000"
+      "url": "http://oz-relayer-0:8080"
     },
     {
       "id": "oz-relayer-1",
       "status": "healthy",
       "lastCheckTimestamp": "2026-01-17T10:29:55.000Z",
-      "url": "http://oz-relayer-1:3000"
+      "url": "http://oz-relayer-1:8080"
     }
   ],
   "totalConfigured": 3,
@@ -602,7 +603,7 @@ curl http://localhost:3001/status | jq
 ## 8. Glossary
 
 - **OZ Relayer**: OpenZeppelin Relayer instance responsible for submitting transactions
-- **Health Check**: HTTP request to `/health` endpoint to verify relayer availability
+- **Health Check**: HTTP request to `/api/v1/relayers` endpoint to verify relayer availability
 - **Active Relayer**: Relayer that passed the most recent health check
 - **Discovery Service**: The relayer-discovery service defined in this SPEC
 - **Config-based Restart**: Architecture pattern requiring service restart for configuration changes
