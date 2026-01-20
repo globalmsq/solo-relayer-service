@@ -474,4 +474,93 @@ describe('RelayerRouterService', () => {
       expect(fallbackUrls).toEqual(mockRelayerUrls);
     });
   });
+
+  describe('SPEC-DISCOVERY-001 Phase 2 - Redis SMEMBERS Caching', () => {
+    it('should use cached active relayers within 2-second TTL', async () => {
+      jest.useFakeTimers();
+
+      mockedAxios.get.mockResolvedValue({
+        data: {
+          data: [{ id: 'relayer-id', pending_transactions: 0, status: 'active' }],
+        },
+      });
+
+      // First call - should query Redis
+      await service.getAvailableRelayer();
+      expect(mockRedisService.smembers).toHaveBeenCalledTimes(1);
+
+      // Second call within TTL - should use cache
+      await service.getAvailableRelayer();
+      expect(mockRedisService.smembers).toHaveBeenCalledTimes(1); // No additional call
+
+      // Third call still within TTL
+      jest.advanceTimersByTime(1000); // 1 second
+      await service.getAvailableRelayer();
+      expect(mockRedisService.smembers).toHaveBeenCalledTimes(1); // Still cached
+    });
+
+    it('should refresh Redis after 2-second TTL expires', async () => {
+      jest.useFakeTimers();
+
+      mockedAxios.get.mockResolvedValue({
+        data: {
+          data: [{ id: 'relayer-id', pending_transactions: 0, status: 'active' }],
+        },
+      });
+
+      // First call - should query Redis
+      await service.getAvailableRelayer();
+      expect(mockRedisService.smembers).toHaveBeenCalledTimes(1);
+
+      // Advance time beyond 2-second TTL
+      jest.advanceTimersByTime(2100);
+
+      // Next call after TTL - should query Redis again
+      await service.getAvailableRelayer();
+      expect(mockRedisService.smembers).toHaveBeenCalledTimes(2);
+    });
+
+    it('should bypass cache when URL list is empty', async () => {
+      // Clear URLs by making Redis return empty first
+      mockRedisService.smembers.mockResolvedValueOnce([]);
+
+      mockedAxios.get.mockResolvedValue({
+        data: {
+          data: [{ id: 'relayer-id', pending_transactions: 0, status: 'active' }],
+        },
+      });
+
+      // First call - falls back to config URLs since Redis returns empty
+      await service.getAvailableRelayer();
+      expect(mockRedisService.smembers).toHaveBeenCalledTimes(1);
+
+      // Reset mock for next call
+      mockRedisService.smembers.mockResolvedValue(mockActiveRelayers);
+
+      // Second call - should still query Redis since fallback was used
+      // (cache doesn't prevent query when we got empty from Redis)
+      await service.getAvailableRelayer();
+      expect(mockRedisService.smembers).toHaveBeenCalledTimes(2);
+    });
+
+    it('should reduce Redis calls significantly at high TPS', async () => {
+      jest.useFakeTimers();
+
+      mockedAxios.get.mockResolvedValue({
+        data: {
+          data: [{ id: 'relayer-id', pending_transactions: 0, status: 'active' }],
+        },
+      });
+
+      // Simulate 100 calls within 2 seconds (50 TPS equivalent)
+      for (let i = 0; i < 100; i++) {
+        await service.getAvailableRelayer();
+        jest.advanceTimersByTime(20); // 20ms per call = 50 TPS
+      }
+
+      // With 2-second cache, should only have ~1 Redis call
+      // (first call triggers, rest are cached)
+      expect(mockRedisService.smembers).toHaveBeenCalledTimes(1);
+    });
+  });
 });

@@ -35,11 +35,11 @@ Smart Routing is a core component of SPEC-ROUTING-001 that intelligently selects
 
 The system manages 3 OZ Relayer instances deployed with unique configurations:
 
-| Relayer | URL | Redis Prefix | Signing Key | Status |
-|---------|-----|--------------|-------------|--------|
-| relayer-1 | http://oz-relayer-0:8080 | relayer-1 | key1.json | Active |
-| relayer-2 | http://oz-relayer-1:8080 | relayer-2 | key2.json | Active |
-| relayer-3 | http://oz-relayer-2:8080 | relayer-3 | key3.json | Active |
+| Relayer ID   | URL                      | Redis Prefix | Signing Key | Status |
+|--------------|--------------------------|--------------|-------------|--------|
+| oz-relayer-0 | http://oz-relayer-0:8080 | oz-relayer-0 | key0.json   | Active |
+| oz-relayer-1 | http://oz-relayer-1:8080 | oz-relayer-1 | key1.json   | Active |
+| oz-relayer-2 | http://oz-relayer-2:8080 | oz-relayer-2 | key2.json   | Active |
 
 ---
 

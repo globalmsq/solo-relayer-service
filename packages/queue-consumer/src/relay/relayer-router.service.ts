@@ -51,6 +51,9 @@ export class RelayerRouterService implements OnModuleInit {
   private readonly CACHE_TTL_MS = 10000;
   private readonly HEALTH_CHECK_TIMEOUT_MS = 500;
 
+  // SPEC-DISCOVERY-001: Active relayers cache TTL (2 second)
+  private readonly ACTIVE_RELAYERS_CACHE_TTL_MS = 2000;
+
   // Relayer cache: url -> RelayerInfo
   private relayerCache: Map<string, RelayerInfo> = new Map();
 
@@ -59,6 +62,9 @@ export class RelayerRouterService implements OnModuleInit {
 
   // Current active relayer URLs (from Redis or fallback)
   private currentRelayerUrls: string[] = [];
+
+  // SPEC-DISCOVERY-001: Cache timestamp for active relayers list
+  private activeRelayersCacheTime: number = 0;
 
   constructor(
     private configService: ConfigService,
@@ -95,8 +101,21 @@ export class RelayerRouterService implements OnModuleInit {
    *
    * Queries Redis 'relayer:active' Set for active relayer hostnames
    * and constructs URLs. Falls back to environment config if Redis unavailable.
+   *
+   * Uses 2-second in-memory cache to reduce Redis calls at high TPS.
+   * At 100 TPS, this reduces Redis calls from 1000/10s to ~5/10s.
    */
   private async refreshRelayerUrlsFromRedis(): Promise<void> {
+    const now = Date.now();
+
+    // Return early if cache is still valid and we have URLs
+    if (
+      now - this.activeRelayersCacheTime < this.ACTIVE_RELAYERS_CACHE_TTL_MS &&
+      this.currentRelayerUrls.length > 0
+    ) {
+      return;
+    }
+
     try {
       // Query Redis for active relayers
       const activeRelayers = await this.redisService.smembers(
@@ -108,6 +127,9 @@ export class RelayerRouterService implements OnModuleInit {
         this.currentRelayerUrls = activeRelayers
           .sort() // Sort for consistent ordering
           .map((hostname) => `http://${hostname}:${this.RELAYER_PORT}`);
+
+        // Update cache timestamp on success
+        this.activeRelayersCacheTime = now;
 
         this.logger.log(
           `Refreshed relayer URLs from Redis: ${this.currentRelayerUrls.join(', ')}`,
