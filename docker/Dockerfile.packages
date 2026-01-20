@@ -149,6 +149,30 @@ HEALTHCHECK --interval=30s --timeout=10s --retries=3 --start-period=15s \
 CMD ["pnpm", "run", "start"]
 
 # ============================================================================
+# RELAYER-DISCOVERY TARGET: Dynamic OZ-Relayer Health Monitoring (SPEC-DISCOVERY-001)
+# ============================================================================
+FROM base AS relayer-discovery
+
+# Copy relayer-discovery source
+COPY packages/relayer-discovery ./packages/relayer-discovery
+
+# Set working directory
+WORKDIR /app/packages/relayer-discovery
+
+# Install package-specific dependencies
+RUN pnpm install
+
+# Expose port
+EXPOSE 3001
+
+# Health check
+HEALTHCHECK --interval=10s --timeout=5s --retries=3 --start-period=10s \
+    CMD curl -f http://localhost:3001/status || exit 1
+
+# Start discovery service
+CMD ["pnpm", "run", "start"]
+
+# ============================================================================
 # INTEGRATION-TESTS TARGET: Jest integration test runner
 # ============================================================================
 FROM base AS integration-tests

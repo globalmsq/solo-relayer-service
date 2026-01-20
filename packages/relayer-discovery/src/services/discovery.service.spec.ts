@@ -36,6 +36,8 @@ describe("DiscoveryService", () => {
             get: jest.fn((key: string) => {
               const config: Record<string, any> = {
                 "discovery.relayerCount": 3,
+                "discovery.relayerPort": 8080,
+                "discovery.relayerApiKey": "test-api-key",
                 "discovery.healthCheckInterval": 10000,
                 "discovery.healthCheckTimeout": 500,
               };
@@ -111,16 +113,16 @@ describe("DiscoveryService", () => {
 
       expect(httpService.get).toHaveBeenCalledTimes(3); // relayerCount = 3
       expect(httpService.get).toHaveBeenCalledWith(
-        "http://oz-relayer-0:3000/health",
-        { timeout: 500 },
+        "http://oz-relayer-0:8080/api/v1/relayers",
+        { timeout: 500, headers: { Authorization: "Bearer test-api-key" } },
       );
       expect(httpService.get).toHaveBeenCalledWith(
-        "http://oz-relayer-0:3000/health",
-        { timeout: 500 },
+        "http://oz-relayer-1:8080/api/v1/relayers",
+        { timeout: 500, headers: { Authorization: "Bearer test-api-key" } },
       );
       expect(httpService.get).toHaveBeenCalledWith(
-        "http://oz-relayer-1:3000/health",
-        { timeout: 500 },
+        "http://oz-relayer-2:8080/api/v1/relayers",
+        { timeout: 500, headers: { Authorization: "Bearer test-api-key" } },
       );
     });
 
@@ -327,8 +329,8 @@ describe("DiscoveryService", () => {
 
       const status = await service.getStatus();
 
-      expect(status.activeRelayers[0].url).toBe("http://oz-relayer-0:3000");
-      expect(status.activeRelayers[1].url).toBe("http://oz-relayer-0:3000");
+      expect(status.activeRelayers[0].url).toBe("http://oz-relayer-0:8080");
+      expect(status.activeRelayers[1].url).toBe("http://oz-relayer-0:8080");
     });
   });
 
@@ -345,7 +347,7 @@ describe("DiscoveryService", () => {
     it("should construct correct health check URL", () => {
       const url = service["constructHealthUrl"]("oz-relayer-0");
 
-      expect(url).toBe("http://oz-relayer-0:3000/health");
+      expect(url).toBe("http://oz-relayer-0:8080/api/v1/relayers");
     });
   });
 
@@ -382,26 +384,6 @@ describe("DiscoveryService", () => {
   });
 
   describe("logging and error handling", () => {
-    it("should log debug message for successful health check", async () => {
-      const loggerSpy = jest.spyOn(service["logger"], "debug");
-      const mockResponse: Partial<AxiosResponse> = {
-        status: 200,
-        data: {},
-        statusText: "OK",
-        headers: {},
-        config: {} as any,
-      };
-      jest
-        .spyOn(httpService, "get")
-        .mockReturnValue(of(mockResponse as AxiosResponse));
-
-      await service["checkRelayerHealth"]("oz-relayer-0");
-
-      expect(loggerSpy).toHaveBeenCalledWith(
-        "Health check passed for oz-relayer-0",
-      );
-    });
-
     it("should log warning for non-200 status code", async () => {
       const loggerSpy = jest.spyOn(service["logger"], "warn");
       const mockResponse: Partial<AxiosResponse> = {

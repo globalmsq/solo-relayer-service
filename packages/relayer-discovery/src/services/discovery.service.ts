@@ -17,6 +17,8 @@ export class DiscoveryService implements OnModuleInit, OnModuleDestroy {
   private lastCheckTimestamps: Map<string, string> = new Map();
 
   private readonly relayerCount: number;
+  private readonly relayerPort: number;
+  private readonly relayerApiKey: string;
   private readonly healthCheckInterval: number;
   private readonly healthCheckTimeout: number;
 
@@ -28,6 +30,9 @@ export class DiscoveryService implements OnModuleInit, OnModuleDestroy {
     this.relayerCount = this.configService.get<number>(
       "discovery.relayerCount",
     )!;
+    this.relayerPort = this.configService.get<number>("discovery.relayerPort")!;
+    this.relayerApiKey =
+      this.configService.get<string>("discovery.relayerApiKey") || "";
     this.healthCheckInterval = this.configService.get<number>(
       "discovery.healthCheckInterval",
     )!;
@@ -83,19 +88,23 @@ export class DiscoveryService implements OnModuleInit, OnModuleDestroy {
 
   private async checkRelayerHealth(relayerId: string): Promise<boolean> {
     const url = this.constructHealthUrl(relayerId);
+    const headers: Record<string, string> = {};
+
+    if (this.relayerApiKey) {
+      headers["Authorization"] = `Bearer ${this.relayerApiKey}`;
+    }
 
     try {
       const response = await firstValueFrom(
         this.httpService.get(url, {
           timeout: this.healthCheckTimeout,
+          headers,
         }),
       );
 
       const isHealthy = response.status === 200;
 
-      if (isHealthy) {
-        this.logger.debug(`Health check passed for ${relayerId}`);
-      } else {
+      if (!isHealthy) {
         this.logger.warn(
           `Health check failed for ${relayerId}: HTTP ${response.status}`,
         );
@@ -138,7 +147,7 @@ export class DiscoveryService implements OnModuleInit, OnModuleDestroy {
         id,
         status: "healthy",
         lastCheckTimestamp: this.lastCheckTimestamps.get(id) || null,
-        url: this.constructHealthUrl(id).replace("/health", ""),
+        url: this.constructHealthUrl(id).replace("/api/v1/relayers", ""),
       })),
       totalConfigured: this.relayerCount,
       totalActive,
@@ -154,7 +163,7 @@ export class DiscoveryService implements OnModuleInit, OnModuleDestroy {
   }
 
   private constructHealthUrl(relayerId: string): string {
-    return `http://${relayerId}:3000/health`;
+    return `http://${relayerId}:${this.relayerPort}/api/v1/relayers`;
   }
 
   private determineOverallStatus(

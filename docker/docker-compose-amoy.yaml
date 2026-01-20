@@ -213,6 +213,38 @@ services:
       API_KEY: ${OZ_RELAYER_API_KEY:-amoy-oz-relayer-shared-api-key-32ch}
       REDIS_KEY_PREFIX: oz-relayer-2
 
+  # === Relayer Discovery Service (SPEC-DISCOVERY-001) ===
+  # Monitors OZ-Relayer health and maintains active relayer set in Redis
+  relayer-discovery:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile.packages
+      target: relayer-discovery
+    command: ["pnpm", "run", "start"]
+    ports:
+      - "3001:3001"
+    depends_on:
+      redis:
+        condition: service_healthy
+      oz-relayer-0:
+        condition: service_healthy
+      oz-relayer-1:
+        condition: service_healthy
+      oz-relayer-2:
+        condition: service_healthy
+    environment:
+      PORT: 3001
+      RELAYER_COUNT: 3
+      RELAYER_PORT: 8080
+      OZ_RELAYER_API_KEY: ${OZ_RELAYER_API_KEY:-amoy-oz-relayer-shared-api-key-32ch}
+      HEALTH_CHECK_INTERVAL_MS: 10000
+      HEALTH_CHECK_TIMEOUT_MS: 500
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+    networks:
+      - msq-relayer-network
+    restart: unless-stopped
+
   # === Queue Consumer (SPEC-QUEUE-001 + SPEC-ROUTING-001) ===
   queue-consumer:
     build:
@@ -232,6 +264,8 @@ services:
       oz-relayer-1:
         condition: service_healthy
       oz-relayer-2:
+        condition: service_healthy
+      relayer-discovery:
         condition: service_healthy
     environment:
       NODE_ENV: staging

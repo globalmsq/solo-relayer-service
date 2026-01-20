@@ -47,6 +47,58 @@ describe("discoveryConfig", () => {
     });
   });
 
+  describe("relayerPort configuration", () => {
+    it("should use default value 8080 when RELAYER_PORT is not set", () => {
+      delete process.env.RELAYER_PORT;
+
+      const config = discoveryConfig();
+      expect(config.relayerPort).toBe(8080);
+    });
+
+    it("should parse RELAYER_PORT from environment", () => {
+      process.env.RELAYER_PORT = "3000";
+
+      const config = discoveryConfig();
+      expect(config.relayerPort).toBe(3000);
+    });
+
+    it("should validate RELAYER_PORT is within range 1-65535", () => {
+      process.env.RELAYER_PORT = "0";
+      expect(() => discoveryConfig()).toThrow(
+        "RELAYER_PORT must be between 1 and 65535",
+      );
+
+      process.env.RELAYER_PORT = "65536";
+      expect(() => discoveryConfig()).toThrow(
+        "RELAYER_PORT must be between 1 and 65535",
+      );
+    });
+
+    it("should accept valid RELAYER_PORT values", () => {
+      process.env.RELAYER_PORT = "1";
+      expect(discoveryConfig().relayerPort).toBe(1);
+
+      process.env.RELAYER_PORT = "65535";
+      expect(discoveryConfig().relayerPort).toBe(65535);
+    });
+  });
+
+  describe("relayerApiKey configuration", () => {
+    it("should use empty string when OZ_RELAYER_API_KEY is not set", () => {
+      delete process.env.OZ_RELAYER_API_KEY;
+
+      const config = discoveryConfig();
+      expect(config.relayerApiKey).toBe("");
+    });
+
+    it("should parse OZ_RELAYER_API_KEY from environment", () => {
+      process.env.OZ_RELAYER_API_KEY = "test-api-key";
+
+      const config = discoveryConfig();
+      expect(config.relayerApiKey).toBe("test-api-key");
+    });
+  });
+
   describe("healthCheckInterval configuration", () => {
     it("should use default value 10000 when HEALTH_CHECK_INTERVAL_MS is not set", () => {
       delete process.env.HEALTH_CHECK_INTERVAL_MS;
@@ -152,6 +204,8 @@ describe("discoveryConfig", () => {
   describe("complete configuration", () => {
     it("should return complete valid configuration", () => {
       process.env.RELAYER_COUNT = "3";
+      process.env.RELAYER_PORT = "8080";
+      process.env.OZ_RELAYER_API_KEY = "test-api-key";
       process.env.HEALTH_CHECK_INTERVAL_MS = "10000";
       process.env.HEALTH_CHECK_TIMEOUT_MS = "500";
       process.env.REDIS_HOST = "localhost";
@@ -161,6 +215,8 @@ describe("discoveryConfig", () => {
 
       expect(config).toEqual({
         relayerCount: 3,
+        relayerPort: 8080,
+        relayerApiKey: "test-api-key",
         healthCheckInterval: 10000,
         healthCheckTimeout: 500,
         redis: {
