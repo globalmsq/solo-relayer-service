@@ -48,6 +48,7 @@ docker compose -f docker/docker-compose.yaml down
 |---------|-----|---------|
 | API Gateway | http://localhost:3000 | REST API, Swagger UI |
 | Swagger Docs | http://localhost:3000/api/docs | Interactive API documentation |
+| Relayer Discovery | http://localhost:3001 | Dynamic oz-relayer health monitoring (SPEC-DISCOVERY-001) |
 | Hardhat Node | http://localhost:8545 | Local blockchain |
 | LocalStack | http://localhost:4566 | AWS SQS emulation |
 | Redis | localhost:6379 | Cache & Queue |
@@ -125,6 +126,7 @@ curl http://localhost:3000/api/v1/relay/status/550e8400-e29b-41d4-a716-446655440
 |----------|-------------|---------|
 | [packages/relay-api/README.md](./packages/relay-api/README.md) | Relay API service documentation, endpoints, architecture | Producer Service |
 | [packages/queue-consumer/README.md](./packages/queue-consumer/README.md) | Queue Consumer service documentation, async processing | Consumer Service |
+| [packages/relayer-discovery/README.md](./packages/relayer-discovery/README.md) | Relayer Discovery service, health checks, active list management | Discovery Service |
 
 ### Specifications
 
@@ -133,6 +135,7 @@ curl http://localhost:3000/api/v1/relay/status/550e8400-e29b-41d4-a716-446655440
 | [.moai/specs/SPEC-ROUTING-001/spec.md](./.moai/specs/SPEC-ROUTING-001/spec.md) | Complete ✓ | 1.1.0 |
 | [.moai/specs/SPEC-QUEUE-001/spec.md](./.moai/specs/SPEC-QUEUE-001/spec.md) | Complete ✓ | 1.0.0 |
 | [.moai/specs/SPEC-WEBHOOK-001/spec.md](./.moai/specs/SPEC-WEBHOOK-001/spec.md) | Complete ✓ | 1.0.0 |
+| [.moai/specs/SPEC-DISCOVERY-001/spec.md](./.moai/specs/SPEC-DISCOVERY-001/spec.md) | Complete ✓ | 1.0.1 |
 
 ## Project Structure
 
@@ -146,6 +149,7 @@ msq-relayer-service/
 ├── packages/
 │   ├── relay-api/                # NestJS API Gateway (Producer)
 │   ├── queue-consumer/           # Queue Consumer Service
+│   ├── relayer-discovery/        # Relayer Discovery Service (SPEC-DISCOVERY-001)
 │   ├── contracts/                # Smart Contracts (Hardhat)
 │   └── examples/                 # Integration examples
 ├── docs/                         # Documentation
@@ -158,7 +162,8 @@ msq-relayer-service/
 │   ├── DEPLOYMENT.md
 │   └── TESTING.md
 ├── .moai/specs/                  # SPEC documents
-│   └── SPEC-QUEUE-001/spec.md
+│   ├── SPEC-QUEUE-001/spec.md
+│   └── SPEC-DISCOVERY-001/spec.md
 └── README.md                     # This file
 ```
 
@@ -373,6 +378,18 @@ docker push <ECR_REPO>/relay-api:latest
 | `OZ_RELAYER_URL` | `http://localhost:8081` | OZ Relayer endpoint |
 | `OZ_RELAYER_API_KEY` | `your-api-key` | OZ Relayer API key |
 
+### Relayer Discovery Configuration (SPEC-DISCOVERY-001)
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `RELAYER_COUNT` | `3` | Number of oz-relayers to monitor |
+| `RELAYER_PORT` | `8080` | oz-relayer HTTP port |
+| `OZ_RELAYER_API_KEY` | `oz-relayer-shared-api-key` | Bearer token for oz-relayer health checks |
+| `HEALTH_CHECK_INTERVAL_MS` | `10000` | Health check frequency (milliseconds) |
+| `HEALTH_CHECK_TIMEOUT_MS` | `500` | Health check timeout (milliseconds) |
+| `REDIS_HOST` | `redis` | Redis hostname |
+| `REDIS_PORT` | `6379` | Redis port |
+
 See [docs/DEPLOYMENT.md](./docs/DEPLOYMENT.md) for complete configuration.
 
 ## API Reference
@@ -466,6 +483,9 @@ GET /api/v1/health
 # API Gateway
 curl http://localhost:3000/api/v1/health
 
+# Relayer Discovery (Active relayer status)
+curl http://localhost:3001/status
+
 # OZ Relayer Health
 curl http://localhost:8081/api/v1/health
 curl http://localhost:8082/api/v1/health
@@ -479,6 +499,49 @@ docker compose exec mysql mysql -u root -p -e "SELECT 1"
 
 # LocalStack SQS
 docker compose exec localstack awslocal sqs list-queues
+
+# Verify active relayers in Redis
+docker compose exec redis redis-cli SMEMBERS relayer:active
+```
+
+### Relayer Discovery Status Endpoint
+
+The Relayer Discovery service monitors oz-relayer health and maintains an active relayer list in Redis:
+
+```bash
+curl http://localhost:3001/status
+```
+
+Response example:
+```json
+{
+  "service": "relayer-discovery",
+  "status": "healthy",
+  "timestamp": "2026-01-20T04:25:38.876Z",
+  "activeRelayers": [
+    {
+      "id": "oz-relayer-0",
+      "status": "healthy",
+      "lastCheckTimestamp": "2026-01-20T04:25:30.951Z",
+      "url": "http://oz-relayer-0:8080"
+    },
+    {
+      "id": "oz-relayer-1",
+      "status": "healthy",
+      "lastCheckTimestamp": "2026-01-20T04:25:30.951Z",
+      "url": "http://oz-relayer-1:8080"
+    },
+    {
+      "id": "oz-relayer-2",
+      "status": "healthy",
+      "lastCheckTimestamp": "2026-01-20T04:25:30.952Z",
+      "url": "http://oz-relayer-2:8080"
+    }
+  ],
+  "totalConfigured": 3,
+  "totalActive": 3,
+  "healthCheckInterval": 10000
+}
 ```
 
 ### Logs
@@ -490,7 +553,7 @@ docker compose logs -f
 # Specific service
 docker compose logs -f relay-api
 docker compose logs -f queue-consumer
-docker compose logs -f oz-relayer-1
+docker compose logs -f oz-relayer-0
 ```
 
 ### Metrics

@@ -177,7 +177,7 @@ services:
         condition: service_healthy
       mysql:
         condition: service_healthy
-      oz-relayer-1:
+      oz-relayer-0:
         condition: service_healthy
       localstack:
         condition: service_healthy
@@ -193,10 +193,7 @@ services:
       CHAIN_ID: 31337
       # Forwarder address from msqpay-monorepo (deployed after MockERC20)
       FORWARDER_ADDRESS: ${FORWARDER_ADDRESS:-0x5FbDB2315678afecb367f032d93F642f64180aa3}
-      # Direct connection to single OZ Relayer for consistent relayer ID
-      # (Load balancer causes ID mismatch between getRelayerId and sendTransaction)
-      OZ_RELAYER_URL: http://oz-relayer-1:8080
-      OZ_RELAYER_API_KEY: ${OZ_RELAYER_API_KEY:-oz-relayer-shared-api-key-local-dev}
+      # SPEC-DISCOVERY-001: OZ_RELAYER_URL removed - transactions processed via queue-consumer
       # Phase 2: Webhook & Notification settings
       WEBHOOK_SIGNING_KEY: ${WEBHOOK_SIGNING_KEY:-local-dev-webhook-signing-key-32ch}
       CLIENT_WEBHOOK_URL: ${CLIENT_WEBHOOK_URL:-http://host.docker.internal:9000/webhooks/transaction-updates}
@@ -222,11 +219,26 @@ services:
   # All relayers share single Redis instance for nonce management
   # Each relayer uses unique private key to prevent nonce collision
   # DC-001: Redis key isolation by signer address (relayer:nonce:{signerAddress})
-  oz-relayer-1:
+  # SPEC-DISCOVERY-001: Zero-based naming (relayer-0, relayer-1, relayer-2)
+  oz-relayer-0:
     <<: *relayer-common
     ports:
       - "8081:8080"
       - "8091:8081"
+    volumes:
+      - ./config/oz-relayer/relayer-0.json:/app/config/config.json:ro
+      - ./keys/relayer-0:/app/config/keys:ro
+    environment:
+      <<: *relayer-env
+      API_KEY: ${OZ_RELAYER_API_KEY:-oz-relayer-shared-api-key-local-dev}
+      # SPEC-ROUTING-001: Unique Redis key prefix to prevent consumer conflicts
+      REDIS_KEY_PREFIX: oz-relayer-0
+
+  oz-relayer-1:
+    <<: *relayer-common
+    ports:
+      - "8082:8080"
+      - "8092:8081"
     volumes:
       - ./config/oz-relayer/relayer-1.json:/app/config/config.json:ro
       - ./keys/relayer-1:/app/config/keys:ro
@@ -239,8 +251,8 @@ services:
   oz-relayer-2:
     <<: *relayer-common
     ports:
-      - "8082:8080"
-      - "8092:8081"
+      - "8083:8080"
+      - "8093:8081"
     volumes:
       - ./config/oz-relayer/relayer-2.json:/app/config/config.json:ro
       - ./keys/relayer-2:/app/config/keys:ro
@@ -250,19 +262,37 @@ services:
       # SPEC-ROUTING-001: Unique Redis key prefix to prevent consumer conflicts
       REDIS_KEY_PREFIX: oz-relayer-2
 
-  oz-relayer-3:
-    <<: *relayer-common
+  # === Relayer Discovery Service (SPEC-DISCOVERY-001) ===
+  # Monitors OZ-Relayer health and maintains active relayer set in Redis
+  relayer-discovery:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile.packages
+      target: relayer-discovery
+    command: ["pnpm", "run", "start"]
     ports:
-      - "8083:8080"
-      - "8093:8081"
-    volumes:
-      - ./config/oz-relayer/relayer-3.json:/app/config/config.json:ro
-      - ./keys/relayer-3:/app/config/keys:ro
+      - "3001:3001"
+    depends_on:
+      redis:
+        condition: service_healthy
+      oz-relayer-0:
+        condition: service_healthy
+      oz-relayer-1:
+        condition: service_healthy
+      oz-relayer-2:
+        condition: service_healthy
     environment:
-      <<: *relayer-env
-      API_KEY: ${OZ_RELAYER_API_KEY:-oz-relayer-shared-api-key-local-dev}
-      # SPEC-ROUTING-001: Unique Redis key prefix to prevent consumer conflicts
-      REDIS_KEY_PREFIX: oz-relayer-3
+      PORT: 3001
+      RELAYER_COUNT: 3
+      RELAYER_PORT: 8080
+      OZ_RELAYER_API_KEY: ${OZ_RELAYER_API_KEY:-oz-relayer-shared-api-key-local-dev}
+      HEALTH_CHECK_INTERVAL_MS: 10000
+      HEALTH_CHECK_TIMEOUT_MS: 500
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+    networks:
+      - msq-relayer-network
+    restart: unless-stopped
 
   # === Queue Consumer (SPEC-QUEUE-001 + SPEC-ROUTING-001) ===
   queue-consumer:
@@ -278,11 +308,13 @@ services:
         condition: service_healthy
       localstack:
         condition: service_healthy
+      oz-relayer-0:
+        condition: service_healthy
       oz-relayer-1:
         condition: service_healthy
       oz-relayer-2:
         condition: service_healthy
-      oz-relayer-3:
+      relayer-discovery:
         condition: service_healthy
     environment:
       NODE_ENV: development
@@ -297,11 +329,12 @@ services:
       SQS_ENDPOINT_URL: http://localstack:4566
       SQS_QUEUE_URL: http://localstack:4566/000000000000/relay-transactions
       SQS_DLQ_URL: http://localstack:4566/000000000000/relay-transactions-dlq
-      # SPEC-ROUTING-001: Multi-Relayer Smart Routing
-      # OZ_RELAYER_URL kept for backward compatibility (single relayer fallback)
-      OZ_RELAYER_URL: http://oz-relayer-1:8080
-      # FR-005: Comma-separated URLs for Smart Routing
-      OZ_RELAYER_URLS: http://oz-relayer-1:8080,http://oz-relayer-2:8080,http://oz-relayer-3:8080
+      # SPEC-ROUTING-001 + SPEC-DISCOVERY-001: Multi-Relayer Smart Routing
+      # Primary: Queue-consumer queries Redis 'relayer:active' Set for active relayers
+      # Fallback: OZ_RELAYER_URLS used when Redis is unavailable
+      OZ_RELAYER_URL: http://oz-relayer-0:8080
+      # SPEC-DISCOVERY-001 Phase 2: Fallback URLs when Redis is unavailable
+      OZ_RELAYER_URLS: http://oz-relayer-0:8080,http://oz-relayer-1:8080,http://oz-relayer-2:8080
       OZ_RELAYER_API_KEY: ${OZ_RELAYER_API_KEY:-oz-relayer-shared-api-key-local-dev}
     networks:
       - msq-relayer-network
@@ -320,7 +353,7 @@ services:
     depends_on:
       relay-api:
         condition: service_healthy
-      oz-relayer-1:
+      oz-relayer-0:
         condition: service_healthy
     environment:
       # Blockchain RPC for on-chain verification (balance, nonce, contract calls)
@@ -332,7 +365,7 @@ services:
       RELAY_API_URL: http://relay-api:8080
       RELAY_API_KEY: ${RELAY_API_KEY:-local-dev-api-key}
       # OZ Relayer for direct relayer status checks
-      OZ_RELAYER_URL: http://oz-relayer-1:8080
+      OZ_RELAYER_URL: http://oz-relayer-0:8080
       OZ_RELAYER_API_KEY: ${OZ_RELAYER_API_KEY:-oz-relayer-shared-api-key-local-dev}
     networks:
       - msq-relayer-network

@@ -183,7 +183,7 @@ docker logs msq-relay-api
 docker logs -f msq-relay-api
 
 # OZ Relayer logs
-docker logs msq-oz-relayer-1
+docker logs msq-oz-relayer-0
 ```
 
 ### Container Status
@@ -215,7 +215,7 @@ docker inspect msq-relay-api
 
 2. Check OZ Relayer status
    ```bash
-   docker logs msq-oz-relayer-1
+   docker logs msq-oz-relayer-0
    ```
 
 3. Restart service

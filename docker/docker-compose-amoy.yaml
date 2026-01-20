@@ -132,7 +132,7 @@ services:
         condition: service_healthy
       mysql:
         condition: service_healthy
-      oz-relayer-1:
+      oz-relayer-0:
         condition: service_healthy
       localstack:
         condition: service_healthy
@@ -146,10 +146,7 @@ services:
       RELAY_API_KEY: ${RELAY_API_KEY:-amoy-dev-api-key}
       CHAIN_ID: 80002
       FORWARDER_ADDRESS: "0xF034a404241707F347A952Cd4095f9035AF877Bf"
-      # Direct connection to single OZ Relayer for consistent relayer ID
-      # (Load balancer causes ID mismatch between getRelayerId and sendTransaction)
-      OZ_RELAYER_URL: http://oz-relayer-1:8080
-      OZ_RELAYER_API_KEY: ${OZ_RELAYER_API_KEY:-amoy-oz-relayer-shared-api-key-32ch}
+      # SPEC-DISCOVERY-001: OZ_RELAYER_URL removed - transactions processed via queue-consumer
       # Phase 2: Webhook & Notification settings
       WEBHOOK_SIGNING_KEY: ${WEBHOOK_SIGNING_KEY:-amoy-dev-webhook-signing-key-32ch}
       CLIENT_WEBHOOK_URL: ${CLIENT_WEBHOOK_URL:-http://host.docker.internal:9000/webhooks/transaction-updates}
@@ -173,12 +170,27 @@ services:
 
   # === OZ Relayer Pool (3 Instances) ===
   # SPEC-ROUTING-001: Multi-relayer smart routing with fire-and-forget pattern
+  # SPEC-DISCOVERY-001: Zero-based naming (relayer-0, relayer-1, relayer-2)
+  oz-relayer-0:
+    <<: *relayer-common
+    container_name: oz-relayer-amoy-0
+    ports:
+      - "8081:8080"
+      - "8091:8081"
+    volumes:
+      - ./config/oz-relayer/relayer-0-amoy.json:/app/config/config.json:ro
+      - ./keys-amoy/relayer-0:/app/config/keys:ro
+    environment:
+      <<: *relayer-env
+      API_KEY: ${OZ_RELAYER_API_KEY:-amoy-oz-relayer-shared-api-key-32ch}
+      REDIS_KEY_PREFIX: oz-relayer-0
+
   oz-relayer-1:
     <<: *relayer-common
     container_name: oz-relayer-amoy-1
     ports:
-      - "8081:8080"
-      - "8091:8081"
+      - "8082:8080"
+      - "8092:8081"
     volumes:
       - ./config/oz-relayer/relayer-1-amoy.json:/app/config/config.json:ro
       - ./keys-amoy/relayer-1:/app/config/keys:ro
@@ -191,8 +203,8 @@ services:
     <<: *relayer-common
     container_name: oz-relayer-amoy-2
     ports:
-      - "8082:8080"
-      - "8092:8081"
+      - "8083:8080"
+      - "8093:8081"
     volumes:
       - ./config/oz-relayer/relayer-2-amoy.json:/app/config/config.json:ro
       - ./keys-amoy/relayer-2:/app/config/keys:ro
@@ -201,19 +213,37 @@ services:
       API_KEY: ${OZ_RELAYER_API_KEY:-amoy-oz-relayer-shared-api-key-32ch}
       REDIS_KEY_PREFIX: oz-relayer-2
 
-  oz-relayer-3:
-    <<: *relayer-common
-    container_name: oz-relayer-amoy-3
+  # === Relayer Discovery Service (SPEC-DISCOVERY-001) ===
+  # Monitors OZ-Relayer health and maintains active relayer set in Redis
+  relayer-discovery:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile.packages
+      target: relayer-discovery
+    command: ["pnpm", "run", "start"]
     ports:
-      - "8083:8080"
-      - "8093:8081"
-    volumes:
-      - ./config/oz-relayer/relayer-3-amoy.json:/app/config/config.json:ro
-      - ./keys-amoy/relayer-3:/app/config/keys:ro
+      - "3001:3001"
+    depends_on:
+      redis:
+        condition: service_healthy
+      oz-relayer-0:
+        condition: service_healthy
+      oz-relayer-1:
+        condition: service_healthy
+      oz-relayer-2:
+        condition: service_healthy
     environment:
-      <<: *relayer-env
-      API_KEY: ${OZ_RELAYER_API_KEY:-amoy-oz-relayer-shared-api-key-32ch}
-      REDIS_KEY_PREFIX: oz-relayer-3
+      PORT: 3001
+      RELAYER_COUNT: 3
+      RELAYER_PORT: 8080
+      OZ_RELAYER_API_KEY: ${OZ_RELAYER_API_KEY:-amoy-oz-relayer-shared-api-key-32ch}
+      HEALTH_CHECK_INTERVAL_MS: 10000
+      HEALTH_CHECK_TIMEOUT_MS: 500
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+    networks:
+      - msq-relayer-network
+    restart: unless-stopped
 
   # === Queue Consumer (SPEC-QUEUE-001 + SPEC-ROUTING-001) ===
   queue-consumer:
@@ -229,11 +259,13 @@ services:
         condition: service_healthy
       localstack:
         condition: service_healthy
+      oz-relayer-0:
+        condition: service_healthy
       oz-relayer-1:
         condition: service_healthy
       oz-relayer-2:
         condition: service_healthy
-      oz-relayer-3:
+      relayer-discovery:
         condition: service_healthy
     environment:
       NODE_ENV: staging
@@ -250,9 +282,9 @@ services:
       SQS_DLQ_URL: http://localstack:4566/000000000000/relay-transactions-dlq
       # SPEC-ROUTING-001: Multi-Relayer Smart Routing
       # OZ_RELAYER_URL kept for backward compatibility (single relayer fallback)
-      OZ_RELAYER_URL: http://oz-relayer-1:8080
+      OZ_RELAYER_URL: http://oz-relayer-0:8080
       # FR-005: Comma-separated URLs for Smart Routing (3 relayers)
-      OZ_RELAYER_URLS: http://oz-relayer-1:8080,http://oz-relayer-2:8080,http://oz-relayer-3:8080
+      OZ_RELAYER_URLS: http://oz-relayer-0:8080,http://oz-relayer-1:8080,http://oz-relayer-2:8080
       OZ_RELAYER_API_KEY: ${OZ_RELAYER_API_KEY:-amoy-oz-relayer-shared-api-key-32ch}
     networks:
       - msq-relayer-network
@@ -270,7 +302,7 @@ services:
     depends_on:
       relay-api:
         condition: service_healthy
-      oz-relayer-1:
+      oz-relayer-0:
         condition: service_healthy
     environment:
       RPC_URL: ${RPC_URL:-https://rpc-amoy.polygon.technology}
@@ -278,7 +310,7 @@ services:
       FORWARDER_ADDRESS: "0xF034a404241707F347A952Cd4095f9035AF877Bf"
       RELAY_API_URL: http://relay-api:8080
       RELAY_API_KEY: ${RELAY_API_KEY:-amoy-dev-api-key}
-      OZ_RELAYER_URL: http://oz-relayer-1:8080
+      OZ_RELAYER_URL: http://oz-relayer-0:8080
       OZ_RELAYER_API_KEY: ${OZ_RELAYER_API_KEY:-amoy-oz-relayer-shared-api-key-32ch}
     networks:
       - msq-relayer-network

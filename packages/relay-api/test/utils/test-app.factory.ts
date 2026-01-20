@@ -14,22 +14,16 @@ import * as bodyParser from "body-parser";
 import { HttpService } from "@nestjs/axios";
 import { of } from "rxjs";
 import { AppModule } from "../../src/app.module";
-import { OzRelayerService } from "../../src/oz-relayer/oz-relayer.service";
 import { GaslessService } from "../../src/relay/gasless/gasless.service";
 import { StatusModule } from "../../src/relay/status/status.module";
 import { RedisService } from "../../src/redis/redis.service";
 import { PrismaService } from "../../src/prisma/prisma.service";
 import { SqsAdapter } from "../../src/queue/sqs.adapter";
 import { TEST_CONFIG } from "../fixtures/test-config";
-import {
-  createMockOzRelayerResponse,
-  createMockConfirmedResponse,
-} from "../fixtures/mock-responses";
 
 // Shared config map (no duplication)
+// SPEC-DISCOVERY-001: OZ_RELAYER_URL removed - transactions processed via queue-consumer
 const configMap: Record<string, any> = {
-  OZ_RELAYER_URL: TEST_CONFIG.oz_relayer.url,
-  OZ_RELAYER_API_KEY: TEST_CONFIG.oz_relayer.api_key,
   RELAY_API_KEY: TEST_CONFIG.api.key,
   apiKey: TEST_CONFIG.api.key,
   FORWARDER_ADDRESS: TEST_CONFIG.forwarder.address,
@@ -52,17 +46,6 @@ const configMap: Record<string, any> = {
   "sqs.region": "ap-northeast-2",
   "sqs.accessKeyId": "test",
   "sqs.secretAccessKey": "test",
-};
-
-// Default mock for OzRelayerService
-// SPEC-ROUTING-001: Added getRelayerIdFromUrl for multi-relayer smart routing
-const defaultOzRelayerMock = {
-  sendTransaction: jest.fn().mockResolvedValue(createMockOzRelayerResponse()),
-  getTransactionStatus: jest
-    .fn()
-    .mockResolvedValue(createMockConfirmedResponse()),
-  getRelayerId: jest.fn().mockResolvedValue("test-relayer-id"),
-  getRelayerIdFromUrl: jest.fn().mockResolvedValue("test-relayer-id"),
 };
 
 // Default mock for Redis client (ioredis instance) - Prevents real Redis connections
@@ -189,9 +172,7 @@ export async function createTestApp(): Promise<INestApplication> {
         return value;
       }),
     })
-    // Mock OzRelayerService (Critical: prevents real HTTP calls to OZ Relayer)
-    .overrideProvider(OzRelayerService)
-    .useValue(defaultOzRelayerMock)
+    // SPEC-DISCOVERY-001: OzRelayerService removed - transactions processed via queue-consumer
     // Mock HttpService with useFactory to ensure proper injection
     .overrideProvider(HttpService)
     .useFactory({
@@ -305,17 +286,7 @@ function setupServiceMocks(moduleFixture: TestingModule): void {
   }
 }
 
-/**
- * Helper to get OzRelayerService mock for test manipulation
- * @example
- * const ozMock = getOzRelayerServiceMock(app);
- * ozMock.sendTransaction.mockRejectedValueOnce(new ServiceUnavailableException());
- */
-export function getOzRelayerServiceMock(
-  app: INestApplication,
-): jest.Mocked<OzRelayerService> {
-  return app.get(OzRelayerService);
-}
+// SPEC-DISCOVERY-001: getOzRelayerServiceMock removed - OZ Relayer no longer used in relay-api
 
 /**
  * Type for mocked HttpService with spied methods
@@ -386,21 +357,7 @@ export function resetMocks(app?: INestApplication): void {
   // Reset transaction counter for unique IDs
   transactionCounter = 0;
 
-  // Reset OzRelayerService mocks with fresh implementations
-  defaultOzRelayerMock.sendTransaction.mockReset();
-  defaultOzRelayerMock.getTransactionStatus.mockReset();
-  defaultOzRelayerMock.getRelayerId.mockReset();
-  defaultOzRelayerMock.getRelayerIdFromUrl.mockReset();
-
-  // Use mockImplementation to generate unique transactionIds per call
-  defaultOzRelayerMock.sendTransaction.mockImplementation(() =>
-    Promise.resolve(createMockOzRelayerResponse()),
-  );
-  defaultOzRelayerMock.getTransactionStatus.mockImplementation(() =>
-    Promise.resolve(createMockConfirmedResponse()),
-  );
-  defaultOzRelayerMock.getRelayerId.mockResolvedValue("test-relayer-id");
-  defaultOzRelayerMock.getRelayerIdFromUrl.mockResolvedValue("test-relayer-id");
+  // SPEC-DISCOVERY-001: OzRelayerService mocks removed - transactions processed via queue-consumer
 
   // Reset SqsAdapter mock (SPEC-QUEUE-001)
   defaultSqsAdapterMock.sendMessage.mockReset();

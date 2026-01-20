@@ -15,4 +15,6 @@ module.exports = {
   verbose: true,
   coverageDirectory: './coverage',
   collectCoverageFrom: ['tests/**/*.ts'],
+  // Prevent Jest worker serialization issues with Axios circular references
+  maxWorkers: 1,
 };

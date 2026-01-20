@@ -7,6 +7,7 @@ import { OzRelayerClient } from './relay/oz-relayer.client';
 import { RelayerRouterService } from './relay/relayer-router.service';
 import { PrismaService } from './prisma/prisma.service';
 import { HealthModule } from './health/health.module';
+import { RedisModule } from './redis/redis.module';
 import configuration from './config/configuration';
 
 @Module({
@@ -17,6 +18,7 @@ import configuration from './config/configuration';
     }),
     HttpModule,
     HealthModule,
+    RedisModule, // SPEC-DISCOVERY-001 Phase 2: Redis for active relayer discovery
   ],
   providers: [
     ConsumerService,

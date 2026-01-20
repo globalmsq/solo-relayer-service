@@ -35,11 +35,11 @@ Smart Routing is a core component of SPEC-ROUTING-001 that intelligently selects
 
 The system manages 3 OZ Relayer instances deployed with unique configurations:
 
-| Relayer | URL | Redis Prefix | Signing Key | Status |
-|---------|-----|--------------|-------------|--------|
-| relayer-1 | http://oz-relayer-1:8080 | relayer-1 | key1.json | Active |
-| relayer-2 | http://oz-relayer-2:8080 | relayer-2 | key2.json | Active |
-| relayer-3 | http://oz-relayer-3:8080 | relayer-3 | key3.json | Active |
+| Relayer ID   | URL                      | Redis Prefix | Signing Key | Status |
+|--------------|--------------------------|--------------|-------------|--------|
+| oz-relayer-0 | http://oz-relayer-0:8080 | oz-relayer-0 | key0.json   | Active |
+| oz-relayer-1 | http://oz-relayer-1:8080 | oz-relayer-1 | key1.json   | Active |
+| oz-relayer-2 | http://oz-relayer-2:8080 | oz-relayer-2 | key2.json   | Active |
 
 ---
 
@@ -136,9 +136,9 @@ const HEALTH_CHECK_CONFIG = {
   CACHE_TTL_SECONDS: 10,
   TIMEOUT_MS: 500,  // Each health check must complete within 500ms
   ENDPOINTS: [
+    'http://oz-relayer-0:8080/health',
     'http://oz-relayer-1:8080/health',
-    'http://oz-relayer-2:8080/health',
-    'http://oz-relayer-3:8080/health'
+    'http://oz-relayer-2:8080/health'
   ]
 };
 ```
@@ -175,10 +175,10 @@ Time 20s:    Cache expires again
 **Scenario**: Health check executes at 12:30:00
 
 ```
-12:30:00 - Health check to oz-relayer-1/health
+12:30:00 - Health check to oz-relayer-0/health
            Response: "healthy" (200 OK)
            Cache set: {
-             url: 'http://oz-relayer-1:8080',
+             url: 'http://oz-relayer-0:8080',
              status: 'healthy',
              timestamp: 12:30:00,
              expiresAt: 12:30:10
@@ -245,7 +245,7 @@ async getAvailableRelayer(): Promise<string> {
 | relayer-2 | ✓ Healthy | 5 | **YES** |
 | relayer-3 | ✓ Healthy | 12 | - |
 
-**Result**: `http://oz-relayer-2:8080` (lowest pending count)
+**Result**: `http://oz-relayer-1:8080` (lowest pending count)
 
 #### Scenario 2: One Relayer Unhealthy
 
@@ -255,7 +255,7 @@ async getAvailableRelayer(): Promise<string> {
 | relayer-2 | ✗ Unhealthy | 2 | - |
 | relayer-3 | ✓ Healthy | 8 | - |
 
-**Result**: `http://oz-relayer-1:8080` (lowest among healthy)
+**Result**: `http://oz-relayer-0:8080` (lowest among healthy)
 
 #### Scenario 3: All Relayers Unhealthy
 
@@ -471,14 +471,14 @@ histogram_quantile(0.95, relayer_selection_latency) > 100ms
 **Diagnosis**:
 ```bash
 # Check pending TX counts
+curl http://oz-relayer-0:8080/api/v1/relayers/[id]/pending_txs
 curl http://oz-relayer-1:8080/api/v1/relayers/[id]/pending_txs
 curl http://oz-relayer-2:8080/api/v1/relayers/[id]/pending_txs
-curl http://oz-relayer-3:8080/api/v1/relayers/[id]/pending_txs
 
 # Check health status
+curl http://oz-relayer-0:8080/health
 curl http://oz-relayer-1:8080/health
 curl http://oz-relayer-2:8080/health
-curl http://oz-relayer-3:8080/health
 ```
 
 **Solutions**:
@@ -495,9 +495,9 @@ curl http://oz-relayer-3:8080/health
 ```bash
 # Check relayer connectivity from queue-consumer container
 docker exec queue-consumer bash
+curl http://oz-relayer-0:8080/health
 curl http://oz-relayer-1:8080/health
 curl http://oz-relayer-2:8080/health
-curl http://oz-relayer-3:8080/health
 ```
 
 **Solutions**:

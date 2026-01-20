@@ -50,7 +50,7 @@ async function createKeystore() {
 
     // Get output path
     const outputPath = await question(
-      'Enter output path (e.g., docker/keys/relayer-1/keystore.json): '
+      'Enter output path (e.g., docker/keys/relayer-0/keystore.json): '
     );
 
     // Create wallet and encrypt

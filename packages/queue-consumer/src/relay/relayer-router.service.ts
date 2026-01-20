@@ -1,6 +1,7 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import axios, { AxiosError } from 'axios';
+import { RedisService } from '../redis/redis.service';
 
 /**
  * Relayer health and load information
@@ -22,22 +23,36 @@ interface RelayerInfo {
  * - Fall back to round-robin if health check fails for any relayer
  * - Skip unhealthy relayers (health check failure)
  *
+ * SPEC-DISCOVERY-001 Phase 2: Dynamic Relayer Discovery
+ * - Query Redis 'relayer:active' Set for active relayer list
+ * - Dynamically construct relayer URLs from Redis data
+ * - Fall back to environment config if Redis unavailable
+ *
  * NFR-001: Smart Router Performance
  * - Complete relayer selection within 100ms
  * - Cache relayer health status for 10 seconds
  * - Fail fast (skip) if relayer health check takes >500ms
  */
 @Injectable()
-export class RelayerRouterService {
+export class RelayerRouterService implements OnModuleInit {
   private readonly logger = new Logger(RelayerRouterService.name);
   private readonly apiKey: string;
 
-  // FR-005: Multi-relayer configuration from comma-separated URLs
-  private readonly relayerUrls: string[];
+  // Fallback relayer URLs from environment config
+  private readonly fallbackRelayerUrls: string[];
+
+  // SPEC-DISCOVERY-001: Redis key for active relayer list
+  private readonly REDIS_ACTIVE_RELAYERS_KEY = 'relayer:active';
+
+  // SPEC-DISCOVERY-001: Relayer port for URL construction
+  private readonly RELAYER_PORT = 8080;
 
   // NFR-001: Health check caching (10 second TTL)
   private readonly CACHE_TTL_MS = 10000;
   private readonly HEALTH_CHECK_TIMEOUT_MS = 500;
+
+  // SPEC-DISCOVERY-001: Active relayers cache TTL (2 second)
+  private readonly ACTIVE_RELAYERS_CACHE_TTL_MS = 2000;
 
   // Relayer cache: url -> RelayerInfo
   private relayerCache: Map<string, RelayerInfo> = new Map();
@@ -45,14 +60,22 @@ export class RelayerRouterService {
   // Round-robin index for fallback mode
   private roundRobinIndex = 0;
 
-  constructor(private configService: ConfigService) {
+  // Current active relayer URLs (from Redis or fallback)
+  private currentRelayerUrls: string[] = [];
+
+  // SPEC-DISCOVERY-001: Cache timestamp for active relayers list
+  private activeRelayersCacheTime: number = 0;
+
+  constructor(
+    private configService: ConfigService,
+    private redisService: RedisService,
+  ) {
     const urlsConfig = this.configService.get<string>('relayer.urls') || '';
     const singleUrl =
-      this.configService.get<string>('relayer.url') ||
-      'http://localhost:8081';
+      this.configService.get<string>('relayer.url') || 'http://localhost:8081';
 
-    // Parse comma-separated URLs or use single URL as fallback
-    this.relayerUrls = urlsConfig
+    // Parse comma-separated URLs as fallback when Redis is unavailable
+    this.fallbackRelayerUrls = urlsConfig
       ? urlsConfig.split(',').map((url) => url.trim())
       : [singleUrl];
 
@@ -60,9 +83,73 @@ export class RelayerRouterService {
       this.configService.get<string>('relayer.apiKey') ||
       'oz-relayer-shared-api-key-local-dev';
 
+    // Initialize with fallback URLs until Redis is available
+    this.currentRelayerUrls = [...this.fallbackRelayerUrls];
+
     this.logger.log(
-      `RelayerRouterService initialized with ${this.relayerUrls.length} relayers: ${this.relayerUrls.join(', ')}`,
+      `RelayerRouterService initialized with fallback relayers: ${this.fallbackRelayerUrls.join(', ')}`,
     );
+  }
+
+  async onModuleInit(): Promise<void> {
+    // Try to refresh relayer URLs from Redis on startup
+    await this.refreshRelayerUrlsFromRedis();
+  }
+
+  /**
+   * SPEC-DISCOVERY-001 Phase 2: Refresh relayer URLs from Redis
+   *
+   * Queries Redis 'relayer:active' Set for active relayer hostnames
+   * and constructs URLs. Falls back to environment config if Redis unavailable.
+   *
+   * Uses 2-second in-memory cache to reduce Redis calls at high TPS.
+   * At 100 TPS, this reduces Redis calls from 1000/10s to ~5/10s.
+   */
+  private async refreshRelayerUrlsFromRedis(): Promise<void> {
+    const now = Date.now();
+
+    // Return early if cache is still valid and we have URLs
+    if (
+      now - this.activeRelayersCacheTime < this.ACTIVE_RELAYERS_CACHE_TTL_MS &&
+      this.currentRelayerUrls.length > 0
+    ) {
+      return;
+    }
+
+    try {
+      // Query Redis for active relayers
+      const activeRelayers = await this.redisService.smembers(
+        this.REDIS_ACTIVE_RELAYERS_KEY,
+      );
+
+      if (activeRelayers.length > 0) {
+        // Construct URLs from Redis hostnames (e.g., oz-relayer-0 -> http://oz-relayer-0:8080)
+        this.currentRelayerUrls = activeRelayers
+          .sort() // Sort for consistent ordering
+          .map((hostname) => `http://${hostname}:${this.RELAYER_PORT}`);
+
+        // Update cache timestamp on success
+        this.activeRelayersCacheTime = now;
+
+        this.logger.log(
+          `Refreshed relayer URLs from Redis: ${this.currentRelayerUrls.join(', ')}`,
+        );
+      } else {
+        // No active relayers in Redis, use fallback
+        this.logger.warn(
+          'No active relayers found in Redis, using fallback URLs',
+        );
+        this.currentRelayerUrls = [...this.fallbackRelayerUrls];
+      }
+    } catch (error) {
+      this.logger.error(
+        `Failed to refresh relayer URLs from Redis: ${error instanceof Error ? error.message : 'Unknown error'}`,
+      );
+      // Keep using current URLs (fallback if first time, or last known good state)
+      if (this.currentRelayerUrls.length === 0) {
+        this.currentRelayerUrls = [...this.fallbackRelayerUrls];
+      }
+    }
   }
 
   /**
@@ -73,6 +160,10 @@ export class RelayerRouterService {
    * - Select the relayer with the lowest numberOfPendingTransactions
    * - Fall back to round-robin if health check fails
    *
+   * SPEC-DISCOVERY-001 Phase 2: Dynamic Relayer Discovery
+   * - Refresh relayer URLs from Redis before selection
+   * - Use active relayers discovered by relayer-discovery service
+   *
    * @returns The URL and relayer ID of the least busy relayer
    */
   async getAvailableRelayer(): Promise<{
@@ -81,10 +172,13 @@ export class RelayerRouterService {
   }> {
     const startTime = Date.now();
 
+    // SPEC-DISCOVERY-001: Refresh relayer URLs from Redis
+    await this.refreshRelayerUrlsFromRedis();
+
     try {
       // Query all relayers in parallel
       const relayerInfos = await Promise.all(
-        this.relayerUrls.map((url) => this.getRelayerInfo(url)),
+        this.currentRelayerUrls.map((url) => this.getRelayerInfo(url)),
       );
 
       // Filter healthy relayers
@@ -219,9 +313,9 @@ export class RelayerRouterService {
     url: string;
     relayerId: string;
   }> {
-    const url = this.relayerUrls[this.roundRobinIndex];
-    this.roundRobinIndex =
-      (this.roundRobinIndex + 1) % this.relayerUrls.length;
+    const urls = this.currentRelayerUrls;
+    const url = urls[this.roundRobinIndex % urls.length];
+    this.roundRobinIndex = (this.roundRobinIndex + 1) % urls.length;
 
     // Try to get relayer ID (may fail, but we proceed anyway)
     try {
@@ -268,11 +362,28 @@ export class RelayerRouterService {
   }
 
   /**
-   * Get all configured relayer URLs
+   * Get all current relayer URLs
    * Used for monitoring and debugging
+   *
+   * SPEC-DISCOVERY-001: Returns URLs from Redis if available, otherwise fallback
    */
   getRelayerUrls(): string[] {
-    return [...this.relayerUrls];
+    return [...this.currentRelayerUrls];
+  }
+
+  /**
+   * Get fallback relayer URLs from environment config
+   * Used for monitoring and debugging
+   */
+  getFallbackRelayerUrls(): string[] {
+    return [...this.fallbackRelayerUrls];
+  }
+
+  /**
+   * Check if using Redis-discovered relayers
+   */
+  isUsingRedisDiscovery(): boolean {
+    return this.redisService.isAvailable();
   }
 
   /**

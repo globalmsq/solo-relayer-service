@@ -4,7 +4,8 @@
   "private": true,
   "description": "Integration tests for MSQ Relayer Service",
   "scripts": {
-    "test": "jest",
+    "test": "jest --runInBand",
+    "test:amoy": "ENV_FILE=.env jest",
     "test:watch": "jest --watch",
     "test:cov": "jest --coverage",
     "test:blockchain": "jest --testPathPattern=blockchain",

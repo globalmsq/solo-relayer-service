@@ -279,9 +279,9 @@ msq-relayer-service/
 │   ├── docker-compose-amoy.yaml     # Polygon Amoy Testnet config
 │   ├── config/
 │   │   └── oz-relayer/              # OZ Relayer config files
-│   │       ├── relayer-1.json       # Relayer #1 config
-│   │       ├── relayer-2.json       # Relayer #2 config
-│   │       └── relayer-3.json       # Relayer #3 config
+│   │       ├── relayer-0.json       # Relayer #1 config
+│   │       ├── relayer-1.json       # Relayer #2 config
+│   │       └── relayer-2.json       # Relayer #3 config
 │   ├── keys-example/                # Sample keystore (Git included, Hardhat #10,11,12)
 │   │   ├── relayer-1/keystore.json
 │   │   ├── relayer-2/keystore.json
@@ -946,13 +946,13 @@ sequenceDiagram
 |---------|-------|------|------|
 | hardhat-node | Custom Build | 8545 | Local blockchain (Chain ID: 31337) |
 | relay-api | docker/Dockerfile.packages | 3000 | NestJS API Gateway |
-| oz-relayer-1~3 | openzeppelin-relayer:v1.3.0 | 8081-8083, 8091-8093 | TX relay (Multi-Relayer Pool) |
+| oz-relayer-0~3 | openzeppelin-relayer:v1.3.0 | 8081-8083, 8091-8093 | TX relay (Multi-Relayer Pool) |
 | oz-monitor | openzeppelin-monitor:v1.1.0 | - | Event monitoring (Phase 2+) |
 | redis | redis:8.0-alpine | 6379 | OZ Relayer internal Queue (AOF persistence) |
 | prometheus | prom/prometheus:v2.47.0 | 9090 | Metrics (Phase 2+) |
 | grafana | grafana:10.2.0 | 3001 | Dashboard (Phase 2+) |
 
-**Phase 1 Core Services**: hardhat-node, relay-api, oz-relayer-1~3, redis
+**Phase 1 Core Services**: hardhat-node, relay-api, oz-relayer-0~3, redis
 
 **Multi-Relayer Pool Configuration Approach**:
 - `deploy.replicas` not used: Each Relayer needs unique Private Key (Nonce collision prevention)

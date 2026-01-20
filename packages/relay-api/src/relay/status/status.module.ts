@@ -1,20 +1,18 @@
 import { Module } from "@nestjs/common";
-import { HttpModule } from "@nestjs/axios";
 import { StatusController } from "./status.controller";
 import { StatusService } from "./status.service";
-import { OzRelayerModule } from "../../oz-relayer/oz-relayer.module";
 
 /**
  * StatusModule - Transaction Status Query Module
  *
  * SPEC-STATUS-001: Transaction Status Polling API - Phase 1
- * Registers StatusController and StatusService for transaction status queries
+ * SPEC-DISCOVERY-001: OZ Relayer removed - uses 2-tier lookup (Redis + MySQL)
+ *
+ * Registers StatusController and StatusService for transaction status queries.
+ * Status data is stored by queue-consumer after OZ Relayer processing.
  */
 @Module({
-  imports: [
-    HttpModule, // Direct HTTP calls to OZ Relayer
-    OzRelayerModule, // getRelayerId() method access
-  ],
+  imports: [],
   controllers: [StatusController],
   providers: [StatusService],
   exports: [StatusService],

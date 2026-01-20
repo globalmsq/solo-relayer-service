@@ -411,7 +411,7 @@ OZ Relayer sends webhook with following structure:
   "ozRelayerTxId": "550e8400-e29b-41d4-a716-446655440000",
   "status": "confirmed",
   "hash": "0x1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef",
-  "oz_relayer_url": "http://oz-relayer-1:8080",
+  "oz_relayer_url": "http://oz-relayer-0:8080",
   "blockNumber": 12345678,
   "gasUsed": "21000",
   "timestamp": "2026-01-09T10:30:45.123Z",
@@ -692,7 +692,7 @@ Improvement: 12x more transactions/second
 3. **Store oz_relayer_url for Debugging**
    ```typescript
    // Link transaction to specific relayer
-   tx.oz_relayer_url = "http://oz-relayer-1:8080"
+   tx.oz_relayer_url = "http://oz-relayer-0:8080"
    // Helps debugging and relayer-specific issues
    ```
 
@@ -736,7 +736,7 @@ Improvement: 12x more transactions/second
 **Diagnosis**:
 ```bash
 # Check OZ Relayer logs
-docker logs oz-relayer-1
+docker logs oz-relayer-0
 
 # Check if webhook endpoint is reachable
 curl -X POST http://relay-api:8080/api/v1/webhooks/oz-relayer \

@@ -2,14 +2,11 @@ import request from "supertest";
 import { INestApplication } from "@nestjs/common";
 import * as crypto from "crypto";
 import * as http from "http";
-import { of } from "rxjs";
 import {
   createTestApp,
   resetMocks,
   defaultPrismaMock,
   defaultRedisMock,
-  getOzRelayerServiceMock,
-  getHttpServiceMock,
   getSqsAdapterMock,
 } from "../utils/test-app.factory";
 import { TEST_CONFIG } from "../fixtures/test-config";
@@ -21,11 +18,13 @@ import { TEST_WALLETS } from "../fixtures/test-wallets";
  * SPEC-WEBHOOK-001: TX History & Webhook System
  * AC-6.2: End-to-End Integration Tests
  *
+ * SPEC-DISCOVERY-001: OZ Relayer lookup removed from relay-api
+ *
  * Tests the full integration of:
- * - 3-Tier Lookup (Redis L1 → MySQL L2 → OZ Relayer L3)
+ * - 2-Tier Lookup (Redis L1 → MySQL L2)
  * - Webhook processing (HMAC verification, database updates, notifications)
  * - Performance requirements (< 5ms Redis hit, < 50ms MySQL hit)
- * - Graceful degradation (Redis failure → MySQL fallback → OZ Relayer fallback)
+ * - Graceful degradation (Redis failure → MySQL fallback)
  */
 describe("Webhook Integration E2E Tests", () => {
   let app: INestApplication;
@@ -375,26 +374,26 @@ describe("Webhook Integration E2E Tests", () => {
   });
 
   /**
-   * Scenario 6: Full Miss → OZ Relayer + Storage
-   * AC-4.3: Full cache miss fetches from OZ Relayer and stores in Redis + MySQL
+   * Scenario 6: MySQL has non-terminal status → Returns from MySQL
+   * SPEC-DISCOVERY-001: OZ Relayer lookup removed from relay-api
+   * AC-4.3 Updated: 2-tier lookup (Redis → MySQL), no OZ Relayer fallback
    *
-   * SPEC-ROUTING-001: MySQL must have record with ozRelayerTxId + non-terminal status
-   * to trigger OZ Relayer lookup
+   * When MySQL has non-terminal status, relay-api returns the current MySQL data.
+   * Status updates come from queue-consumer via webhooks.
    */
-  it("TC-E2E-INT006: Full cache miss fetches from OZ Relayer and stores in Redis + MySQL", async () => {
-    // Given: Redis miss, MySQL has non-terminal status with ozRelayerTxId
-    // SPEC-ROUTING-001: ozRelayerTxId is required to query OZ Relayer
+  it("TC-E2E-INT006: MySQL non-terminal status returns current data", async () => {
+    // Given: Redis miss, MySQL has non-terminal status
     const txId = "550e8400-e29b-41d4-a716-446655440003"; // Valid UUID v4 (our DB id)
     const ozRelayerTxId = "oz-relayer-tx-003";
     defaultRedisMock.get.mockResolvedValueOnce(null);
 
-    // MySQL has record with ozRelayerTxId and non-terminal status (pending)
+    // MySQL has record with non-terminal status (pending)
     defaultPrismaMock.transaction.findUnique.mockResolvedValueOnce({
       id: txId,
       ozRelayerTxId,
       ozRelayerUrl: "http://oz-relayer-1:8080",
       hash: null, // Non-terminal: no hash yet
-      status: "pending", // Non-terminal status triggers OZ Relayer lookup
+      status: "pending", // Non-terminal status
       from: TEST_WALLETS.user.address,
       to: TEST_WALLETS.merchant.address,
       value: "3000000000000000000",
@@ -404,48 +403,23 @@ describe("Webhook Integration E2E Tests", () => {
       confirmedAt: null,
     });
 
-    // Mock OZ Relayer response with updated status
-    const httpMock = getHttpServiceMock(app);
-    httpMock.get.mockReturnValueOnce(
-      of({
-        data: {
-          id: ozRelayerTxId,
-          hash: "0x" + "4".repeat(64),
-          status: "confirmed",
-          from: TEST_WALLETS.user.address,
-          to: TEST_WALLETS.merchant.address,
-          value: "3000000000000000000",
-          created_at: new Date().toISOString(),
-          confirmed_at: new Date().toISOString(),
-        },
-        status: 200,
-        statusText: "OK",
-        headers: {},
-        config: {} as any,
-      }),
-    );
-
     // When: GET /api/v1/relay/status/:txId
     const response = await request(app.getHttpServer())
       .get(`/api/v1/relay/status/${txId}`)
       .set("x-api-key", TEST_CONFIG.api.key);
 
-    // Then: Verify OZ Relayer called (using ozRelayerTxId)
+    // Then: Returns MySQL data (no OZ Relayer lookup)
+    // SPEC-DISCOVERY-001: relay-api no longer queries OZ Relayer directly
     expect(response.status).toBe(200);
-    expect(httpMock.get).toHaveBeenCalledWith(
-      expect.stringContaining(`/transactions/${ozRelayerTxId}`),
-      expect.any(Object),
-    );
+    expect(response.body.transactionId).toBe(txId);
+    expect(response.body.status).toBe("pending");
 
-    // Verify Redis storage with TTL
+    // Verify Redis backfill with TTL
     expect(defaultRedisMock.set).toHaveBeenCalledWith(
       `tx:status:${txId}`,
       expect.objectContaining({ transactionId: txId }),
       600,
     );
-
-    // Verify MySQL upsert to update status
-    expect(defaultPrismaMock.transaction.upsert).toHaveBeenCalled();
   });
 
   /**
@@ -489,25 +463,24 @@ describe("Webhook Integration E2E Tests", () => {
   });
 
   /**
-   * Scenario 8: Redis Failure + MySQL Non-Terminal → OZ Relayer Lookup
+   * Scenario 8: Redis Failure + MySQL Non-Terminal → Returns MySQL Data
    *
-   * SPEC-ROUTING-001: Changed scenario - MySQL data with ozRelayerTxId is REQUIRED
-   * for OZ Relayer lookup. Tests Redis failure with MySQL graceful degradation.
+   * SPEC-DISCOVERY-001: OZ Relayer lookup removed from relay-api
+   * Tests Redis failure with MySQL graceful degradation (2-tier only).
    */
-  it("TC-E2E-INT008: Redis failure with MySQL non-terminal status triggers OZ Relayer lookup", async () => {
-    // Given: Redis fails, MySQL has non-terminal status with ozRelayerTxId
-    // SPEC-ROUTING-001: ozRelayerTxId is required to query OZ Relayer
+  it("TC-E2E-INT008: Redis failure with MySQL non-terminal status returns MySQL data", async () => {
+    // Given: Redis fails, MySQL has non-terminal status
     const txId = "550e8400-e29b-41d4-a716-446655440005"; // Valid UUID v4
     const ozRelayerTxId = "oz-relayer-tx-005";
     defaultRedisMock.get.mockRejectedValueOnce(new Error("Redis unavailable"));
 
-    // MySQL returns record with ozRelayerTxId and non-terminal status
+    // MySQL returns record with non-terminal status
     defaultPrismaMock.transaction.findUnique.mockResolvedValueOnce({
       id: txId,
       ozRelayerTxId,
       ozRelayerUrl: "http://oz-relayer-1:8080",
       hash: null,
-      status: "pending", // Non-terminal status triggers OZ Relayer lookup
+      status: "pending", // Non-terminal status
       from: TEST_WALLETS.user.address,
       to: TEST_WALLETS.merchant.address,
       value: "5000000000000000000",
@@ -517,39 +490,16 @@ describe("Webhook Integration E2E Tests", () => {
       confirmedAt: null,
     });
 
-    // Mock OZ Relayer response with updated status
-    const httpMock = getHttpServiceMock(app);
-    httpMock.get.mockReturnValueOnce(
-      of({
-        data: {
-          id: ozRelayerTxId,
-          hash: "0x" + "6".repeat(64),
-          status: "confirmed",
-          from: TEST_WALLETS.user.address,
-          to: TEST_WALLETS.merchant.address,
-          value: "5000000000000000000",
-          created_at: new Date().toISOString(),
-          confirmed_at: new Date().toISOString(),
-        },
-        status: 200,
-        statusText: "OK",
-        headers: {},
-        config: {} as any,
-      }),
-    );
-
     // When: GET /api/v1/relay/status/:txId
     const response = await request(app.getHttpServer())
       .get(`/api/v1/relay/status/${txId}`)
       .set("x-api-key", TEST_CONFIG.api.key);
 
-    // Then: Verify graceful degradation - Redis fails but MySQL provides ozRelayerTxId
+    // Then: Returns MySQL data (graceful degradation, no OZ Relayer lookup)
+    // SPEC-DISCOVERY-001: relay-api no longer queries OZ Relayer directly
     expect(response.status).toBe(200);
     expect(response.body.transactionId).toBe(txId);
-    expect(httpMock.get).toHaveBeenCalledWith(
-      expect.stringContaining(`/transactions/${ozRelayerTxId}`),
-      expect.any(Object),
-    );
+    expect(response.body.status).toBe("pending");
   });
 
   /**

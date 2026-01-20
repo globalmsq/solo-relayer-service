@@ -1,9 +1,7 @@
 import request from "supertest";
 import { INestApplication } from "@nestjs/common";
-import { of } from "rxjs";
 import {
   createTestApp,
-  getHttpServiceMock,
   resetMocks,
   defaultPrismaMock,
 } from "../utils/test-app.factory";
@@ -109,17 +107,16 @@ describe("Payment Integration E2E Tests", () => {
       const transactionId = submitResponse.body.transactionId;
 
       // Step 4: Query status
-      // SPEC-ROUTING-001: MySQL must have record with ozRelayerTxId + non-terminal status
-      // for OZ Relayer lookup to be triggered
-      const ozRelayerTxId = "oz-relayer-tx-" + transactionId.substring(0, 8);
+      // SPEC-DISCOVERY-001: 2-tier lookup (Redis → MySQL), no OZ Relayer lookup
+      // Status updates come from queue-consumer via webhooks
 
-      // Mock MySQL to return record with ozRelayerTxId and non-terminal status
+      // Mock MySQL to return pending status (transaction just submitted)
       defaultPrismaMock.transaction.findUnique.mockResolvedValueOnce({
         id: transactionId,
-        ozRelayerTxId,
+        ozRelayerTxId: "oz-relayer-tx-" + transactionId.substring(0, 8),
         ozRelayerUrl: "http://oz-relayer-1:8080",
         hash: null,
-        status: "pending", // Non-terminal status triggers OZ Relayer lookup
+        status: "pending", // Initial status after submission
         from: userAddress,
         to: recipientAddress,
         value: "0",
@@ -129,29 +126,15 @@ describe("Payment Integration E2E Tests", () => {
         confirmedAt: null,
       });
 
-      // Setup HttpService.get() mock for OZ Relayer confirmed status
-      const httpMock = getHttpServiceMock(app);
-      httpMock.get.mockReturnValueOnce(
-        of({
-          data: {
-            id: ozRelayerTxId,
-            hash: "0x" + "1".repeat(64),
-            status: "confirmed",
-            created_at: new Date().toISOString(),
-            confirmed_at: new Date().toISOString(),
-          },
-          status: 200,
-        }),
-      );
-
       const statusResponse = await request(app.getHttpServer())
         .get(`/api/v1/relay/status/${transactionId}`)
         .set("x-api-key", "test-api-key");
 
-      // Then: Status should return 200 with confirmed status
+      // Then: Status should return 200 with pending status from MySQL
+      // Note: Status transitions to confirmed via queue-consumer webhook processing
       expect(statusResponse.status).toBe(200);
-      expect(statusResponse.body).toHaveProperty("status", "confirmed");
-      expect(statusResponse.body).toHaveProperty("hash");
+      expect(statusResponse.body).toHaveProperty("status", "pending");
+      expect(statusResponse.body).toHaveProperty("transactionId");
     });
   });
 });
