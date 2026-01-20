@@ -3240,3 +3240,207 @@ pnpm --filter @msq-relayer/integration-tests test:lifecycle
 | 2.2 | 2025-12-12 | Examples Package section added |
 | 2.1 | 2025-12-12 | Client SDK reorganized to OZ Defender SDK compatible pattern |
 | 2.0 | 2025-12-12 | Initial tech.md creation |
+
+---
+
+## 5. Relayer Discovery Service (SPEC-DISCOVERY-001)
+
+### 5.1 Architecture & Design
+
+**목적**: OZ Relayer 상태를 동적으로 모니터링하고, 활성 Relayer 목록을 Redis에서 관리하는 마이크로서비스.
+
+**핵심 기능**:
+- 주기적 헬스 체크 (10초 간격, 설정 가능)
+- Bearer 토큰 인증 (OZ Relayer API Key)
+- Redis Set을 통한 활성 Relayer 관리 (`relayer:active`)
+- REST API를 통한 상태 조회
+- Queue Consumer 동적 Relayer 선택
+
+**아키텍처**:
+```
+┌──────────────────┐     ┌──────────────────┐     ┌──────────────────┐
+│ Relayer          │     │ Relayer          │     │ Relayer          │
+│ Discovery        │────▶│ Discovery        │────▶│ Discovery        │
+│ Service          │     │ Service          │     │ Service          │
+└──────────────────┘     └──────────────────┘     └──────────────────┘
+       │                         │                         │
+       └─────────────┬───────────┴─────────────┬───────────┘
+                     ▼
+          ┌──────────────────────┐
+          │ Health Check         │
+          │ (Bearer Token Auth)  │
+          │ /api/v1/relayers     │
+          └──────────────────────┘
+                     │
+       ┌─────────────┴──────────────┐
+       ▼                            ▼
+   ┌────────────┐            ┌──────────────┐
+   │ Redis Set  │            │ Webhook      │
+   │ active     │            │ (oz-relayer) │
+   │ relayers   │            └──────────────┘
+   └────────────┘
+       │
+       └──▶ Queue Consumer (동적 Relayer 선택)
+```
+
+### 5.2 Health Check 구현
+
+**Health Check 흐름**:
+```typescript
+// 1. 모든 Relayer ID 생성
+const relayerIds = generateRelayerIds(); // oz-relayer-0, oz-relayer-1, oz-relayer-2
+
+// 2. 병렬 헬스 체크
+const results = await Promise.allSettled(
+  relayerIds.map(id => checkRelayerHealth(id))
+);
+
+// 3. 결과 처리
+for (const relayerId of relayerIds) {
+  if (healthy) {
+    await redisService.sadd("relayer:active", relayerId);
+  } else {
+    await redisService.srem("relayer:active", relayerId);
+  }
+}
+```
+
+**헬스 체크 엔드포인트**:
+- URL: `http://{relayerId}:8080/api/v1/relayers`
+- Method: GET
+- Headers: `Authorization: Bearer {OZ_RELAYER_API_KEY}`
+- Timeout: 500ms (설정 가능)
+- Success: HTTP 200
+- Failure: Timeout, Connection refused, HTTP !200
+
+### 5.3 Redis 통합
+
+**Key 구조**:
+```
+relayer:active = Set {
+  "oz-relayer-0",
+  "oz-relayer-1",
+  "oz-relayer-2"
+}
+```
+
+**Queue Consumer 사용**:
+```typescript
+// Queue Consumer는 Redis에서 활성 Relayer 조회
+const activeRelayers = await redisService.smembers("relayer:active");
+// ['oz-relayer-0', 'oz-relayer-1', 'oz-relayer-2']
+
+// 동적 Relayer 선택 (라운드로빈 또는 부하 분산)
+const selectedRelayer = selectRelayer(activeRelayers);
+```
+
+**Fallback 메커니즘**:
+- Redis 이용 불가 시: `OZ_RELAYER_URLS` 환경변수 사용
+- `OZ_RELAYER_URL` (단일 Relayer, 레거시)
+
+### 5.4 API 엔드포인트
+
+**GET /status**
+
+상태 조회 및 활성 Relayer 목록 반환.
+
+```bash
+curl http://localhost:3001/status
+```
+
+**응답**:
+```json
+{
+  "service": "relayer-discovery",
+  "status": "healthy|degraded|unhealthy",
+  "timestamp": "2026-01-20T04:25:38.876Z",
+  "activeRelayers": [
+    {
+      "id": "oz-relayer-0",
+      "status": "healthy",
+      "lastCheckTimestamp": "2026-01-20T04:25:30.951Z",
+      "url": "http://oz-relayer-0:8080"
+    }
+  ],
+  "totalConfigured": 3,
+  "totalActive": 3,
+  "healthCheckInterval": 10000
+}
+```
+
+**상태 해석**:
+- `healthy`: 모든 Relayer 정상 (totalActive >= totalConfigured)
+- `degraded`: 일부 Relayer 정상 (totalActive > 0)
+- `unhealthy`: 모든 Relayer 다운 (totalActive === 0)
+
+### 5.5 설정 & 배포
+
+**환경 변수**:
+
+| 변수 | 기본값 | 설명 |
+|------|-------|------|
+| `PORT` | `3001` | 서비스 포트 |
+| `RELAYER_COUNT` | `3` | 모니터링할 Relayer 수 |
+| `RELAYER_PORT` | `8080` | Relayer HTTP 포트 |
+| `OZ_RELAYER_API_KEY` | - | Bearer 토큰 (헬스 체크 인증) |
+| `HEALTH_CHECK_INTERVAL_MS` | `10000` | 헬스 체크 간격 (ms) |
+| `HEALTH_CHECK_TIMEOUT_MS` | `500` | 헬스 체크 타임아웃 (ms) |
+| `REDIS_HOST` | `redis` | Redis 호스트명 |
+| `REDIS_PORT` | `6379` | Redis 포트 |
+
+**Docker Compose 설정**:
+
+```yaml
+relayer-discovery:
+  build:
+    context: ..
+    dockerfile: docker/Dockerfile.packages
+    target: relayer-discovery
+  ports:
+    - "3001:3001"
+  depends_on:
+    - redis
+    - oz-relayer-0
+    - oz-relayer-1
+    - oz-relayer-2
+  environment:
+    RELAYER_COUNT: 3
+    RELAYER_PORT: 8080
+    OZ_RELAYER_API_KEY: ${OZ_RELAYER_API_KEY}
+    HEALTH_CHECK_INTERVAL_MS: 10000
+    REDIS_HOST: redis
+    REDIS_PORT: 6379
+```
+
+### 5.6 운영 & 문제 해결
+
+**활성 Relayer 확인**:
+
+```bash
+# Redis에서 직접 확인
+docker compose exec redis redis-cli SMEMBERS relayer:active
+
+# Status API로 확인
+curl http://localhost:3001/status | jq '.activeRelayers'
+```
+
+**문제 해결**:
+
+| 증상 | 원인 | 해결 방법 |
+|------|------|---------|
+| `/status` 응답 없음 | 서비스 미실행 | `docker compose logs relayer-discovery` |
+| `totalActive: 0` | 헬스 체크 실패 | Relayer 연결 확인, API Key 확인 |
+| Timeout 오류 | 네트워크 지연 | `HEALTH_CHECK_TIMEOUT_MS` 증가 |
+| Redis 연결 실패 | Redis 미실행 | `docker compose restart redis` |
+
+**모니터링**:
+
+```bash
+# 주기적 상태 모니터링
+watch -n 5 'curl -s http://localhost:3001/status | jq'
+
+# 로그 모니터링 (실패 사항만)
+docker compose logs -f relayer-discovery | grep -i "failed\|error"
+```
+
+---
