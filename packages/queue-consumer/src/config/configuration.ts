@@ -37,4 +37,14 @@ export default () => ({
     visibilityTimeout: 60,
     maxReceiveCount: 3,
   },
+
+  // SPEC-DLQ-001: DLQ Consumer Configuration
+  dlqConsumer: {
+    // E-4: Polling interval in milliseconds (default 10 seconds)
+    pollIntervalMs: parseInt(process.env.DLQ_POLL_INTERVAL_MS || '10000', 10),
+    // Long polling wait time for DLQ (10 seconds to match poll interval)
+    waitTimeSeconds: 10,
+    // Max messages per poll
+    maxNumberOfMessages: 10,
+  },
 });

@@ -1,5 +1,5 @@
-import { ApiProperty } from "@nestjs/swagger";
-import { ValidateNested, IsNotEmpty, Matches } from "class-validator";
+import { ApiProperty, ApiPropertyOptional } from "@nestjs/swagger";
+import { ValidateNested, IsNotEmpty, Matches, IsOptional, IsBoolean } from "class-validator";
 import { Type } from "class-transformer";
 import { ForwardRequestDto } from "./forward-request.dto";
 
@@ -41,4 +41,20 @@ export class GaslessTxRequestDto {
     message: "Signature must be 0x followed by 130 hex characters (65 bytes)",
   })
   signature: string;
+
+  /**
+   * SPEC-DLQ-001: DLQ retry strategy (optional)
+   * Controls whether DLQ Consumer should attempt reprocessing
+   * - true: Attempt reprocessing when message reaches DLQ
+   * - false/undefined: Mark as failed immediately (default behavior)
+   * U-3: MUST be backward compatible (field is optional)
+   * UN-4: MUST NOT break compatibility with existing clients
+   */
+  @ApiPropertyOptional({
+    description: "Enable retry when transaction reaches DLQ (default: false)",
+    example: false,
+  })
+  @IsOptional()
+  @IsBoolean()
+  retryOnFailure?: boolean;
 }

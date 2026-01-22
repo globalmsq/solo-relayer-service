@@ -41,15 +41,25 @@ export class SqsAdapter {
     );
   }
 
+  /**
+   * Receive messages from SQS queue
+   *
+   * SPEC-DLQ-001: Added optional queueUrl parameter to support both main queue and DLQ
+   *
+   * @param waitTimeSeconds - Long polling wait time (default: 20)
+   * @param maxNumberOfMessages - Max messages per poll (default: 10)
+   * @param queueUrl - Optional queue URL (default: main queue from config)
+   */
   async receiveMessages(
     waitTimeSeconds: number = 20,
     maxNumberOfMessages: number = 10,
+    queueUrl?: string,
   ): Promise<Message[]> {
-    const queueUrl = this.configService.get<string>('sqs.queueUrl');
+    const targetQueueUrl = queueUrl || this.configService.get<string>('sqs.queueUrl');
 
     try {
       const command = new ReceiveMessageCommand({
-        QueueUrl: queueUrl,
+        QueueUrl: targetQueueUrl,
         MaxNumberOfMessages: maxNumberOfMessages,
         WaitTimeSeconds: waitTimeSeconds,
         MessageSystemAttributeNames: [
@@ -67,12 +77,21 @@ export class SqsAdapter {
     }
   }
 
-  async deleteMessage(receiptHandle: string): Promise<void> {
-    const queueUrl = this.configService.get<string>('sqs.queueUrl');
+  /**
+   * Delete message from SQS queue
+   *
+   * SPEC-DLQ-001: Added optional queueUrl parameter to support both main queue and DLQ
+   * U-2: MUST delete messages from SQS after processing DLQ messages
+   *
+   * @param receiptHandle - Receipt handle of the message to delete
+   * @param queueUrl - Optional queue URL (default: main queue from config)
+   */
+  async deleteMessage(receiptHandle: string, queueUrl?: string): Promise<void> {
+    const targetQueueUrl = queueUrl || this.configService.get<string>('sqs.queueUrl');
 
     try {
       const command = new DeleteMessageCommand({
-        QueueUrl: queueUrl,
+        QueueUrl: targetQueueUrl,
         ReceiptHandle: receiptHandle,
       });
 

@@ -9,6 +9,7 @@ import { SqsAdapter } from './sqs/sqs.adapter';
 import { OzRelayerClient } from './relay/oz-relayer.client';
 import { RelayerRouterService } from './relay/relayer-router.service';
 import { PrismaService } from './prisma/prisma.service';
+import { ErrorClassifierService, ErrorCategory } from './errors';
 
 /**
  * Queue Message Types
@@ -76,6 +77,7 @@ export class ConsumerService implements OnModuleInit, OnModuleDestroy {
     private relayerRouter: RelayerRouterService,
     private prisma: PrismaService,
     private configService: ConfigService,
+    private errorClassifier: ErrorClassifierService,
   ) {}
 
   async onModuleInit() {
@@ -242,13 +244,56 @@ export class ConsumerService implements OnModuleInit, OnModuleDestroy {
       );
     } catch (error: unknown) {
       const err = error as Error;
+
+      // SPEC-DLQ-001 E-1: Classify error to determine handling strategy
+      const classification = this.errorClassifier.classify(error);
       this.logger.error(
-        `Failed to process message ${MessageId}: ${err.message}`,
+        `Failed to process message ${MessageId}: ${err.message} [${classification.category}]`,
         err.stack,
       );
 
-      // Message will be automatically returned to queue due to visibility timeout
-      // SQS will retry up to maxReceiveCount times before moving to DLQ
+      // SPEC-DLQ-001 E-2: Non-retryable errors - immediately mark as failed and delete message
+      if (classification.category === ErrorCategory.NON_RETRYABLE) {
+        this.logger.warn(
+          `[NON_RETRYABLE] ${classification.reason} - marking transaction as failed`,
+        );
+
+        try {
+          // Extract transactionId from message body for error handling
+          const messageBody = JSON.parse(Body);
+          const transactionId = messageBody.transactionId;
+
+          if (transactionId) {
+            await this.prisma.transaction.update({
+              where: { id: transactionId },
+              data: {
+                status: 'failed',
+                error_message: `${classification.reason}: ${err.message}`,
+              },
+            });
+          }
+
+          // UN-1: MUST NOT resend NON_RETRYABLE errors to SQS - delete immediately
+          await this.sqsAdapter.deleteMessage(ReceiptHandle);
+          this.logger.log(
+            `[NON_RETRYABLE] Message deleted, transaction marked as failed`,
+          );
+        } catch (updateError: unknown) {
+          const updateErr = updateError as Error;
+          this.logger.error(
+            `Failed to handle non-retryable error: ${updateErr.message}`,
+          );
+          // Still delete the message to prevent infinite retries
+          await this.sqsAdapter.deleteMessage(ReceiptHandle);
+        }
+      } else {
+        // SPEC-DLQ-001 E-3: Retryable errors - let SQS handle retry
+        // Message will be automatically returned to queue due to visibility timeout
+        // SQS will retry up to maxReceiveCount times before moving to DLQ
+        this.logger.log(
+          `[RETRYABLE] ${classification.reason} - message will be retried by SQS`,
+        );
+      }
     }
   }
 }

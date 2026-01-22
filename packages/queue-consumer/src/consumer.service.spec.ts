@@ -5,6 +5,7 @@ import { SqsAdapter } from './sqs/sqs.adapter';
 import { OzRelayerClient } from './relay/oz-relayer.client';
 import { RelayerRouterService } from './relay/relayer-router.service';
 import { PrismaService } from './prisma/prisma.service';
+import { ErrorClassifierService, ErrorCategory } from './errors';
 
 describe('ConsumerService (Fire-and-Forget Pattern)', () => {
   let service: ConsumerService;
@@ -13,6 +14,7 @@ describe('ConsumerService (Fire-and-Forget Pattern)', () => {
   let relayerRouter: RelayerRouterService;
   let prisma: PrismaService;
   let configService: ConfigService;
+  let errorClassifier: ErrorClassifierService;
 
   const mockRelayerUrl = 'http://oz-relayer-0:8080';
 
@@ -70,6 +72,18 @@ describe('ConsumerService (Fire-and-Forget Pattern)', () => {
             }),
           },
         },
+        {
+          provide: ErrorClassifierService,
+          useValue: {
+            classify: jest.fn().mockReturnValue({
+              category: ErrorCategory.RETRYABLE,
+              reason: 'Unknown error - defaulting to retryable (fail-safe)',
+              originalMessage: 'test error',
+            }),
+            isNonRetryable: jest.fn().mockReturnValue(false),
+            isRetryable: jest.fn().mockReturnValue(true),
+          },
+        },
       ],
     }).compile();
 
@@ -79,6 +93,7 @@ describe('ConsumerService (Fire-and-Forget Pattern)', () => {
     relayerRouter = module.get<RelayerRouterService>(RelayerRouterService);
     prisma = module.get<PrismaService>(PrismaService);
     configService = module.get<ConfigService>(ConfigService);
+    errorClassifier = module.get<ErrorClassifierService>(ErrorClassifierService);
   });
 
   it('should be defined', () => {
@@ -390,6 +405,110 @@ describe('ConsumerService (Fire-and-Forget Pattern)', () => {
         'relayer-1-id',
       );
       expect(sqsAdapter.deleteMessage).toHaveBeenCalled();
+    });
+  });
+
+  describe('error classification (SPEC-DLQ-001)', () => {
+    it('should classify errors and handle NON_RETRYABLE by deleting message (E-2)', async () => {
+      const transactionId = 'tx-123';
+      const mockMessage = {
+        MessageId: 'msg-1',
+        Body: JSON.stringify({
+          transactionId,
+          type: 'direct',
+          request: { to: '0x123', data: '0xabc' },
+        }),
+        ReceiptHandle: 'receipt-1',
+      };
+
+      jest.spyOn(sqsAdapter, 'receiveMessages').mockResolvedValue([mockMessage]);
+      jest.spyOn(prisma.transaction, 'findUnique').mockResolvedValue({
+        id: transactionId,
+        status: 'queued',
+        ozRelayerTxId: null,
+      } as any);
+      jest.spyOn(relayerClient, 'sendDirectTransactionAsync').mockRejectedValue(
+        new Error('insufficient funds for gas * price + value'),
+      );
+      // Mock NON_RETRYABLE classification
+      jest.spyOn(errorClassifier, 'classify').mockReturnValue({
+        category: ErrorCategory.NON_RETRYABLE,
+        reason: 'Insufficient balance for transaction',
+        originalMessage: 'insufficient funds for gas * price + value',
+      });
+
+      await service.processMessages();
+
+      // E-2: NON_RETRYABLE should update DB and delete message
+      expect(prisma.transaction.update).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: { id: transactionId },
+          data: expect.objectContaining({
+            status: 'failed',
+          }),
+        }),
+      );
+      expect(sqsAdapter.deleteMessage).toHaveBeenCalledWith('receipt-1');
+    });
+
+    it('should let SQS retry RETRYABLE errors (E-3)', async () => {
+      const mockMessage = {
+        MessageId: 'msg-1',
+        Body: JSON.stringify({
+          transactionId: 'tx-123',
+          type: 'direct',
+          request: { to: '0x123', data: '0xabc' },
+        }),
+        ReceiptHandle: 'receipt-1',
+      };
+
+      jest.spyOn(sqsAdapter, 'receiveMessages').mockResolvedValue([mockMessage]);
+      jest.spyOn(prisma.transaction, 'findUnique').mockResolvedValue({
+        id: 'tx-123',
+        status: 'queued',
+        ozRelayerTxId: null,
+      } as any);
+      jest.spyOn(relayerClient, 'sendDirectTransactionAsync').mockRejectedValue(
+        new Error('connection refused'),
+      );
+      // Mock RETRYABLE classification
+      jest.spyOn(errorClassifier, 'classify').mockReturnValue({
+        category: ErrorCategory.RETRYABLE,
+        reason: 'Connection refused',
+        originalMessage: 'connection refused',
+      });
+
+      await service.processMessages();
+
+      // E-3: RETRYABLE should NOT delete message (SQS will retry)
+      expect(sqsAdapter.deleteMessage).not.toHaveBeenCalled();
+    });
+
+    it('should call ErrorClassifierService on error (E-1)', async () => {
+      const mockMessage = {
+        MessageId: 'msg-1',
+        Body: JSON.stringify({
+          transactionId: 'tx-123',
+          type: 'direct',
+          request: { to: '0x123', data: '0xabc' },
+        }),
+        ReceiptHandle: 'receipt-1',
+      };
+
+      const testError = new Error('OZ Relayer unavailable');
+
+      jest.spyOn(sqsAdapter, 'receiveMessages').mockResolvedValue([mockMessage]);
+      jest.spyOn(prisma.transaction, 'findUnique').mockResolvedValue({
+        id: 'tx-123',
+        status: 'queued',
+        ozRelayerTxId: null,
+      } as any);
+      jest.spyOn(relayerClient, 'sendDirectTransactionAsync').mockRejectedValue(testError);
+
+      await service.processMessages();
+
+      // E-1: ErrorClassifierService.classify MUST be called on error
+      expect(errorClassifier.classify).toHaveBeenCalledWith(testError);
     });
   });
 

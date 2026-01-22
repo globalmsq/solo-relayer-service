@@ -5,6 +5,7 @@ import {
   IsOptional,
   IsNumberString,
   IsEnum,
+  IsBoolean,
 } from "class-validator";
 
 /**
@@ -73,4 +74,20 @@ export class DirectTxRequestDto {
   @IsOptional()
   @IsEnum(["safeLow", "average", "fast", "fastest"])
   speed?: string;
+
+  /**
+   * SPEC-DLQ-001: DLQ retry strategy (optional)
+   * Controls whether DLQ Consumer should attempt reprocessing
+   * - true: Attempt reprocessing when message reaches DLQ
+   * - false/undefined: Mark as failed immediately (default behavior)
+   * U-3: MUST be backward compatible (field is optional)
+   * UN-4: MUST NOT break compatibility with existing clients
+   */
+  @ApiPropertyOptional({
+    description: "Enable retry when transaction reaches DLQ (default: false)",
+    example: false,
+  })
+  @IsOptional()
+  @IsBoolean()
+  retryOnFailure?: boolean;
 }

@@ -51,6 +51,8 @@ export class QueueService {
           value: dto.value || '0',
           data: dto.data,
           request: dto as any, // Store original request for consumer
+          // SPEC-DLQ-001: Store retry strategy (default: false for backward compatibility)
+          retryOnFailure: dto.retryOnFailure ?? false,
         },
       });
 
@@ -64,6 +66,8 @@ export class QueueService {
           transactionId,
           type: 'direct',
           request: dto,
+          // SPEC-DLQ-001: Include retry strategy for DLQ Consumer
+          retryOnFailure: dto.retryOnFailure ?? false,
         });
 
         this.logger.log(`Direct transaction queued: txId=${transactionId}`);
@@ -142,6 +146,8 @@ export class QueueService {
           value: '0', // Gasless transactions don't send value
           data: dto.request.data,
           request: dto as any, // Store original request for consumer
+          // SPEC-DLQ-001: Store retry strategy (default: false for backward compatibility)
+          retryOnFailure: dto.retryOnFailure ?? false,
         },
       });
 
@@ -156,6 +162,8 @@ export class QueueService {
           type: 'gasless',
           request: dto,
           forwarderAddress, // Consumer needs this to build execute() call
+          // SPEC-DLQ-001: Include retry strategy for DLQ Consumer
+          retryOnFailure: dto.retryOnFailure ?? false,
         });
 
         this.logger.log(`Gasless transaction queued: txId=${transactionId}`);

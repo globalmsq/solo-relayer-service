@@ -103,10 +103,12 @@ describe('QueueService', () => {
       });
 
       // Verify SQS message format
+      // SPEC-DLQ-001: retryOnFailure defaults to false
       expect(sqsAdapter.sendMessage).toHaveBeenCalledWith({
         transactionId: mockTransactionId,
         type: 'direct',
         request: directDto,
+        retryOnFailure: false,
       });
     });
 
@@ -238,11 +240,13 @@ describe('QueueService', () => {
       });
 
       // Verify SQS message format includes forwarderAddress
+      // SPEC-DLQ-001: retryOnFailure defaults to false
       expect(sqsAdapter.sendMessage).toHaveBeenCalledWith({
         transactionId: mockTransactionId,
         type: 'gasless',
         request: gaslessDto,
         forwarderAddress,
+        retryOnFailure: false,
       });
     });
 
