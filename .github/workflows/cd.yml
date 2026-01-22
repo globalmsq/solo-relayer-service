@@ -1,16 +1,17 @@
-name: CI
+name: CD
 
 on:
-  pull_request:
+  push:
     branches: [main]
+  workflow_dispatch:
 
 concurrency:
-  group: ci-${{ github.ref }}
+  group: cd-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
-  ci:
+  cd:
     uses: ./.github/workflows/_shared.yml
     with:
-      run-e2e: false
-      run-docker: false
+      run-e2e: true
+      run-docker: true
