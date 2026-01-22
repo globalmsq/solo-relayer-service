@@ -1,12 +1,12 @@
-import { Injectable, Logger } from '@nestjs/common';
-import { ConfigService } from '@nestjs/config';
+import { Injectable, Logger } from "@nestjs/common";
+import { ConfigService } from "@nestjs/config";
 import {
   SQSClient,
   ReceiveMessageCommand,
   DeleteMessageCommand,
   Message,
   MessageSystemAttributeName,
-} from '@aws-sdk/client-sqs';
+} from "@aws-sdk/client-sqs";
 
 @Injectable()
 export class SqsAdapter {
@@ -18,11 +18,13 @@ export class SqsAdapter {
   }
 
   private initializeClient() {
-    const endpoint = this.configService.get<string>('sqs.endpoint');
-    const region = this.configService.get<string>('sqs.region');
+    const endpoint = this.configService.get<string>("sqs.endpoint");
+    const region = this.configService.get<string>("sqs.region");
     const isLocal = !!endpoint;
 
-    this.logger.log(`Initializing SQS Client (${isLocal ? 'LocalStack' : 'AWS'})`);
+    this.logger.log(
+      `Initializing SQS Client (${isLocal ? "LocalStack" : "AWS"})`,
+    );
 
     this.client = new SQSClient(
       isLocal
@@ -30,8 +32,9 @@ export class SqsAdapter {
             endpoint,
             region,
             credentials: {
-              accessKeyId: this.configService.get('sqs.accessKeyId') || 'test',
-              secretAccessKey: this.configService.get('sqs.secretAccessKey') || 'test',
+              accessKeyId: this.configService.get("sqs.accessKeyId") || "test",
+              secretAccessKey:
+                this.configService.get("sqs.secretAccessKey") || "test",
             },
           }
         : {
@@ -41,15 +44,26 @@ export class SqsAdapter {
     );
   }
 
+  /**
+   * Receive messages from SQS queue
+   *
+   * SPEC-DLQ-001: Added optional queueUrl parameter to support both main queue and DLQ
+   *
+   * @param waitTimeSeconds - Long polling wait time (default: 20)
+   * @param maxNumberOfMessages - Max messages per poll (default: 10)
+   * @param queueUrl - Optional queue URL (default: main queue from config)
+   */
   async receiveMessages(
     waitTimeSeconds: number = 20,
     maxNumberOfMessages: number = 10,
+    queueUrl?: string,
   ): Promise<Message[]> {
-    const queueUrl = this.configService.get<string>('sqs.queueUrl');
+    const targetQueueUrl =
+      queueUrl || this.configService.get<string>("sqs.queueUrl");
 
     try {
       const command = new ReceiveMessageCommand({
-        QueueUrl: queueUrl,
+        QueueUrl: targetQueueUrl,
         MaxNumberOfMessages: maxNumberOfMessages,
         WaitTimeSeconds: waitTimeSeconds,
         MessageSystemAttributeNames: [
@@ -62,17 +76,30 @@ export class SqsAdapter {
       return response.Messages || [];
     } catch (error: unknown) {
       const err = error as Error;
-      this.logger.error(`Failed to receive messages: ${err.message}`, err.stack);
+      this.logger.error(
+        `Failed to receive messages: ${err.message}`,
+        err.stack,
+      );
       throw error;
     }
   }
 
-  async deleteMessage(receiptHandle: string): Promise<void> {
-    const queueUrl = this.configService.get<string>('sqs.queueUrl');
+  /**
+   * Delete message from SQS queue
+   *
+   * SPEC-DLQ-001: Added optional queueUrl parameter to support both main queue and DLQ
+   * U-2: MUST delete messages from SQS after processing DLQ messages
+   *
+   * @param receiptHandle - Receipt handle of the message to delete
+   * @param queueUrl - Optional queue URL (default: main queue from config)
+   */
+  async deleteMessage(receiptHandle: string, queueUrl?: string): Promise<void> {
+    const targetQueueUrl =
+      queueUrl || this.configService.get<string>("sqs.queueUrl");
 
     try {
       const command = new DeleteMessageCommand({
-        QueueUrl: queueUrl,
+        QueueUrl: targetQueueUrl,
         ReceiptHandle: receiptHandle,
       });
 

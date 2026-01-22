@@ -1,6 +1,6 @@
-import { Injectable, Logger } from '@nestjs/common';
-import { ConfigService } from '@nestjs/config';
-import { SQSClient, SendMessageCommand } from '@aws-sdk/client-sqs';
+import { Injectable, Logger } from "@nestjs/common";
+import { ConfigService } from "@nestjs/config";
+import { SQSClient, SendMessageCommand } from "@aws-sdk/client-sqs";
 
 /**
  * SqsAdapter - AWS SQS Message Producer
@@ -19,14 +19,14 @@ export class SqsAdapter {
 
   constructor(private configService: ConfigService) {
     // Validate required environment variables (fail-fast)
-    const queueUrl = this.configService.get<string>('sqs.queueUrl');
-    const region = this.configService.get<string>('sqs.region');
+    const queueUrl = this.configService.get<string>("sqs.queueUrl");
+    const region = this.configService.get<string>("sqs.region");
 
     if (!queueUrl) {
-      throw new Error('SQS_QUEUE_URL environment variable is required');
+      throw new Error("SQS_QUEUE_URL environment variable is required");
     }
     if (!region) {
-      throw new Error('AWS_REGION environment variable is required');
+      throw new Error("AWS_REGION environment variable is required");
     }
 
     this.queueUrl = queueUrl;
@@ -40,11 +40,13 @@ export class SqsAdapter {
    * Production: Uses region only (IAM Role credentials auto-loaded)
    */
   private initializeClient(): void {
-    const endpoint = this.configService.get<string>('sqs.endpoint');
-    const region = this.configService.get<string>('sqs.region');
+    const endpoint = this.configService.get<string>("sqs.endpoint");
+    const region = this.configService.get<string>("sqs.region");
     const isLocal = !!endpoint;
 
-    this.logger.log(`Initializing SQS Client (${isLocal ? 'LocalStack' : 'AWS'})`);
+    this.logger.log(
+      `Initializing SQS Client (${isLocal ? "LocalStack" : "AWS"})`,
+    );
 
     this.client = new SQSClient(
       isLocal
@@ -52,8 +54,9 @@ export class SqsAdapter {
             endpoint,
             region,
             credentials: {
-              accessKeyId: this.configService.get('sqs.accessKeyId') || 'test',
-              secretAccessKey: this.configService.get('sqs.secretAccessKey') || 'test',
+              accessKeyId: this.configService.get("sqs.accessKeyId") || "test",
+              secretAccessKey:
+                this.configService.get("sqs.secretAccessKey") || "test",
             },
           }
         : {
@@ -62,7 +65,9 @@ export class SqsAdapter {
           },
     );
 
-    this.logger.log(`SQS Client initialized: region=${region}, queueUrl=${this.queueUrl}`);
+    this.logger.log(
+      `SQS Client initialized: region=${region}, queueUrl=${this.queueUrl}`,
+    );
   }
 
   /**
@@ -82,7 +87,10 @@ export class SqsAdapter {
       this.logger.debug(`Message sent to SQS: MessageId=${result.MessageId}`);
     } catch (error: unknown) {
       const err = error as Error;
-      this.logger.error(`Failed to send message to SQS: ${err.message}`, err.stack);
+      this.logger.error(
+        `Failed to send message to SQS: ${err.message}`,
+        err.stack,
+      );
       throw error;
     }
   }

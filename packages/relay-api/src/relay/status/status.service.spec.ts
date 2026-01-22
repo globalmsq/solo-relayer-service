@@ -58,7 +58,7 @@ describe("StatusService", () => {
     it("should return cached data from Redis (Tier 1)", async () => {
       const cachedData = {
         transactionId: validTxId,
-        hash: "0x123456789...",
+        transactionHash: "0x123456789...",
         status: "confirmed",
         createdAt: "2025-12-22T10:00:00.000Z",
         confirmedAt: "2025-12-22T10:05:00.000Z",
@@ -79,8 +79,9 @@ describe("StatusService", () => {
      */
     it("should return data from MySQL and backfill Redis (Tier 2)", async () => {
       const storedData = {
-        id: validTxId,
-        hash: "0x123456789...",
+        id: 1,
+        transactionId: validTxId,
+        transactionHash: "0x123456789...",
         status: "confirmed",
         createdAt: new Date("2025-12-22T10:00:00.000Z"),
         updatedAt: new Date(),
@@ -93,8 +94,9 @@ describe("StatusService", () => {
         request: null,
         result: null,
         error_message: null,
-        ozRelayerTxId: null,
-        ozRelayerUrl: null,
+        relayerTxId: null,
+        relayerUrl: null,
+        retryOnFailure: null,
       };
 
       jest.spyOn(redisService, "get").mockResolvedValueOnce(null);
@@ -107,7 +109,7 @@ describe("StatusService", () => {
       expect(result.transactionId).toEqual(validTxId);
       expect(result.status).toEqual("confirmed");
       expect(prismaService.transaction.findUnique).toHaveBeenCalledWith({
-        where: { id: validTxId },
+        where: { transactionId: validTxId },
       });
       // Should backfill Redis
       expect(redisService.set).toHaveBeenCalledWith(
@@ -140,8 +142,9 @@ describe("StatusService", () => {
      */
     it("should correctly transform Prisma record to DTO", async () => {
       const storedData = {
-        id: validTxId,
-        hash: "0x123456789abcdef",
+        id: 2,
+        transactionId: validTxId,
+        transactionHash: "0x123456789abcdef",
         status: "pending",
         createdAt: new Date("2025-12-22T10:00:00.000Z"),
         updatedAt: new Date(),
@@ -154,8 +157,9 @@ describe("StatusService", () => {
         request: null,
         result: null,
         error_message: null,
-        ozRelayerTxId: null,
-        ozRelayerUrl: null,
+        relayerTxId: null,
+        relayerUrl: null,
+        retryOnFailure: null,
       };
 
       jest.spyOn(redisService, "get").mockResolvedValueOnce(null);
@@ -166,11 +170,11 @@ describe("StatusService", () => {
       const result = await service.getTransactionStatus(validTxId);
 
       expect(result).toHaveProperty("transactionId");
-      expect(result).toHaveProperty("hash");
+      expect(result).toHaveProperty("transactionHash");
       expect(result).toHaveProperty("status");
       expect(result).toHaveProperty("createdAt");
       expect(typeof result.transactionId).toBe("string");
-      expect(typeof result.hash).toBe("string");
+      expect(typeof result.transactionHash).toBe("string");
       expect(typeof result.status).toBe("string");
       expect(typeof result.createdAt).toBe("string");
       expect(result.confirmedAt).toBeUndefined();
@@ -184,8 +188,9 @@ describe("StatusService", () => {
      */
     it("should gracefully degrade to MySQL when Redis fails", async () => {
       const storedData = {
-        id: validTxId,
-        hash: "0x123456789...",
+        id: 3,
+        transactionId: validTxId,
+        transactionHash: "0x123456789...",
         status: "confirmed",
         createdAt: new Date("2025-12-22T10:00:00.000Z"),
         updatedAt: new Date(),
@@ -198,8 +203,9 @@ describe("StatusService", () => {
         request: null,
         result: null,
         error_message: null,
-        ozRelayerTxId: null,
-        ozRelayerUrl: null,
+        relayerTxId: null,
+        relayerUrl: null,
+        retryOnFailure: null,
       };
 
       // Redis throws error
@@ -223,8 +229,9 @@ describe("StatusService", () => {
      */
     it("should still return result when Redis backfill fails", async () => {
       const storedData = {
-        id: validTxId,
-        hash: "0x123456789...",
+        id: 4,
+        transactionId: validTxId,
+        transactionHash: "0x123456789...",
         status: "confirmed",
         createdAt: new Date("2025-12-22T10:00:00.000Z"),
         updatedAt: new Date(),
@@ -237,8 +244,9 @@ describe("StatusService", () => {
         request: null,
         result: null,
         error_message: null,
-        ozRelayerTxId: null,
-        ozRelayerUrl: null,
+        relayerTxId: null,
+        relayerUrl: null,
+        retryOnFailure: null,
       };
 
       jest.spyOn(redisService, "get").mockResolvedValueOnce(null);

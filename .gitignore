@@ -234,3 +234,41 @@ packages/relay-api/coverage/
 
 .github/workflows/*.yml.bak
 .gitlab-ci.yml.bak
+.moai/config/sections/
+# Version: 0.33.0
+.claude/plans/
+# Python Cache & Bytecode
+# Environment files
+*-key.*
+# Secrets and Credentials (CRITICAL)
+*_secret.*
+# Build Tools & Frameworks
+# MoAI-ADK Package Distribution .gitignore
+api-key-*
+*-secret-key.*
+*-secret.*
+# Updated: 2026-01-10
+# Credential patterns in environment files
+# Build Artifacts & Distribution
+*.key.*
+# Backups
+# Purpose: Essential patterns for user projects
+# FIXED: Issue #237 - Replaced overly broad *key* and *secret* patterns
+secret-*.*
+private-key*
+.nuxt/
+# Node.js (for docs/Nextra)
+# Deployment & CI/CD
+*_key.*
+# Skill-specific credentials
+*-api-key.*
+dist-ssr/
+# Virtual Environments
+*.pyc
+*.secret.*
+# Test Coverage
+# Cloud provider credentials
+secret-key-*
+# Certificate files
+# Private keys (specific patterns to avoid false positives)
+.turbo/

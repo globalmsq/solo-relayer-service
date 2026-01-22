@@ -3,9 +3,9 @@ import {
   Logger,
   OnModuleInit,
   OnModuleDestroy,
-} from '@nestjs/common';
-import { ConfigService } from '@nestjs/config';
-import Redis from 'ioredis';
+} from "@nestjs/common";
+import { ConfigService } from "@nestjs/config";
+import Redis from "ioredis";
 
 /**
  * SPEC-DISCOVERY-001 Phase 2: Redis Service for Queue Consumer
@@ -26,7 +26,7 @@ export class RedisService implements OnModuleInit, OnModuleDestroy {
 
   async onModuleInit(): Promise<void> {
     const redisUrl =
-      this.configService.get<string>('redis.url') || 'redis://localhost:6379';
+      this.configService.get<string>("redis.url") || "redis://localhost:6379";
 
     this.logger.log(`Initializing Redis connection to ${redisUrl}`);
 
@@ -42,23 +42,23 @@ export class RedisService implements OnModuleInit, OnModuleDestroy {
         connectTimeout: 5000,
       });
 
-      this.client.on('error', (error) => {
+      this.client.on("error", (error) => {
         this.logger.error(`Redis connection error: ${error.message}`);
         this.isConnected = false;
       });
 
-      this.client.on('connect', () => {
-        this.logger.log('Redis connected successfully');
+      this.client.on("connect", () => {
+        this.logger.log("Redis connected successfully");
         this.isConnected = true;
       });
 
-      this.client.on('close', () => {
-        this.logger.warn('Redis connection closed');
+      this.client.on("close", () => {
+        this.logger.warn("Redis connection closed");
         this.isConnected = false;
       });
 
-      this.client.on('reconnecting', () => {
-        this.logger.log('Redis reconnecting...');
+      this.client.on("reconnecting", () => {
+        this.logger.log("Redis reconnecting...");
       });
 
       // Wait for initial connection
@@ -66,7 +66,7 @@ export class RedisService implements OnModuleInit, OnModuleDestroy {
       this.isConnected = true;
     } catch (error) {
       this.logger.error(
-        `Failed to connect to Redis: ${error instanceof Error ? error.message : 'Unknown error'}`,
+        `Failed to connect to Redis: ${error instanceof Error ? error.message : "Unknown error"}`,
       );
       this.isConnected = false;
     }
@@ -74,7 +74,7 @@ export class RedisService implements OnModuleInit, OnModuleDestroy {
 
   async onModuleDestroy(): Promise<void> {
     if (this.client) {
-      this.logger.log('Closing Redis connection');
+      this.logger.log("Closing Redis connection");
       await this.client.quit();
       this.client = null;
       this.isConnected = false;
@@ -101,7 +101,7 @@ export class RedisService implements OnModuleInit, OnModuleDestroy {
       return await this.client.smembers(key);
     } catch (error) {
       this.logger.error(
-        `Failed to get members for key ${key}: ${error instanceof Error ? error.message : 'Unknown error'}`,
+        `Failed to get members for key ${key}: ${error instanceof Error ? error.message : "Unknown error"}`,
       );
       return [];
     }
@@ -122,7 +122,7 @@ export class RedisService implements OnModuleInit, OnModuleDestroy {
       return await this.client.scard(key);
     } catch (error) {
       this.logger.error(
-        `Failed to get cardinality for key ${key}: ${error instanceof Error ? error.message : 'Unknown error'}`,
+        `Failed to get cardinality for key ${key}: ${error instanceof Error ? error.message : "Unknown error"}`,
       );
       return 0;
     }
@@ -147,7 +147,7 @@ export class RedisService implements OnModuleInit, OnModuleDestroy {
 
     try {
       const result = await this.client.ping();
-      return result === 'PONG';
+      return result === "PONG";
     } catch (error) {
       return false;
     }

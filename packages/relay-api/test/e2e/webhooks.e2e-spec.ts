@@ -37,7 +37,10 @@ describe("Webhooks E2E Tests", () => {
    *   timestamp: "ISO8601"
    * }
    */
-  const createWebhookPayload = (payloadOverrides: object = {}, eventOverrides: object = {}) => ({
+  const createWebhookPayload = (
+    payloadOverrides: object = {},
+    eventOverrides: object = {},
+  ) => ({
     id: randomUUID(), // Webhook event ID
     event: "transaction_update",
     payload: {

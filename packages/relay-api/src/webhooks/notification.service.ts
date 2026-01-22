@@ -63,7 +63,7 @@ export class NotificationService {
       event: "transaction.status.updated",
       transactionId,
       status,
-      hash,
+      transactionHash: hash,
       timestamp: new Date().toISOString(),
     };
 

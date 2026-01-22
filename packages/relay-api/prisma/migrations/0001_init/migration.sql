@@ -1,0 +1,30 @@
+-- CreateTable
+CREATE TABLE `transactions` (
+    `id` INT NOT NULL AUTO_INCREMENT,
+    `transaction_id` VARCHAR(191) NOT NULL,
+    `transaction_hash` VARCHAR(191) NULL,
+    `status` VARCHAR(191) NOT NULL,
+    `from` VARCHAR(191) NULL,
+    `to` VARCHAR(191) NULL,
+    `value` VARCHAR(191) NULL,
+    `data` LONGTEXT NULL,
+    `type` VARCHAR(191) NULL,
+    `request` JSON NULL,
+    `result` JSON NULL,
+    `error_message` LONGTEXT NULL,
+    `relayer_tx_id` VARCHAR(191) NULL,
+    `relayer_url` VARCHAR(191) NULL,
+    `retry_on_failure` BOOLEAN NULL DEFAULT false,
+    `createdAt` DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
+    `updatedAt` DATETIME(3) NOT NULL,
+    `confirmedAt` DATETIME(3) NULL,
+
+    UNIQUE INDEX `transactions_transaction_id_key`(`transaction_id`),
+    UNIQUE INDEX `transactions_transaction_hash_key`(`transaction_hash`),
+    UNIQUE INDEX `transactions_relayer_tx_id_key`(`relayer_tx_id`),
+    INDEX `transactions_status_idx`(`status`),
+    INDEX `transactions_transaction_hash_idx`(`transaction_hash`),
+    INDEX `transactions_type_idx`(`type`),
+    INDEX `transactions_createdAt_idx`(`createdAt`),
+    PRIMARY KEY (`id`)
+) DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;

@@ -1,7 +1,7 @@
-import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
-import { ConfigService } from '@nestjs/config';
-import axios, { AxiosError } from 'axios';
-import { RedisService } from '../redis/redis.service';
+import { Injectable, Logger, OnModuleInit } from "@nestjs/common";
+import { ConfigService } from "@nestjs/config";
+import axios, { AxiosError } from "axios";
+import { RedisService } from "../redis/redis.service";
 
 /**
  * Relayer health and load information
@@ -42,7 +42,7 @@ export class RelayerRouterService implements OnModuleInit {
   private readonly fallbackRelayerUrls: string[];
 
   // SPEC-DISCOVERY-001: Redis key for active relayer list
-  private readonly REDIS_ACTIVE_RELAYERS_KEY = 'relayer:active';
+  private readonly REDIS_ACTIVE_RELAYERS_KEY = "relayer:active";
 
   // SPEC-DISCOVERY-001: Relayer port for URL construction
   private readonly RELAYER_PORT = 8080;
@@ -70,24 +70,24 @@ export class RelayerRouterService implements OnModuleInit {
     private configService: ConfigService,
     private redisService: RedisService,
   ) {
-    const urlsConfig = this.configService.get<string>('relayer.urls') || '';
+    const urlsConfig = this.configService.get<string>("relayer.urls") || "";
     const singleUrl =
-      this.configService.get<string>('relayer.url') || 'http://localhost:8081';
+      this.configService.get<string>("relayer.url") || "http://localhost:8081";
 
     // Parse comma-separated URLs as fallback when Redis is unavailable
     this.fallbackRelayerUrls = urlsConfig
-      ? urlsConfig.split(',').map((url) => url.trim())
+      ? urlsConfig.split(",").map((url) => url.trim())
       : [singleUrl];
 
     this.apiKey =
-      this.configService.get<string>('relayer.apiKey') ||
-      'oz-relayer-shared-api-key-local-dev';
+      this.configService.get<string>("relayer.apiKey") ||
+      "oz-relayer-shared-api-key-local-dev";
 
     // Initialize with fallback URLs until Redis is available
     this.currentRelayerUrls = [...this.fallbackRelayerUrls];
 
     this.logger.log(
-      `RelayerRouterService initialized with fallback relayers: ${this.fallbackRelayerUrls.join(', ')}`,
+      `RelayerRouterService initialized with fallback relayers: ${this.fallbackRelayerUrls.join(", ")}`,
     );
   }
 
@@ -132,18 +132,18 @@ export class RelayerRouterService implements OnModuleInit {
         this.activeRelayersCacheTime = now;
 
         this.logger.log(
-          `Refreshed relayer URLs from Redis: ${this.currentRelayerUrls.join(', ')}`,
+          `Refreshed relayer URLs from Redis: ${this.currentRelayerUrls.join(", ")}`,
         );
       } else {
         // No active relayers in Redis, use fallback
         this.logger.warn(
-          'No active relayers found in Redis, using fallback URLs',
+          "No active relayers found in Redis, using fallback URLs",
         );
         this.currentRelayerUrls = [...this.fallbackRelayerUrls];
       }
     } catch (error) {
       this.logger.error(
-        `Failed to refresh relayer URLs from Redis: ${error instanceof Error ? error.message : 'Unknown error'}`,
+        `Failed to refresh relayer URLs from Redis: ${error instanceof Error ? error.message : "Unknown error"}`,
       );
       // Keep using current URLs (fallback if first time, or last known good state)
       if (this.currentRelayerUrls.length === 0) {
@@ -187,17 +187,24 @@ export class RelayerRouterService implements OnModuleInit {
       if (healthyRelayers.length === 0) {
         // FR-001: Fall back to round-robin if all health checks fail
         this.logger.warn(
-          'No healthy relayers found, falling back to round-robin',
+          "No healthy relayers found, falling back to round-robin",
         );
         return this.roundRobinFallback();
       }
 
       // Select relayer with lowest pending transaction count
-      const leastBusy = healthyRelayers.reduce((prev, curr) =>
-        prev.numberOfPendingTransactions <= curr.numberOfPendingTransactions
-          ? prev
-          : curr,
+      // FR-001.1: When multiple relayers have equal pending counts, use round-robin
+      const minPending = Math.min(
+        ...healthyRelayers.map((r) => r.numberOfPendingTransactions),
       );
+      const leastBusyRelayers = healthyRelayers.filter(
+        (r) => r.numberOfPendingTransactions === minPending,
+      );
+
+      // Round-robin among relayers with equal (minimum) pending count
+      const selectedIndex = this.roundRobinIndex % leastBusyRelayers.length;
+      const leastBusy = leastBusyRelayers[selectedIndex];
+      this.roundRobinIndex = (this.roundRobinIndex + 1) % 1000; // Prevent overflow
 
       const elapsedMs = Date.now() - startTime;
       this.logger.log(
@@ -210,7 +217,7 @@ export class RelayerRouterService implements OnModuleInit {
       };
     } catch (error) {
       this.logger.error(
-        `Smart routing failed: ${error instanceof Error ? error.message : 'Unknown error'}`,
+        `Smart routing failed: ${error instanceof Error ? error.message : "Unknown error"}`,
       );
       return this.roundRobinFallback();
     }
@@ -279,14 +286,14 @@ export class RelayerRouterService implements OnModuleInit {
       const relayerData = response.data?.data?.[0];
 
       if (!relayerData) {
-        throw new Error('No relayer data in response');
+        throw new Error("No relayer data in response");
       }
 
       const info: RelayerInfo = {
         url,
         relayerId: relayerData.id,
         numberOfPendingTransactions: relayerData.pending_transactions ?? 0,
-        healthy: relayerData.status !== 'paused',
+        healthy: relayerData.status !== "paused",
         lastChecked: now,
       };
 
@@ -325,7 +332,7 @@ export class RelayerRouterService implements OnModuleInit {
       );
       return {
         url,
-        relayerId: info.relayerId || 'default-relayer',
+        relayerId: info.relayerId || "default-relayer",
       };
     } catch (error) {
       // Even if health check fails, return the URL for best-effort attempt
@@ -334,7 +341,7 @@ export class RelayerRouterService implements OnModuleInit {
       );
       return {
         url,
-        relayerId: 'default-relayer',
+        relayerId: "default-relayer",
       };
     }
   }

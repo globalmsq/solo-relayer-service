@@ -139,7 +139,7 @@ describe('Transaction Lifecycle Tests', () => {
       );
 
       expect(isSuccessStatus(finalStatus.status)).toBe(true);
-      expect(finalStatus.hash).toMatch(/^0x[a-fA-F0-9]{64}$/);
+      expect(finalStatus.transactionHash).toMatch(/^0x[a-fA-F0-9]{64}$/);
     }, 30000);
 
     it('TC-TXL-101: should execute ERC20 transfer via direct TX', async () => {

@@ -71,7 +71,7 @@ describe("NotificationService", () => {
           event: "transaction.status.updated",
           transactionId: "tx_test123",
           status: "confirmed",
-          hash: "0xhash123",
+          transactionHash: "0xhash123",
         }),
         expect.objectContaining({
           headers: { "Content-Type": "application/json" },
@@ -132,7 +132,7 @@ describe("NotificationService", () => {
           event: "transaction.status.updated",
           transactionId: "tx_test123",
           status: "confirmed",
-          hash: "0xhash",
+          transactionHash: "0xhash",
           timestamp: expect.any(String),
         }),
         expect.any(Object),
@@ -155,7 +155,7 @@ describe("NotificationService", () => {
       expect(httpService.post).toHaveBeenCalledWith(
         mockClientWebhookUrl,
         expect.objectContaining({
-          hash: null,
+          transactionHash: null,
         }),
         expect.any(Object),
       );

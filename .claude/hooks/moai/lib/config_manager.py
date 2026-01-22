@@ -6,8 +6,16 @@ Provides centralized configuration management with fallbacks and validation.
 
 import json
 from pathlib import Path
-from typing import Any, Dict, Optional
+from typing import Any, Dict
 
+try:
+    import yaml
+
+    YAML_AVAILABLE = True
+except ImportError:
+    YAML_AVAILABLE = False
+
+from .atomic_write import atomic_write_json
 from .path_utils import find_project_root
 
 # Default configuration
@@ -66,14 +74,29 @@ DEFAULT_CONFIG = {
 class ConfigManager:
     """Configuration manager for Alfred hooks with validation and fallbacks."""
 
-    def __init__(self, config_path: Optional[Path] = None):
+    def __init__(self, config_path: Path | None = None):
         """Initialize configuration manager.
 
         Args:
-            config_path: Path to configuration file (defaults to .moai/config/config.json)
+            config_path: Path to configuration file (defaults to .moai/config/config.yaml or config.json)
         """
-        self.config_path = config_path or find_project_root() / ".moai" / "config" / "config.json"
-        self._config: Optional[Dict[str, Any]] = None
+        if config_path:
+            self.config_path = config_path
+        else:
+            # Auto-detect YAML (preferred) or JSON (fallback)
+            project_root = find_project_root()
+            yaml_path = project_root / ".moai" / "config" / "config.yaml"
+            json_path = project_root / ".moai" / "config" / "config.json"
+
+            if YAML_AVAILABLE and yaml_path.exists():
+                self.config_path = yaml_path
+            elif json_path.exists():
+                self.config_path = json_path
+            else:
+                # Default to YAML for new projects
+                self.config_path = yaml_path if YAML_AVAILABLE else json_path
+
+        self._config: Dict[str, Any] | None = None
 
     def load_config(self) -> Dict[str, Any]:
         """Load configuration from file with fallback to defaults.
@@ -88,12 +111,27 @@ class ConfigManager:
         config = {}
         if self.config_path.exists():
             try:
-                with open(self.config_path, "r", encoding="utf-8") as f:
-                    file_config = json.load(f)
-                    config = self._merge_configs(DEFAULT_CONFIG.copy(), file_config)
+                with open(self.config_path, "r", encoding="utf-8", errors="replace") as f:
+                    if self.config_path.suffix in [".yaml", ".yml"]:
+                        if not YAML_AVAILABLE:
+                            # Fall back to defaults if YAML not available
+                            config = DEFAULT_CONFIG.copy()
+                        else:
+                            file_config = yaml.safe_load(f) or {}
+                            config = self._merge_configs(DEFAULT_CONFIG.copy(), file_config)
+                    else:
+                        file_config = json.load(f)
+                        config = self._merge_configs(DEFAULT_CONFIG.copy(), file_config)
             except (json.JSONDecodeError, IOError, OSError):
                 # Use defaults if file is corrupted or unreadable
                 config = DEFAULT_CONFIG.copy()
+            except Exception as e:
+                # Handle YAML errors or other parsing issues
+                if YAML_AVAILABLE and isinstance(e, yaml.YAMLError):
+                    config = DEFAULT_CONFIG.copy()
+                else:
+                    # Re-raise unexpected exceptions
+                    raise
         else:
             # Use defaults if file doesn't exist
             config = DEFAULT_CONFIG.copy()
@@ -260,7 +298,7 @@ class ConfigManager:
         exit_codes = self.get("hooks.exit_codes", {})
         return exit_codes.get(code_type, 0)
 
-    def update_config(self, updates: Dict[str, Any]) -> bool:
+    def update_config(self, updates: dict[str, Any]) -> bool:
         """Update configuration and save to file.
 
         Args:
@@ -276,12 +314,9 @@ class ConfigManager:
             # Merge updates
             updated = self._merge_configs(current, updates)
 
-            # Create parent directory if needed
-            self.config_path.parent.mkdir(parents=True, exist_ok=True)
-
-            # Write updated config
-            with open(self.config_path, "w", encoding="utf-8") as f:
-                json.dump(updated, f, indent=2)
+            # Write updated config using atomic write (H3)
+            # atomic_write_json will create parent directories if needed
+            atomic_write_json(self.config_path, updated, indent=2)
 
             # Clear cache to force reload
             self._config = None
@@ -304,8 +339,10 @@ class ConfigManager:
 
         return True
 
-    def _merge_configs(self, base: Dict[str, Any], override: Dict[str, Any]) -> Dict[str, Any]:
+    def _merge_configs(self, base: dict[str, Any], override: dict[str, Any]) -> Dict[str, Any]:
         """Recursively merge two configuration dictionaries.
+
+        This method delegates to common.merge_configs() for consistent behavior.
 
         Args:
             base: Base configuration dictionary
@@ -314,22 +351,16 @@ class ConfigManager:
         Returns:
             Merged configuration dictionary
         """
-        result = base.copy()
+        from .common import merge_configs
 
-        for key, value in override.items():
-            if key in result and isinstance(result[key], dict) and isinstance(value, dict):
-                result[key] = self._merge_configs(result[key], value)
-            else:
-                result[key] = value
-
-        return result
+        return merge_configs(base, override)
 
 
 # Module-level helper functions
-_config_manager: Optional[ConfigManager] = None
+_config_manager: ConfigManager | None = None
 
 
-def get_config_manager(config_path: Optional[Path] = None) -> ConfigManager:
+def get_config_manager(config_path: Path | None = None) -> ConfigManager:
     """Get or create a ConfigManager instance.
 
     Args:
@@ -344,7 +375,7 @@ def get_config_manager(config_path: Optional[Path] = None) -> ConfigManager:
     return _config_manager
 
 
-def get_config(key_path: str = "", config_path: Optional[Path] = None) -> Any:
+def get_config(key_path: str = "", config_path: Path | None = None) -> Any:
     """Get configuration value.
 
     Args:

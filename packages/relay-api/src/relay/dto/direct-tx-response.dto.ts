@@ -28,7 +28,7 @@ export class DirectTxResponseDto {
       "0xabc123def456789abc123def456789abc123def456789abc123def456789abc1",
     nullable: true,
   })
-  hash: string | null;
+  transactionHash: string | null;
 
   /**
    * Current transaction status

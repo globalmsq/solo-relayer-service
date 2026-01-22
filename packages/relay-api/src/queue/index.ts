@@ -1,3 +1,3 @@
-export * from './queue.module';
-export * from './queue.service';
-export * from './sqs.adapter';
+export * from "./queue.module";
+export * from "./queue.service";
+export * from "./sqs.adapter";

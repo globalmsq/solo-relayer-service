@@ -10,7 +10,8 @@ describe("DirectController", () => {
 
   const mockDirectTxResponse: DirectTxResponseDto = {
     transactionId: "tx_abc123def456",
-    hash: "0xabc123def456789abc123def456789abc123def456789abc123def456789abc1",
+    transactionHash:
+      "0xabc123def456789abc123def456789abc123def456789abc123def456789abc1",
     status: "pending",
     createdAt: "2025-12-19T10:30:00.000Z",
   };

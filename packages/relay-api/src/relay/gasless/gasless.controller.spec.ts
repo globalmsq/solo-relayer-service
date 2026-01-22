@@ -12,7 +12,7 @@ describe("GaslessController", () => {
   const testAddress = "0x1234567890123456789012345678901234567890";
   const mockResponse: GaslessTxResponseDto = {
     transactionId: "tx_abc123def456",
-    hash: null,
+    transactionHash: null,
     status: "pending",
     createdAt: new Date().toISOString(),
   };

@@ -1,12 +1,12 @@
-# msq-relayer-service - Mission & Strategy
+# yoda - Mission & Strategy
 
 ## What problem do we solve?
-{{PROJECT_DESCRIPTION}}
+AI-powered content generation platform for educators and authors
 
 ## Who are our users?
-- **Primary users**: {{PRIMARY_USERS}}
-- **Secondary users**: {{SECONDARY_USERS}}
-- **User personas**: {{USER_PERSONAS}}
+- Primary users: {{PRIMARY_USERS}}
+- Secondary users: {{SECONDARY_USERS}}
+- User personas: {{USER_PERSONAS}}
 
 ## Value proposition
 {{VALUE_PROPOSITION}}

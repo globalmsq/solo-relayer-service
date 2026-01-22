@@ -1,5 +1,9 @@
-import { Controller, Get } from '@nestjs/common';
-import { HealthCheck, HealthCheckService, MemoryHealthIndicator } from '@nestjs/terminus';
+import { Controller, Get } from "@nestjs/common";
+import {
+  HealthCheck,
+  HealthCheckService,
+  MemoryHealthIndicator,
+} from "@nestjs/terminus";
 
 /**
  * Health Controller for Queue Consumer Service
@@ -19,12 +23,12 @@ export class HealthController {
    * Health check endpoint
    * Docker HEALTHCHECK calls: curl -f http://localhost:3001/health
    */
-  @Get('health')
+  @Get("health")
   @HealthCheck()
   check() {
     return this.health.check([
       // Check heap memory usage (threshold: 512MB)
-      () => this.memory.checkHeap('memory_heap', 512 * 1024 * 1024),
+      () => this.memory.checkHeap("memory_heap", 512 * 1024 * 1024),
     ]);
   }
 }

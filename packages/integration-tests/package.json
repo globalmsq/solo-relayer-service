@@ -11,7 +11,8 @@
     "test:blockchain": "jest --testPathPattern=blockchain",
     "test:api": "jest --testPathPattern=relay-api",
     "test:e2e": "jest --testPathPattern=e2e",
-    "test:lifecycle": "jest --testPathPattern=transaction-lifecycle"
+    "test:lifecycle": "jest --testPathPattern=transaction-lifecycle",
+    "test:dlq": "jest --testPathPattern=dlq-processing"
   },
   "devDependencies": {
     "@nestjs/common": "^10.4.0",

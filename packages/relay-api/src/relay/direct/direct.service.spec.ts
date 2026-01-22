@@ -17,7 +17,7 @@ describe("DirectService", () => {
 
   const mockQueuedResponse = {
     transactionId: "550e8400-e29b-12d3-a456-426614174000",
-    hash: null,
+    transactionHash: null,
     status: "queued",
     createdAt: "2025-01-05T10:30:00.000Z",
   };
@@ -63,10 +63,12 @@ describe("DirectService", () => {
 
       // Assert
       expect(result.transactionId).toEqual(mockQueuedResponse.transactionId);
-      expect(result.hash).toBeNull();
+      expect(result.transactionHash).toBeNull();
       expect(result.status).toEqual("queued");
       expect(result.createdAt).toEqual(mockQueuedResponse.createdAt);
-      expect(queueService.sendDirectTransaction).toHaveBeenCalledWith(requestDto);
+      expect(queueService.sendDirectTransaction).toHaveBeenCalledWith(
+        requestDto,
+      );
     });
 
     it("should handle missing optional fields", async () => {
@@ -85,7 +87,9 @@ describe("DirectService", () => {
 
       // Assert
       expect(result.transactionId).toEqual(mockQueuedResponse.transactionId);
-      expect(queueService.sendDirectTransaction).toHaveBeenCalledWith(requestDto);
+      expect(queueService.sendDirectTransaction).toHaveBeenCalledWith(
+        requestDto,
+      );
     });
 
     it("should propagate QueueService errors", async () => {

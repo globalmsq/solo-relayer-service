@@ -1,8 +1,4 @@
-import {
-  Injectable,
-  NotFoundException,
-  Logger,
-} from "@nestjs/common";
+import { Injectable, NotFoundException, Logger } from "@nestjs/common";
 import { PrismaService } from "../../prisma/prisma.service";
 import { RedisService } from "../../redis/redis.service";
 import { TxStatusResponseDto } from "./dto/tx-status-response.dto";
@@ -75,7 +71,7 @@ export class StatusService {
     let stored: Transaction | null = null;
     try {
       stored = await this.prismaService.transaction.findUnique({
-        where: { id: txId },
+        where: { transactionId: txId },
       });
     } catch (error) {
       // Graceful degradation: log error
@@ -123,8 +119,8 @@ export class StatusService {
    */
   private transformPrismaToDto(tx: Transaction): TxStatusResponseDto {
     return {
-      transactionId: tx.id,
-      hash: tx.hash,
+      transactionId: tx.transactionId,
+      transactionHash: tx.transactionHash,
       status: tx.status,
       createdAt: tx.createdAt.toISOString(),
       confirmedAt: tx.confirmedAt?.toISOString(),

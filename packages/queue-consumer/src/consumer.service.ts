@@ -3,19 +3,20 @@ import {
   Logger,
   OnModuleInit,
   OnModuleDestroy,
-} from '@nestjs/common';
-import { ConfigService } from '@nestjs/config';
-import { SqsAdapter } from './sqs/sqs.adapter';
-import { OzRelayerClient } from './relay/oz-relayer.client';
-import { RelayerRouterService } from './relay/relayer-router.service';
-import { PrismaService } from './prisma/prisma.service';
+} from "@nestjs/common";
+import { ConfigService } from "@nestjs/config";
+import { SqsAdapter } from "./sqs/sqs.adapter";
+import { OzRelayerClient } from "./relay/oz-relayer.client";
+import { RelayerRouterService } from "./relay/relayer-router.service";
+import { PrismaService } from "./prisma/prisma.service";
+import { ErrorClassifierService, ErrorCategory } from "./errors";
 
 /**
  * Queue Message Types
  */
 interface DirectMessage {
   transactionId: string;
-  type: 'direct';
+  type: "direct";
   request: {
     to: string;
     data: string;
@@ -27,7 +28,7 @@ interface DirectMessage {
 
 interface GaslessMessage {
   transactionId: string;
-  type: 'gasless';
+  type: "gasless";
   request: {
     request: {
       from: string;
@@ -76,15 +77,16 @@ export class ConsumerService implements OnModuleInit, OnModuleDestroy {
     private relayerRouter: RelayerRouterService,
     private prisma: PrismaService,
     private configService: ConfigService,
+    private errorClassifier: ErrorClassifierService,
   ) {}
 
   async onModuleInit() {
-    this.logger.log('Consumer Service initialized');
+    this.logger.log("Consumer Service initialized");
     this.startProcessing();
   }
 
   async onModuleDestroy() {
-    this.logger.log('Received shutdown signal, stopping message processing...');
+    this.logger.log("Received shutdown signal, stopping message processing...");
     this.isShuttingDown = true;
 
     if (this.processingTimeout) {
@@ -93,10 +95,10 @@ export class ConsumerService implements OnModuleInit, OnModuleDestroy {
 
     // Wait for in-flight messages to complete (max 30 seconds)
     await this.waitForInFlightMessages(30000);
-    this.logger.log('Consumer gracefully shut down');
+    this.logger.log("Consumer gracefully shut down");
   }
 
-  private async waitForInFlightMessages(timeout: number): Promise<void> {
+  private async waitForInFlightMessages(_timeout: number): Promise<void> {
     // Placeholder: In full implementation, track in-flight messages
     await new Promise((resolve) => setTimeout(resolve, 100));
   }
@@ -122,7 +124,7 @@ export class ConsumerService implements OnModuleInit, OnModuleDestroy {
     }
 
     try {
-      const config = this.configService.get('consumer');
+      const config = this.configService.get("consumer");
       const messages = await this.sqsAdapter.receiveMessages(
         config.waitTimeSeconds,
         config.maxNumberOfMessages,
@@ -134,7 +136,7 @@ export class ConsumerService implements OnModuleInit, OnModuleDestroy {
 
       for (const message of messages) {
         if (this.isShuttingDown) {
-          this.logger.warn('Shutdown requested, stopping message processing');
+          this.logger.warn("Shutdown requested, stopping message processing");
           break;
         }
 
@@ -166,10 +168,10 @@ export class ConsumerService implements OnModuleInit, OnModuleDestroy {
 
       // Check if transaction already processed (idempotent)
       const transaction = await this.prisma.transaction.findUnique({
-        where: { id: transactionId },
+        where: { transactionId },
       });
 
-      if (transaction && ['confirmed', 'failed'].includes(transaction.status)) {
+      if (transaction && ["confirmed", "failed"].includes(transaction.status)) {
         this.logger.log(
           `Transaction already in terminal state: ${transaction.status}, deleting message`,
         );
@@ -178,11 +180,11 @@ export class ConsumerService implements OnModuleInit, OnModuleDestroy {
       }
 
       // FR-004: Idempotency - Check if TX was already submitted to OZ Relayer
-      // If ozRelayerTxId exists, TX was submitted but SQS delete failed
+      // If relayerTxId exists, TX was submitted but SQS delete failed
       // Fire-and-Forget: Just delete SQS message, Webhook will handle status update
-      if (transaction?.ozRelayerTxId) {
+      if (transaction?.relayerTxId) {
         this.logger.log(
-          `[Fire-and-Forget] Transaction ${transactionId} already submitted (${transaction.ozRelayerTxId}), deleting SQS message`,
+          `[Fire-and-Forget] Transaction ${transactionId} already submitted (${transaction.relayerTxId}), deleting SQS message`,
         );
         await this.sqsAdapter.deleteMessage(ReceiptHandle);
         return;
@@ -190,8 +192,8 @@ export class ConsumerService implements OnModuleInit, OnModuleDestroy {
 
       // Mark as processing to prevent race conditions
       await this.prisma.transaction.update({
-        where: { id: transactionId },
-        data: { status: 'processing' },
+        where: { transactionId },
+        data: { status: "processing" },
       });
 
       // FR-001: Smart Routing - Get least busy relayer
@@ -202,14 +204,14 @@ export class ConsumerService implements OnModuleInit, OnModuleDestroy {
       // FR-002: Fire-and-Forget - Send TX and return immediately
       let result: { transactionId: string; relayerUrl: string };
 
-      if (type === 'direct') {
+      if (type === "direct") {
         const directMessage = messageBody as DirectMessage;
         result = await this.relayerClient.sendDirectTransactionAsync(
           directMessage.request,
           relayerUrl,
           relayerId, // Optimization: Pass relayerId to avoid redundant API call
         );
-      } else if (type === 'gasless') {
+      } else if (type === "gasless") {
         const gaslessMessage = messageBody as GaslessMessage;
         result = await this.relayerClient.sendGaslessTransactionAsync(
           gaslessMessage.request,
@@ -222,15 +224,15 @@ export class ConsumerService implements OnModuleInit, OnModuleDestroy {
       }
 
       // DC-004: Hash Field Separation
-      // Consumer ONLY sets: ozRelayerTxId, ozRelayerUrl, status='submitted'
-      // Consumer does NOT set: hash (Webhook will set this)
+      // Consumer ONLY sets: relayerTxId, relayerUrl, status='submitted'
+      // Consumer does NOT set: transactionHash (Webhook will set this)
       await this.prisma.transaction.update({
-        where: { id: transactionId },
+        where: { transactionId },
         data: {
-          status: 'submitted', // NOT 'confirmed' - Webhook will update to confirmed
-          ozRelayerTxId: result.transactionId,
-          ozRelayerUrl: result.relayerUrl, // DC-005: Track which relayer handled TX
-          // hash: undefined - DO NOT set hash here, Webhook is source of truth
+          status: "submitted", // NOT 'confirmed' - Webhook will update to confirmed
+          relayerTxId: result.transactionId,
+          relayerUrl: result.relayerUrl, // DC-005: Track which relayer handled TX
+          // transactionHash: undefined - DO NOT set here, Webhook is source of truth
         },
       });
 
@@ -242,13 +244,56 @@ export class ConsumerService implements OnModuleInit, OnModuleDestroy {
       );
     } catch (error: unknown) {
       const err = error as Error;
+
+      // SPEC-DLQ-001 E-1: Classify error to determine handling strategy
+      const classification = this.errorClassifier.classify(error);
       this.logger.error(
-        `Failed to process message ${MessageId}: ${err.message}`,
+        `Failed to process message ${MessageId}: ${err.message} [${classification.category}]`,
         err.stack,
       );
 
-      // Message will be automatically returned to queue due to visibility timeout
-      // SQS will retry up to maxReceiveCount times before moving to DLQ
+      // SPEC-DLQ-001 E-2: Non-retryable errors - immediately mark as failed and delete message
+      if (classification.category === ErrorCategory.NON_RETRYABLE) {
+        this.logger.warn(
+          `[NON_RETRYABLE] ${classification.reason} - marking transaction as failed`,
+        );
+
+        try {
+          // Extract transactionId from message body for error handling
+          const messageBody = JSON.parse(Body);
+          const transactionId = messageBody.transactionId;
+
+          if (transactionId) {
+            await this.prisma.transaction.update({
+              where: { transactionId },
+              data: {
+                status: "failed",
+                error_message: `${classification.reason}: ${err.message}`,
+              },
+            });
+          }
+
+          // UN-1: MUST NOT resend NON_RETRYABLE errors to SQS - delete immediately
+          await this.sqsAdapter.deleteMessage(ReceiptHandle);
+          this.logger.log(
+            `[NON_RETRYABLE] Message deleted, transaction marked as failed`,
+          );
+        } catch (updateError: unknown) {
+          const updateErr = updateError as Error;
+          this.logger.error(
+            `Failed to handle non-retryable error: ${updateErr.message}`,
+          );
+          // Still delete the message to prevent infinite retries
+          await this.sqsAdapter.deleteMessage(ReceiptHandle);
+        }
+      } else {
+        // SPEC-DLQ-001 E-3: Retryable errors - let SQS handle retry
+        // Message will be automatically returned to queue due to visibility timeout
+        // SQS will retry up to maxReceiveCount times before moving to DLQ
+        this.logger.log(
+          `[RETRYABLE] ${classification.reason} - message will be retried by SQS`,
+        );
+      }
     }
   }
 }

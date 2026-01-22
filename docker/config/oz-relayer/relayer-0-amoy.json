@@ -38,7 +38,7 @@
       "type": "evm",
       "network": "amoy",
       "chain_id": 80002,
-      "required_confirmations": 5,
+      "required_confirmations": 4,
       "rpc_urls": ["https://rpc-amoy.polygon.technology"],
       "symbol": "MATIC",
       "is_testnet": true,

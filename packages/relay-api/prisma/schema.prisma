@@ -11,35 +11,49 @@ datasource db {
 }
 
 model Transaction {
-  id            String    @id @default(uuid())
-  hash          String?   @unique
-  status        String    // pending, sent, submitted, inmempool, mined, confirmed, failed, queued, processing
-  from          String?
-  to            String?
-  value         String?
-  data          String?   @db.Text
+  // Auto-increment integer PK (internal use only)
+  id              Int       @id @default(autoincrement())
+
+  // UUID for external API (was: id)
+  transactionId   String    @unique @default(uuid()) @map("transaction_id")
+
+  // Transaction hash (was: hash)
+  transactionHash String?   @unique @map("transaction_hash")
+
+  status          String    // pending, sent, submitted, inmempool, mined, confirmed, failed, queued, processing
+  from            String?
+  to              String?
+  value           String?
+  data            String?   @db.Text
 
   // SPEC-QUEUE-001: SQS Queue System Fields
-  type          String?   // 'direct' | 'gasless'
-  request       Json?     // Original request data (DirectTxRequestDto, GaslessTxRequestDto)
-  result        Json?     // OZ Relayer response (hash, transactionId, etc.)
-  error_message String?   @db.Text // Error message on failure
+  type            String?   // 'direct' | 'gasless'
+  request         Json?     // Original request data (DirectTxRequestDto, GaslessTxRequestDto)
+  result          Json?     // OZ Relayer response (hash, transactionId, etc.)
+  error_message   String?   @db.Text // Error message on failure
 
-  // SPEC-QUEUE-001: OZ Relayer tracking for idempotency
+  // OZ Relayer tracking for idempotency (was: ozRelayerTxId)
   // Stores OZ Relayer's internal transaction ID to prevent duplicate submissions
   // If set, consumer should poll for status instead of re-submitting
-  ozRelayerTxId String?   @unique @map("oz_relayer_tx_id")
+  relayerTxId     String?   @unique @map("relayer_tx_id")
 
-  // SPEC-ROUTING-001 DC-005: Track which relayer handled the transaction
+  // Track which relayer handled the transaction (was: ozRelayerUrl)
   // Stores the URL of the OZ Relayer that processed this TX for debugging/audit
-  ozRelayerUrl  String?   @map("oz_relayer_url")
+  relayerUrl      String?   @map("relayer_url")
 
-  createdAt     DateTime  @default(now())
-  updatedAt     DateTime  @updatedAt
-  confirmedAt   DateTime?
+  // SPEC-DLQ-001: DLQ retry strategy per transaction
+  // Controls whether DLQ Consumer should attempt reprocessing
+  // true: Attempt reprocessing when message reaches DLQ
+  // false/null: Mark as failed immediately (default behavior)
+  // U-3: MUST be compatible with existing transactions (default: false)
+  retryOnFailure  Boolean?  @default(false) @map("retry_on_failure")
+
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+  confirmedAt     DateTime?
 
   @@index([status])
-  @@index([hash])
+  @@index([transactionHash])
   @@index([type])
   @@index([createdAt])
   @@map("transactions")

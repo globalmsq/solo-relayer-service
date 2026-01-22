@@ -3,9 +3,39 @@
 Consolidated fallback implementations used across multiple hooks.
 """
 
+from __future__ import annotations
+
 import re
 import statistics
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any
+
+
+def merge_configs(base: dict[str, Any], override: dict[str, Any]) -> dict[str, Any]:
+    """Recursively merge configuration dictionaries.
+
+    Deep merges two configuration dictionaries, with override values
+    taking precedence. Nested dictionaries are merged recursively.
+
+    Args:
+        base: Base configuration dictionary
+        override: Override configuration dictionary (values take precedence)
+
+    Returns:
+        Merged configuration dictionary
+
+    Examples:
+        >>> base = {"a": 1, "b": {"c": 2}}
+        >>> override = {"b": {"d": 3}}
+        >>> merge_configs(base, override)
+        {'a': 1, 'b': {'c': 2, 'd': 3}}
+    """
+    result = base.copy()
+    for key, value in override.items():
+        if key in result and isinstance(result[key], dict) and isinstance(value, dict):
+            result[key] = merge_configs(result[key], value)
+        else:
+            result[key] = value
+    return result
 
 
 def format_duration(seconds: float) -> str:
@@ -28,7 +58,7 @@ def format_duration(seconds: float) -> str:
     return f"{hours:.1f}h"
 
 
-def get_summary_stats(values: List[float]) -> Dict[str, float]:
+def get_summary_stats(values: list[float]) -> dict[str, float]:
     """Get summary statistics for a list of values.
 
     Calculates mean, min, max, and standard deviation.
@@ -50,7 +80,7 @@ def get_summary_stats(values: List[float]) -> Dict[str, float]:
     }
 
 
-def is_root_whitelisted(filename: str, config: Dict[str, Any]) -> bool:
+def is_root_whitelisted(filename: str, config: dict[str, Any]) -> bool:
     """Check if file is allowed in project root.
 
     Consolidated from pre_tool__document_management.py and session_end__auto_cleanup.py
@@ -73,7 +103,7 @@ def is_root_whitelisted(filename: str, config: Dict[str, Any]) -> bool:
     return False
 
 
-def get_file_pattern_category(filename: str, config: Dict[str, Any]) -> Optional[Tuple[str, str]]:
+def get_file_pattern_category(filename: str, config: dict[str, Any]) -> tuple[str, str] | None:
     """Match filename against patterns to determine category.
 
     Consolidated from pre_tool__document_management.py and session_end__auto_cleanup.py
@@ -98,7 +128,7 @@ def get_file_pattern_category(filename: str, config: Dict[str, Any]) -> Optional
     return None
 
 
-def suggest_moai_location(filename: str, config: Dict[str, Any]) -> str:
+def suggest_moai_location(filename: str, config: dict[str, Any]) -> str:
     """Suggest appropriate .moai/ location based on file pattern.
 
     Consolidated from pre_tool__document_management.py and session_end__auto_cleanup.py

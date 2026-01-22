@@ -1,7 +1,9 @@
 // Set environment variables BEFORE any module imports
 // This is critical for SqsAdapter which validates env vars in constructor
-process.env.SQS_QUEUE_URL = "http://localhost:4566/000000000000/relay-transactions";
-process.env.SQS_DLQ_URL = "http://localhost:4566/000000000000/relay-transactions-dlq";
+process.env.SQS_QUEUE_URL =
+  "http://localhost:4566/000000000000/relay-transactions";
+process.env.SQS_DLQ_URL =
+  "http://localhost:4566/000000000000/relay-transactions-dlq";
 process.env.SQS_ENDPOINT_URL = "http://localhost:4566";
 process.env.AWS_REGION = "ap-northeast-2";
 process.env.AWS_ACCESS_KEY_ID = "test";
@@ -106,10 +108,18 @@ export const defaultPrismaMock = {
   transaction: {
     findUnique: jest.fn().mockResolvedValue(null),
     findMany: jest.fn().mockResolvedValue([]),
-    create: jest.fn().mockImplementation(() => Promise.resolve(createMockTransaction())),
-    update: jest.fn().mockImplementation(() => Promise.resolve(createMockTransaction())),
-    upsert: jest.fn().mockImplementation(() => Promise.resolve(createMockTransaction())),
-    delete: jest.fn().mockImplementation(() => Promise.resolve(createMockTransaction())),
+    create: jest
+      .fn()
+      .mockImplementation(() => Promise.resolve(createMockTransaction())),
+    update: jest
+      .fn()
+      .mockImplementation(() => Promise.resolve(createMockTransaction())),
+    upsert: jest
+      .fn()
+      .mockImplementation(() => Promise.resolve(createMockTransaction())),
+    delete: jest
+      .fn()
+      .mockImplementation(() => Promise.resolve(createMockTransaction())),
   },
 };
 

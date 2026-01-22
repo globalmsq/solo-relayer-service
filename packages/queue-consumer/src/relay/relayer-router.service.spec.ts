@@ -1,25 +1,25 @@
-import { Test, TestingModule } from '@nestjs/testing';
-import { ConfigService } from '@nestjs/config';
-import { RelayerRouterService } from './relayer-router.service';
-import { RedisService } from '../redis/redis.service';
-import axios from 'axios';
+import { Test, TestingModule } from "@nestjs/testing";
+import { ConfigService } from "@nestjs/config";
+import { RelayerRouterService } from "./relayer-router.service";
+import { RedisService } from "../redis/redis.service";
+import axios from "axios";
 
-jest.mock('axios');
+jest.mock("axios");
 const mockedAxios = axios as jest.Mocked<typeof axios>;
 
-describe('RelayerRouterService', () => {
+describe("RelayerRouterService", () => {
   let service: RelayerRouterService;
-  let configService: ConfigService;
-  let redisService: RedisService;
+  let _configService: ConfigService;
+  let _redisService: RedisService;
 
   const mockRelayerUrls = [
-    'http://oz-relayer-0:8080',
-    'http://oz-relayer-1:8080',
-    'http://oz-relayer-2:8080',
+    "http://oz-relayer-0:8080",
+    "http://oz-relayer-1:8080",
+    "http://oz-relayer-2:8080",
   ];
 
   // SPEC-DISCOVERY-001: Mock Redis active relayers
-  const mockActiveRelayers = ['oz-relayer-0', 'oz-relayer-1', 'oz-relayer-2'];
+  const mockActiveRelayers = ["oz-relayer-0", "oz-relayer-1", "oz-relayer-2"];
 
   // Mock RedisService
   const mockRedisService = {
@@ -41,14 +41,14 @@ describe('RelayerRouterService', () => {
           provide: ConfigService,
           useValue: {
             get: jest.fn((key: string) => {
-              if (key === 'relayer.urls') {
-                return mockRelayerUrls.join(',');
+              if (key === "relayer.urls") {
+                return mockRelayerUrls.join(",");
               }
-              if (key === 'relayer.url') {
-                return 'http://oz-relayer-0:8080';
+              if (key === "relayer.url") {
+                return "http://oz-relayer-0:8080";
               }
-              if (key === 'relayer.apiKey') {
-                return 'test-api-key';
+              if (key === "relayer.apiKey") {
+                return "test-api-key";
               }
               return undefined;
             }),
@@ -62,8 +62,8 @@ describe('RelayerRouterService', () => {
     }).compile();
 
     service = module.get<RelayerRouterService>(RelayerRouterService);
-    configService = module.get<ConfigService>(ConfigService);
-    redisService = module.get<RedisService>(RedisService);
+    _configService = module.get<ConfigService>(ConfigService);
+    _redisService = module.get<RedisService>(RedisService);
   });
 
   afterEach(() => {
@@ -71,14 +71,14 @@ describe('RelayerRouterService', () => {
     jest.useRealTimers();
   });
 
-  describe('initialization', () => {
-    it('should parse comma-separated relayer URLs from config', () => {
+  describe("initialization", () => {
+    it("should parse comma-separated relayer URLs from config", () => {
       const urls = service.getRelayerUrls();
       expect(urls).toEqual(mockRelayerUrls);
       expect(urls).toHaveLength(3);
     });
 
-    it('should use single URL as fallback when urls config is empty', async () => {
+    it("should use single URL as fallback when urls config is empty", async () => {
       const module: TestingModule = await Test.createTestingModule({
         providers: [
           RelayerRouterService,
@@ -86,9 +86,9 @@ describe('RelayerRouterService', () => {
             provide: ConfigService,
             useValue: {
               get: jest.fn((key: string) => {
-                if (key === 'relayer.urls') return '';
-                if (key === 'relayer.url') return 'http://single-relayer:8080';
-                if (key === 'relayer.apiKey') return 'test-api-key';
+                if (key === "relayer.urls") return "";
+                if (key === "relayer.url") return "http://single-relayer:8080";
+                if (key === "relayer.apiKey") return "test-api-key";
                 return undefined;
               }),
             },
@@ -100,110 +100,203 @@ describe('RelayerRouterService', () => {
         ],
       }).compile();
 
-      const singleUrlService = module.get<RelayerRouterService>(RelayerRouterService);
+      const singleUrlService =
+        module.get<RelayerRouterService>(RelayerRouterService);
       // Initial state uses fallback URLs before Redis is queried
-      expect(singleUrlService.getFallbackRelayerUrls()).toEqual(['http://single-relayer:8080']);
+      expect(singleUrlService.getFallbackRelayerUrls()).toEqual([
+        "http://single-relayer:8080",
+      ]);
     });
   });
 
-  describe('getAvailableRelayer - FR-001 Smart Routing', () => {
-    it('should select the relayer with the lowest pending transactions', async () => {
+  describe("getAvailableRelayer - FR-001 Smart Routing", () => {
+    it("should select the relayer with the lowest pending transactions", async () => {
       // Mock relayer responses with different pending TX counts
       mockedAxios.get.mockImplementation((url: string) => {
-        if (url.includes('oz-relayer-0')) {
+        if (url.includes("oz-relayer-0")) {
           return Promise.resolve({
             data: {
-              data: [{ id: 'relayer-1-id', pending_transactions: 5, status: 'active' }],
+              data: [
+                {
+                  id: "relayer-1-id",
+                  pending_transactions: 5,
+                  status: "active",
+                },
+              ],
             },
           });
         }
-        if (url.includes('oz-relayer-1')) {
+        if (url.includes("oz-relayer-1")) {
           return Promise.resolve({
             data: {
-              data: [{ id: 'relayer-2-id', pending_transactions: 2, status: 'active' }], // Lowest
+              data: [
+                {
+                  id: "relayer-2-id",
+                  pending_transactions: 2,
+                  status: "active",
+                },
+              ], // Lowest
             },
           });
         }
-        if (url.includes('oz-relayer-2')) {
+        if (url.includes("oz-relayer-2")) {
           return Promise.resolve({
             data: {
-              data: [{ id: 'relayer-3-id', pending_transactions: 8, status: 'active' }],
+              data: [
+                {
+                  id: "relayer-3-id",
+                  pending_transactions: 8,
+                  status: "active",
+                },
+              ],
             },
           });
         }
-        return Promise.reject(new Error('Unknown URL'));
+        return Promise.reject(new Error("Unknown URL"));
       });
 
       const result = await service.getAvailableRelayer();
 
-      expect(result.url).toBe('http://oz-relayer-1:8080');
-      expect(result.relayerId).toBe('relayer-2-id');
+      expect(result.url).toBe("http://oz-relayer-1:8080");
+      expect(result.relayerId).toBe("relayer-2-id");
     });
 
-    it('should select first relayer when all have equal pending transactions', async () => {
+    it("should use round-robin when all relayers have equal pending transactions", async () => {
       mockedAxios.get.mockResolvedValue({
         data: {
-          data: [{ id: 'any-relayer-id', pending_transactions: 3, status: 'active' }],
+          data: [
+            { id: "any-relayer-id", pending_transactions: 3, status: "active" },
+          ],
         },
       });
 
-      const result = await service.getAvailableRelayer();
+      // Track selected relayers across multiple calls
+      const selectedUrls: string[] = [];
 
-      // Should select the first one (oz-relayer-0) when all are equal
-      expect(result.url).toBe('http://oz-relayer-0:8080');
+      // Call multiple times - should round-robin through all relayers
+      for (let i = 0; i < 6; i++) {
+        // Invalidate cache to ensure fresh selection each time
+        service.invalidateCache("http://oz-relayer-0:8080");
+        service.invalidateCache("http://oz-relayer-1:8080");
+        service.invalidateCache("http://oz-relayer-2:8080");
+
+        const result = await service.getAvailableRelayer();
+        selectedUrls.push(result.url);
+      }
+
+      // Should cycle through all 3 relayers twice (6 calls / 3 relayers = 2 cycles)
+      expect(selectedUrls).toEqual([
+        "http://oz-relayer-0:8080",
+        "http://oz-relayer-1:8080",
+        "http://oz-relayer-2:8080",
+        "http://oz-relayer-0:8080",
+        "http://oz-relayer-1:8080",
+        "http://oz-relayer-2:8080",
+      ]);
     });
 
-    it('should skip unhealthy relayers (paused status)', async () => {
+    it("should distribute load evenly when pending counts are equal", async () => {
+      mockedAxios.get.mockResolvedValue({
+        data: {
+          data: [
+            { id: "relayer-id", pending_transactions: 0, status: "active" },
+          ],
+        },
+      });
+
+      const urlCounts = new Map<string, number>();
+
+      // Call 9 times (3 relayers x 3 cycles)
+      for (let i = 0; i < 9; i++) {
+        service.invalidateCache("http://oz-relayer-0:8080");
+        service.invalidateCache("http://oz-relayer-1:8080");
+        service.invalidateCache("http://oz-relayer-2:8080");
+
+        const result = await service.getAvailableRelayer();
+        urlCounts.set(result.url, (urlCounts.get(result.url) || 0) + 1);
+      }
+
+      // Each relayer should be selected exactly 3 times (even distribution)
+      expect(urlCounts.get("http://oz-relayer-0:8080")).toBe(3);
+      expect(urlCounts.get("http://oz-relayer-1:8080")).toBe(3);
+      expect(urlCounts.get("http://oz-relayer-2:8080")).toBe(3);
+    });
+
+    it("should skip unhealthy relayers (paused status)", async () => {
       mockedAxios.get.mockImplementation((url: string) => {
-        if (url.includes('oz-relayer-0')) {
+        if (url.includes("oz-relayer-0")) {
           return Promise.resolve({
             data: {
-              data: [{ id: 'relayer-1-id', pending_transactions: 1, status: 'paused' }], // Paused
+              data: [
+                {
+                  id: "relayer-1-id",
+                  pending_transactions: 1,
+                  status: "paused",
+                },
+              ], // Paused
             },
           });
         }
-        if (url.includes('oz-relayer-1')) {
+        if (url.includes("oz-relayer-1")) {
           return Promise.resolve({
             data: {
-              data: [{ id: 'relayer-2-id', pending_transactions: 5, status: 'active' }],
+              data: [
+                {
+                  id: "relayer-2-id",
+                  pending_transactions: 5,
+                  status: "active",
+                },
+              ],
             },
           });
         }
-        if (url.includes('oz-relayer-2')) {
+        if (url.includes("oz-relayer-2")) {
           return Promise.resolve({
             data: {
-              data: [{ id: 'relayer-3-id', pending_transactions: 10, status: 'active' }],
+              data: [
+                {
+                  id: "relayer-3-id",
+                  pending_transactions: 10,
+                  status: "active",
+                },
+              ],
             },
           });
         }
-        return Promise.reject(new Error('Unknown URL'));
+        return Promise.reject(new Error("Unknown URL"));
       });
 
       const result = await service.getAvailableRelayer();
 
       // Should skip paused relayer-1, select relayer-2 (lower pending than relayer-3)
-      expect(result.url).toBe('http://oz-relayer-1:8080');
-      expect(result.relayerId).toBe('relayer-2-id');
+      expect(result.url).toBe("http://oz-relayer-1:8080");
+      expect(result.relayerId).toBe("relayer-2-id");
     });
 
-    it('should fall back to round-robin when all health checks fail', async () => {
-      mockedAxios.get.mockRejectedValue(new Error('Connection refused'));
+    it("should fall back to round-robin when all health checks fail", async () => {
+      mockedAxios.get.mockRejectedValue(new Error("Connection refused"));
 
       const result = await service.getAvailableRelayer();
 
       // Should use round-robin fallback with default relayer ID
-      expect(result.url).toBe('http://oz-relayer-0:8080');
-      expect(result.relayerId).toBe('default-relayer');
+      expect(result.url).toBe("http://oz-relayer-0:8080");
+      expect(result.relayerId).toBe("default-relayer");
     });
   });
 
-  describe('NFR-001 - Health Check Caching', () => {
-    it('should use cached relayer info within TTL (10 seconds)', async () => {
+  describe("NFR-001 - Health Check Caching", () => {
+    it("should use cached relayer info within TTL (10 seconds)", async () => {
       jest.useFakeTimers();
 
       mockedAxios.get.mockResolvedValue({
         data: {
-          data: [{ id: 'cached-relayer-id', pending_transactions: 3, status: 'active' }],
+          data: [
+            {
+              id: "cached-relayer-id",
+              pending_transactions: 3,
+              status: "active",
+            },
+          ],
         },
       });
 
@@ -224,11 +317,13 @@ describe('RelayerRouterService', () => {
     });
   });
 
-  describe('NFR-001 - Health Check Timeout', () => {
-    it('should use 500ms timeout for health checks', async () => {
+  describe("NFR-001 - Health Check Timeout", () => {
+    it("should use 500ms timeout for health checks", async () => {
       mockedAxios.get.mockResolvedValue({
         data: {
-          data: [{ id: 'relayer-id', pending_transactions: 0, status: 'active' }],
+          data: [
+            { id: "relayer-id", pending_transactions: 0, status: "active" },
+          ],
         },
       });
 
@@ -244,51 +339,53 @@ describe('RelayerRouterService', () => {
     });
   });
 
-  describe('round-robin fallback', () => {
-    it('should cycle through relayers in round-robin fashion', async () => {
+  describe("round-robin fallback", () => {
+    it("should cycle through relayers in round-robin fashion", async () => {
       // All health checks fail, triggering round-robin
-      mockedAxios.get.mockRejectedValue(new Error('All relayers down'));
+      mockedAxios.get.mockRejectedValue(new Error("All relayers down"));
 
       // First call
       const result1 = await service.getAvailableRelayer();
-      expect(result1.url).toBe('http://oz-relayer-0:8080');
+      expect(result1.url).toBe("http://oz-relayer-0:8080");
 
       // Clear cache to force round-robin again
-      service.invalidateCache('http://oz-relayer-0:8080');
-      service.invalidateCache('http://oz-relayer-1:8080');
-      service.invalidateCache('http://oz-relayer-2:8080');
+      service.invalidateCache("http://oz-relayer-0:8080");
+      service.invalidateCache("http://oz-relayer-1:8080");
+      service.invalidateCache("http://oz-relayer-2:8080");
 
       // Second call - should advance to next relayer
       const result2 = await service.getAvailableRelayer();
-      expect(result2.url).toBe('http://oz-relayer-1:8080');
+      expect(result2.url).toBe("http://oz-relayer-1:8080");
 
       // Clear cache again
-      service.invalidateCache('http://oz-relayer-0:8080');
-      service.invalidateCache('http://oz-relayer-1:8080');
-      service.invalidateCache('http://oz-relayer-2:8080');
+      service.invalidateCache("http://oz-relayer-0:8080");
+      service.invalidateCache("http://oz-relayer-1:8080");
+      service.invalidateCache("http://oz-relayer-2:8080");
 
       // Third call
       const result3 = await service.getAvailableRelayer();
-      expect(result3.url).toBe('http://oz-relayer-2:8080');
+      expect(result3.url).toBe("http://oz-relayer-2:8080");
 
       // Clear cache again
-      service.invalidateCache('http://oz-relayer-0:8080');
-      service.invalidateCache('http://oz-relayer-1:8080');
-      service.invalidateCache('http://oz-relayer-2:8080');
+      service.invalidateCache("http://oz-relayer-0:8080");
+      service.invalidateCache("http://oz-relayer-1:8080");
+      service.invalidateCache("http://oz-relayer-2:8080");
 
       // Fourth call - should wrap around to first
       const result4 = await service.getAvailableRelayer();
-      expect(result4.url).toBe('http://oz-relayer-0:8080');
+      expect(result4.url).toBe("http://oz-relayer-0:8080");
     });
   });
 
-  describe('cache management', () => {
-    it('should invalidate cache for specific relayer', async () => {
+  describe("cache management", () => {
+    it("should invalidate cache for specific relayer", async () => {
       jest.useFakeTimers();
 
       mockedAxios.get.mockResolvedValue({
         data: {
-          data: [{ id: 'relayer-id', pending_transactions: 3, status: 'active' }],
+          data: [
+            { id: "relayer-id", pending_transactions: 3, status: "active" },
+          ],
         },
       });
 
@@ -297,17 +394,19 @@ describe('RelayerRouterService', () => {
       expect(mockedAxios.get).toHaveBeenCalledTimes(3);
 
       // Invalidate cache for one relayer
-      service.invalidateCache('http://oz-relayer-0:8080');
+      service.invalidateCache("http://oz-relayer-0:8080");
 
       // Second call - should only refresh the invalidated relayer
       await service.getAvailableRelayer();
       expect(mockedAxios.get).toHaveBeenCalledTimes(4); // Only 1 additional call
     });
 
-    it('should return current cache state for monitoring', async () => {
+    it("should return current cache state for monitoring", async () => {
       mockedAxios.get.mockResolvedValue({
         data: {
-          data: [{ id: 'relayer-id', pending_transactions: 3, status: 'active' }],
+          data: [
+            { id: "relayer-id", pending_transactions: 3, status: "active" },
+          ],
         },
       });
 
@@ -316,21 +415,27 @@ describe('RelayerRouterService', () => {
       const cacheState = service.getCacheState();
 
       expect(cacheState.size).toBe(3);
-      expect(cacheState.has('http://oz-relayer-0:8080')).toBe(true);
-      expect(cacheState.has('http://oz-relayer-1:8080')).toBe(true);
-      expect(cacheState.has('http://oz-relayer-2:8080')).toBe(true);
+      expect(cacheState.has("http://oz-relayer-0:8080")).toBe(true);
+      expect(cacheState.has("http://oz-relayer-1:8080")).toBe(true);
+      expect(cacheState.has("http://oz-relayer-2:8080")).toBe(true);
     });
   });
 
-  describe('error handling', () => {
-    it('should mark relayer as unhealthy when API returns error', async () => {
+  describe("error handling", () => {
+    it("should mark relayer as unhealthy when API returns error", async () => {
       mockedAxios.get.mockImplementation((url: string) => {
-        if (url.includes('oz-relayer-0')) {
-          return Promise.reject(new Error('Connection refused'));
+        if (url.includes("oz-relayer-0")) {
+          return Promise.reject(new Error("Connection refused"));
         }
         return Promise.resolve({
           data: {
-            data: [{ id: 'healthy-relayer-id', pending_transactions: 5, status: 'active' }],
+            data: [
+              {
+                id: "healthy-relayer-id",
+                pending_transactions: 5,
+                status: "active",
+              },
+            ],
           },
         });
       });
@@ -338,17 +443,23 @@ describe('RelayerRouterService', () => {
       const result = await service.getAvailableRelayer();
 
       // Should select healthy relayer, not the failed one
-      expect(result.url).not.toBe('http://oz-relayer-0:8080');
+      expect(result.url).not.toBe("http://oz-relayer-0:8080");
     });
 
-    it('should mark relayer as unhealthy when response has no relayer data', async () => {
+    it("should mark relayer as unhealthy when response has no relayer data", async () => {
       mockedAxios.get.mockImplementation((url: string) => {
-        if (url.includes('oz-relayer-0')) {
+        if (url.includes("oz-relayer-0")) {
           return Promise.resolve({ data: { data: [] } }); // Empty response
         }
         return Promise.resolve({
           data: {
-            data: [{ id: 'valid-relayer-id', pending_transactions: 5, status: 'active' }],
+            data: [
+              {
+                id: "valid-relayer-id",
+                pending_transactions: 5,
+                status: "active",
+              },
+            ],
           },
         });
       });
@@ -356,15 +467,17 @@ describe('RelayerRouterService', () => {
       const result = await service.getAvailableRelayer();
 
       // Should select healthy relayer, not the one with empty response
-      expect(result.url).not.toBe('http://oz-relayer-0:8080');
+      expect(result.url).not.toBe("http://oz-relayer-0:8080");
     });
   });
 
-  describe('extractRelayerName utility', () => {
-    it('should extract hostname from URL for logging', async () => {
+  describe("extractRelayerName utility", () => {
+    it("should extract hostname from URL for logging", async () => {
       mockedAxios.get.mockResolvedValue({
         data: {
-          data: [{ id: 'relayer-id', pending_transactions: 0, status: 'active' }],
+          data: [
+            { id: "relayer-id", pending_transactions: 0, status: "active" },
+          ],
         },
       });
 
@@ -374,27 +487,34 @@ describe('RelayerRouterService', () => {
     });
   });
 
-  describe('SPEC-DISCOVERY-001 Phase 2 - Redis Integration', () => {
-    it('should query Redis for active relayers on getAvailableRelayer call', async () => {
+  describe("SPEC-DISCOVERY-001 Phase 2 - Redis Integration", () => {
+    it("should query Redis for active relayers on getAvailableRelayer call", async () => {
       mockedAxios.get.mockResolvedValue({
         data: {
-          data: [{ id: 'relayer-id', pending_transactions: 0, status: 'active' }],
+          data: [
+            { id: "relayer-id", pending_transactions: 0, status: "active" },
+          ],
         },
       });
 
       await service.getAvailableRelayer();
 
       // Verify Redis smembers was called with correct key
-      expect(mockRedisService.smembers).toHaveBeenCalledWith('relayer:active');
+      expect(mockRedisService.smembers).toHaveBeenCalledWith("relayer:active");
     });
 
-    it('should construct URLs from Redis hostnames', async () => {
+    it("should construct URLs from Redis hostnames", async () => {
       // Redis returns hostnames like 'oz-relayer-0'
-      mockRedisService.smembers.mockResolvedValue(['oz-relayer-0', 'oz-relayer-1']);
+      mockRedisService.smembers.mockResolvedValue([
+        "oz-relayer-0",
+        "oz-relayer-1",
+      ]);
 
       mockedAxios.get.mockResolvedValue({
         data: {
-          data: [{ id: 'relayer-id', pending_transactions: 0, status: 'active' }],
+          data: [
+            { id: "relayer-id", pending_transactions: 0, status: "active" },
+          ],
         },
       });
 
@@ -402,17 +522,19 @@ describe('RelayerRouterService', () => {
 
       // Verify URLs are constructed with port 8080
       const urls = service.getRelayerUrls();
-      expect(urls).toContain('http://oz-relayer-0:8080');
-      expect(urls).toContain('http://oz-relayer-1:8080');
+      expect(urls).toContain("http://oz-relayer-0:8080");
+      expect(urls).toContain("http://oz-relayer-1:8080");
     });
 
-    it('should fall back to environment config when Redis returns empty set', async () => {
+    it("should fall back to environment config when Redis returns empty set", async () => {
       // Redis returns empty set (no active relayers)
       mockRedisService.smembers.mockResolvedValue([]);
 
       mockedAxios.get.mockResolvedValue({
         data: {
-          data: [{ id: 'relayer-id', pending_transactions: 0, status: 'active' }],
+          data: [
+            { id: "relayer-id", pending_transactions: 0, status: "active" },
+          ],
         },
       });
 
@@ -423,13 +545,17 @@ describe('RelayerRouterService', () => {
       expect(urls).toEqual(mockRelayerUrls);
     });
 
-    it('should fall back to environment config when Redis throws error', async () => {
+    it("should fall back to environment config when Redis throws error", async () => {
       // Redis throws error
-      mockRedisService.smembers.mockRejectedValue(new Error('Redis connection failed'));
+      mockRedisService.smembers.mockRejectedValue(
+        new Error("Redis connection failed"),
+      );
 
       mockedAxios.get.mockResolvedValue({
         data: {
-          data: [{ id: 'relayer-id', pending_transactions: 0, status: 'active' }],
+          data: [
+            { id: "relayer-id", pending_transactions: 0, status: "active" },
+          ],
         },
       });
 
@@ -440,13 +566,19 @@ describe('RelayerRouterService', () => {
       expect(urls).toEqual(mockRelayerUrls);
     });
 
-    it('should sort relayer hostnames from Redis for consistent ordering', async () => {
+    it("should sort relayer hostnames from Redis for consistent ordering", async () => {
       // Redis returns unsorted hostnames
-      mockRedisService.smembers.mockResolvedValue(['oz-relayer-2', 'oz-relayer-0', 'oz-relayer-1']);
+      mockRedisService.smembers.mockResolvedValue([
+        "oz-relayer-2",
+        "oz-relayer-0",
+        "oz-relayer-1",
+      ]);
 
       mockedAxios.get.mockResolvedValue({
         data: {
-          data: [{ id: 'relayer-id', pending_transactions: 0, status: 'active' }],
+          data: [
+            { id: "relayer-id", pending_transactions: 0, status: "active" },
+          ],
         },
       });
 
@@ -455,13 +587,13 @@ describe('RelayerRouterService', () => {
       // Verify URLs are sorted
       const urls = service.getRelayerUrls();
       expect(urls).toEqual([
-        'http://oz-relayer-0:8080',
-        'http://oz-relayer-1:8080',
-        'http://oz-relayer-2:8080',
+        "http://oz-relayer-0:8080",
+        "http://oz-relayer-1:8080",
+        "http://oz-relayer-2:8080",
       ]);
     });
 
-    it('should expose Redis discovery status', () => {
+    it("should expose Redis discovery status", () => {
       mockRedisService.isAvailable.mockReturnValue(true);
       expect(service.isUsingRedisDiscovery()).toBe(true);
 
@@ -469,19 +601,21 @@ describe('RelayerRouterService', () => {
       expect(service.isUsingRedisDiscovery()).toBe(false);
     });
 
-    it('should expose fallback URLs from config', () => {
+    it("should expose fallback URLs from config", () => {
       const fallbackUrls = service.getFallbackRelayerUrls();
       expect(fallbackUrls).toEqual(mockRelayerUrls);
     });
   });
 
-  describe('SPEC-DISCOVERY-001 Phase 2 - Redis SMEMBERS Caching', () => {
-    it('should use cached active relayers within 2-second TTL', async () => {
+  describe("SPEC-DISCOVERY-001 Phase 2 - Redis SMEMBERS Caching", () => {
+    it("should use cached active relayers within 2-second TTL", async () => {
       jest.useFakeTimers();
 
       mockedAxios.get.mockResolvedValue({
         data: {
-          data: [{ id: 'relayer-id', pending_transactions: 0, status: 'active' }],
+          data: [
+            { id: "relayer-id", pending_transactions: 0, status: "active" },
+          ],
         },
       });
 
@@ -499,12 +633,14 @@ describe('RelayerRouterService', () => {
       expect(mockRedisService.smembers).toHaveBeenCalledTimes(1); // Still cached
     });
 
-    it('should refresh Redis after 2-second TTL expires', async () => {
+    it("should refresh Redis after 2-second TTL expires", async () => {
       jest.useFakeTimers();
 
       mockedAxios.get.mockResolvedValue({
         data: {
-          data: [{ id: 'relayer-id', pending_transactions: 0, status: 'active' }],
+          data: [
+            { id: "relayer-id", pending_transactions: 0, status: "active" },
+          ],
         },
       });
 
@@ -520,13 +656,15 @@ describe('RelayerRouterService', () => {
       expect(mockRedisService.smembers).toHaveBeenCalledTimes(2);
     });
 
-    it('should bypass cache when URL list is empty', async () => {
+    it("should bypass cache when URL list is empty", async () => {
       // Clear URLs by making Redis return empty first
       mockRedisService.smembers.mockResolvedValueOnce([]);
 
       mockedAxios.get.mockResolvedValue({
         data: {
-          data: [{ id: 'relayer-id', pending_transactions: 0, status: 'active' }],
+          data: [
+            { id: "relayer-id", pending_transactions: 0, status: "active" },
+          ],
         },
       });
 
@@ -543,12 +681,14 @@ describe('RelayerRouterService', () => {
       expect(mockRedisService.smembers).toHaveBeenCalledTimes(2);
     });
 
-    it('should reduce Redis calls significantly at high TPS', async () => {
+    it("should reduce Redis calls significantly at high TPS", async () => {
       jest.useFakeTimers();
 
       mockedAxios.get.mockResolvedValue({
         data: {
-          data: [{ id: 'relayer-id', pending_transactions: 0, status: 'active' }],
+          data: [
+            { id: "relayer-id", pending_transactions: 0, status: "active" },
+          ],
         },
       });
 

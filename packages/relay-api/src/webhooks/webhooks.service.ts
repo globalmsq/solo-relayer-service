@@ -29,7 +29,7 @@ import {
  *   "id": "event-uuid",
  *   "event": "transaction_update",
  *   "payload": {
- *     "id": "oz-relayer-tx-id",  // This is ozRelayerTxId in our DB
+ *     "id": "oz-relayer-tx-id",  // This is relayerTxId in our DB
  *     "hash": "0x...",
  *     "status": "submitted",
  *     "created_at": "...",
@@ -67,42 +67,44 @@ export class WebhooksService {
   ): Promise<WebhookResponseDto> {
     // Extract transaction data from nested payload structure
     const txPayload = webhookEvent.payload;
-    const ozRelayerTxId = txPayload.id; // OZ Relayer's internal transaction ID
+    const relayerTxId = txPayload.id; // OZ Relayer's internal transaction ID
     const status = txPayload.status;
-    const hash = txPayload.hash;
+    const transactionHash = txPayload.hash;
     const confirmedAt = txPayload.confirmed_at;
 
     this.logger.log(
-      `Processing webhook for ozRelayerTxId=${ozRelayerTxId}: event=${webhookEvent.event}, status=${status}`,
+      `Processing webhook for relayerTxId=${relayerTxId}: event=${webhookEvent.event}, status=${status}`,
     );
 
     try {
       // Step 1: Update MySQL (L2 - permanent storage)
       const updated = await this.updateMysql(
-        ozRelayerTxId,
+        relayerTxId,
         status,
-        hash,
+        transactionHash,
         confirmedAt,
       );
 
       // Step 2: Update Redis (L1 - cache) with TTL reset
-      await this.updateRedisCache(ozRelayerTxId, updated);
+      await this.updateRedisCache(relayerTxId, updated);
 
       // Step 3: Send notification to client service (non-blocking)
-      this.notificationService.notify(ozRelayerTxId, status, hash).catch((error) => {
-        this.logger.warn(
-          `Notification failed for ${ozRelayerTxId}: ${error.message}`,
-        );
-      });
+      this.notificationService
+        .notify(relayerTxId, status, transactionHash)
+        .catch((error) => {
+          this.logger.warn(
+            `Notification failed for ${relayerTxId}: ${error.message}`,
+          );
+        });
 
       this.logger.log(
-        `Webhook processed successfully for ozRelayerTxId=${ozRelayerTxId}: status=${status}`,
+        `Webhook processed successfully for relayerTxId=${relayerTxId}: status=${status}`,
       );
 
       return {
         success: true,
         message: "Webhook processed successfully",
-        transactionId: ozRelayerTxId,
+        transactionId: relayerTxId,
       };
     } catch (error) {
       if (error instanceof NotFoundException) {
@@ -110,7 +112,7 @@ export class WebhooksService {
       }
 
       this.logger.error(
-        `Webhook processing failed for ${ozRelayerTxId}: ${error instanceof Error ? error.message : "Unknown error"}`,
+        `Webhook processing failed for ${relayerTxId}: ${error instanceof Error ? error.message : "Unknown error"}`,
         error instanceof Error ? error.stack : undefined,
       );
 
@@ -123,33 +125,33 @@ export class WebhooksService {
    *
    * SPEC-ROUTING-001 FR-003: Webhook Bug Fix
    * - Uses UPDATE (not upsert) to prevent creating incorrect records
-   * - Looks up by ozRelayerTxId field (OZ Relayer's transaction ID)
+   * - Looks up by relayerTxId field (OZ Relayer's transaction ID)
    * - Returns 404 if transaction not found
    *
    * DC-004: Hash Field Separation
    * - Webhook ONLY updates: hash, status, confirmedAt
-   * - Consumer ONLY updates: ozRelayerTxId (set during submission)
+   * - Consumer ONLY updates: relayerTxId (set during submission)
    */
   private async updateMysql(
-    ozRelayerTxId: string,
+    relayerTxId: string,
     status: string,
-    hash: string | null | undefined,
+    transactionHash: string | null | undefined,
     confirmedAt: string | null | undefined,
   ) {
     try {
-      // FR-003: Look up by ozRelayerTxId, NOT by id
-      // ozRelayerTxId is OZ Relayer's internal ID from webhook payload.id
+      // FR-003: Look up by relayerTxId, NOT by id
+      // relayerTxId is OZ Relayer's internal ID from webhook payload.id
       const updated = await this.prismaService.transaction.update({
-        where: { ozRelayerTxId },
+        where: { relayerTxId },
         data: {
           status,
-          hash: hash || undefined,
+          transactionHash: transactionHash || undefined,
           confirmedAt: confirmedAt ? new Date(confirmedAt) : undefined,
         },
       });
 
       this.logger.debug(
-        `MySQL updated for ozRelayerTxId=${ozRelayerTxId}: status=${status}`,
+        `MySQL updated for relayerTxId=${relayerTxId}: status=${status}`,
       );
       return updated;
     } catch (error) {
@@ -160,15 +162,15 @@ export class WebhooksService {
         (error as { code: string }).code === "P2025"
       ) {
         this.logger.warn(
-          `Transaction not found for ozRelayerTxId=${ozRelayerTxId}`,
+          `Transaction not found for relayerTxId=${relayerTxId}`,
         );
         throw new NotFoundException(
-          `Transaction not found: ozRelayerTxId=${ozRelayerTxId}`,
+          `Transaction not found: relayerTxId=${relayerTxId}`,
         );
       }
 
       this.logger.error(
-        `MySQL update failed for ozRelayerTxId=${ozRelayerTxId}: ${error instanceof Error ? error.message : "Unknown error"}`,
+        `MySQL update failed for relayerTxId=${relayerTxId}: ${error instanceof Error ? error.message : "Unknown error"}`,
       );
       throw new InternalServerErrorException(
         "Failed to update transaction in database",
@@ -183,10 +185,10 @@ export class WebhooksService {
    * Graceful degradation: logs error but doesn't fail if Redis unavailable.
    */
   private async updateRedisCache(
-    ozRelayerTxId: string,
+    relayerTxId: string,
     data: {
-      id: string;
-      hash: string | null;
+      transactionId: string;
+      transactionHash: string | null;
       status: string;
       from: string | null;
       to: string | null;
@@ -195,13 +197,13 @@ export class WebhooksService {
       confirmedAt: Date | null;
     },
   ): Promise<void> {
-    // SPEC-ROUTING-001: Use internal txId (data.id) for cache key consistency
-    // StatusService looks up with `tx:status:${txId}` where txId is internal ID
-    const cacheKey = `tx:status:${data.id}`;
+    // SPEC-ROUTING-001: Use internal transactionId for cache key consistency
+    // StatusService looks up with `tx:status:${transactionId}`
+    const cacheKey = `tx:status:${data.transactionId}`;
     const cacheData = {
-      transactionId: data.id,
-      ozRelayerTxId,
-      hash: data.hash,
+      transactionId: data.transactionId,
+      relayerTxId,
+      transactionHash: data.transactionHash,
       status: data.status,
       from: data.from,
       to: data.to,
@@ -213,12 +215,12 @@ export class WebhooksService {
     try {
       await this.redisService.set(cacheKey, cacheData, this.CACHE_TTL_SECONDS);
       this.logger.debug(
-        `Redis cache updated for txId=${data.id} (ozRelayerTxId=${ozRelayerTxId}) with TTL ${this.CACHE_TTL_SECONDS}s`,
+        `Redis cache updated for transactionId=${data.transactionId} (relayerTxId=${relayerTxId}) with TTL ${this.CACHE_TTL_SECONDS}s`,
       );
     } catch (error) {
       // Graceful degradation: log error but don't fail the webhook
       this.logger.warn(
-        `Redis cache update failed for txId=${data.id}: ${error instanceof Error ? error.message : "Unknown error"}`,
+        `Redis cache update failed for transactionId=${data.transactionId}: ${error instanceof Error ? error.message : "Unknown error"}`,
       );
     }
   }

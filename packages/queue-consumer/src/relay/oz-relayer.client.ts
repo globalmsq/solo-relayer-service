@@ -1,15 +1,15 @@
-import { Injectable, Logger } from '@nestjs/common';
-import { ConfigService } from '@nestjs/config';
-import { HttpService } from '@nestjs/axios';
-import axios, { AxiosError } from 'axios';
-import { ethers } from 'ethers';
+import { Injectable, Logger } from "@nestjs/common";
+import { ConfigService } from "@nestjs/config";
+import { HttpService } from "@nestjs/axios";
+import axios, { AxiosError } from "axios";
+import { ethers } from "ethers";
 
 /**
  * ERC2771Forwarder execute() function ABI
  * OpenZeppelin ERC2771Forwarder v5.x signature
  */
 const FORWARDER_EXECUTE_ABI = [
-  'function execute((address from, address to, uint256 value, uint256 gas, uint48 deadline, bytes data, bytes signature) request)',
+  "function execute((address from, address to, uint256 value, uint256 gas, uint48 deadline, bytes data, bytes signature) request)",
 ];
 
 /**
@@ -33,11 +33,10 @@ export class OzRelayerClient {
     private httpService: HttpService,
   ) {
     this.baseUrl =
-      this.configService.get<string>('relayer.url') ||
-      'http://localhost:8081';
+      this.configService.get<string>("relayer.url") || "http://localhost:8081";
     this.apiKey =
-      this.configService.get<string>('relayer.apiKey') ||
-      'oz-relayer-shared-api-key-local-dev';
+      this.configService.get<string>("relayer.apiKey") ||
+      "oz-relayer-shared-api-key-local-dev";
   }
 
   /**
@@ -71,14 +70,14 @@ export class OzRelayerClient {
         return this.relayerId;
       }
 
-      throw new Error('No relayer found in response');
+      throw new Error("No relayer found in response");
     } catch (error) {
       const axiosError = error as AxiosError;
       this.logger.error(
         `Failed to discover relayer ID: ${axiosError.message}`,
         axiosError.response?.data,
       );
-      throw new Error('Failed to discover OZ Relayer ID');
+      throw new Error("Failed to discover OZ Relayer ID");
     }
   }
 
@@ -115,7 +114,7 @@ export class OzRelayerClient {
     };
 
     // Encode the execute() call
-    const calldata = forwarderInterface.encodeFunctionData('execute', [
+    const calldata = forwarderInterface.encodeFunctionData("execute", [
       requestData,
     ]);
 
@@ -140,9 +139,8 @@ export class OzRelayerClient {
     const pollingConfig = this.configService.get<{
       maxAttempts: number;
       delayMs: number;
-    }>('relayer.polling');
-    const actualMaxAttempts =
-      maxAttempts ?? pollingConfig?.maxAttempts ?? 30;
+    }>("relayer.polling");
+    const actualMaxAttempts = maxAttempts ?? pollingConfig?.maxAttempts ?? 30;
     const actualDelayMs = delayMs ?? pollingConfig?.delayMs ?? 500;
     const relayerId = await this.getRelayerId();
     const endpoint = `${this.baseUrl}/api/v1/relayers/${relayerId}/transactions/${ozTxId}`;
@@ -160,7 +158,7 @@ export class OzRelayerClient {
         const status = txData.status?.toLowerCase();
 
         // Check if transaction reached terminal state
-        if (['mined', 'confirmed', 'failed', 'reverted'].includes(status)) {
+        if (["mined", "confirmed", "failed", "reverted"].includes(status)) {
           this.logger.log(
             `Transaction ${ozTxId} reached terminal status: ${status}, hash: ${txData.hash}`,
           );
@@ -203,7 +201,7 @@ export class OzRelayerClient {
   private invalidateRelayerIdCache(error: AxiosError): void {
     if (error.response?.status === 404) {
       this.logger.warn(
-        'Received 404 error - invalidating cached relayer ID (relayer may have been redeployed)',
+        "Received 404 error - invalidating cached relayer ID (relayer may have been redeployed)",
       );
       this.relayerId = null;
     }
@@ -230,12 +228,12 @@ export class OzRelayerClient {
         data: request.data,
         value: request.value ? parseInt(request.value, 10) : 0,
         gas_limit: request.gasLimit ? parseInt(request.gasLimit, 10) : 100000,
-        speed: request.speed || 'average',
+        speed: request.speed || "average",
       };
 
       const response = await axios.post(endpoint, ozRequest, {
         headers: {
-          'Content-Type': 'application/json',
+          "Content-Type": "application/json",
           Authorization: `Bearer ${this.apiKey}`,
         },
         timeout: 30000,
@@ -297,12 +295,12 @@ export class OzRelayerClient {
         data: executeCalldata,
         value: parseInt(request.request.value, 10),
         gas_limit: Number(totalGas),
-        speed: 'average',
+        speed: "average",
       };
 
       const response = await axios.post(endpoint, ozRequest, {
         headers: {
-          'Content-Type': 'application/json',
+          "Content-Type": "application/json",
           Authorization: `Bearer ${this.apiKey}`,
         },
         timeout: 30000,
@@ -335,9 +333,7 @@ export class OzRelayerClient {
       }
 
       // If neither pattern matches, attempt direct transaction
-      this.logger.warn(
-        'Unknown request format, attempting direct transaction',
-      );
+      this.logger.warn("Unknown request format, attempting direct transaction");
       return await this.sendDirectTransaction(requestBody);
     } catch (error) {
       const axiosError = error as AxiosError;
@@ -399,12 +395,12 @@ export class OzRelayerClient {
         data: request.data,
         value: request.value ? parseInt(request.value, 10) : 0,
         gas_limit: request.gasLimit ? parseInt(request.gasLimit, 10) : 100000,
-        speed: request.speed || 'average',
+        speed: request.speed || "average",
       };
 
       const response = await axios.post(endpoint, ozRequest, {
         headers: {
-          'Content-Type': 'application/json',
+          "Content-Type": "application/json",
           Authorization: `Bearer ${this.apiKey}`,
         },
         timeout: 30000,
@@ -484,12 +480,12 @@ export class OzRelayerClient {
         data: executeCalldata,
         value: parseInt(request.request.value, 10),
         gas_limit: Number(totalGas),
-        speed: 'average',
+        speed: "average",
       };
 
       const response = await axios.post(endpoint, ozRequest, {
         headers: {
-          'Content-Type': 'application/json',
+          "Content-Type": "application/json",
           Authorization: `Bearer ${this.apiKey}`,
         },
         timeout: 30000,
@@ -521,7 +517,9 @@ export class OzRelayerClient {
    */
   private async getRelayerIdFromUrl(relayerUrl: string): Promise<string> {
     try {
-      this.logger.debug(`Fetching relayer ID from: ${relayerUrl}/api/v1/relayers`);
+      this.logger.debug(
+        `Fetching relayer ID from: ${relayerUrl}/api/v1/relayers`,
+      );
 
       const response = await axios.get<{ data: Array<{ id: string }> }>(
         `${relayerUrl}/api/v1/relayers`,
@@ -537,7 +535,7 @@ export class OzRelayerClient {
         return response.data.data[0].id;
       }
 
-      throw new Error('No relayer found in response');
+      throw new Error("No relayer found in response");
     } catch (error) {
       const axiosError = error as AxiosError;
       this.logger.error(
