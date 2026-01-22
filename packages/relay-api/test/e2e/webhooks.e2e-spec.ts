@@ -282,10 +282,10 @@ describe("Webhooks E2E Tests", () => {
           .send(payload);
 
         // Then: MySQL update should be called (FR-003: update, not upsert)
-        // Uses ozRelayerTxId for lookup (payload.id is OZ Relayer's internal ID)
+        // Uses relayerTxId for lookup (payload.id is OZ Relayer's internal ID)
         expect(defaultPrismaMock.transaction.update).toHaveBeenCalledWith(
           expect.objectContaining({
-            where: { ozRelayerTxId: payload.payload.id },
+            where: { relayerTxId: payload.payload.id },
             data: expect.objectContaining({
               status: payload.payload.status,
             }),
@@ -295,20 +295,28 @@ describe("Webhooks E2E Tests", () => {
 
       it("TC-E2E-W010: should update Redis cache on webhook receipt", async () => {
         // Given: Valid webhook payload with known internal transaction ID
-        const ozRelayerTxId = randomUUID();
-        const internalTxId = "our-internal-uuid-w010"; // Internal DB transaction ID
-        const payload = createWebhookPayload({ id: ozRelayerTxId });
+        const relayerTxId = randomUUID();
+        const internalTxId = "our-internal-uuid-w010"; // Internal DB transaction ID (transactionId)
+        const payload = createWebhookPayload({ id: relayerTxId });
         const signature = generateSignature(payload);
 
         // SPEC-ROUTING-001: Mock update to return transaction with internal ID
         defaultPrismaMock.transaction.update.mockResolvedValueOnce({
-          id: internalTxId, // Our internal DB ID
-          ozRelayerTxId,
-          hash: payload.payload.hash,
+          id: 1, // Auto-increment PK
+          transactionId: internalTxId, // UUID for external API
+          relayerTxId,
+          relayerUrl: null,
+          transactionHash: payload.payload.hash,
           status: payload.payload.status,
           from: payload.payload.from,
           to: payload.payload.to,
           value: payload.payload.value,
+          data: null,
+          type: null,
+          request: null,
+          result: null,
+          error_message: null,
+          retryOnFailure: false,
           createdAt: new Date(),
           updatedAt: new Date(),
           confirmedAt: new Date(),
@@ -320,13 +328,13 @@ describe("Webhooks E2E Tests", () => {
           .set("x-oz-signature", signature)
           .send(payload);
 
-        // Then: Redis set should be called with internal txId (not ozRelayerTxId)
+        // Then: Redis set should be called with internal txId (not relayerTxId)
         // SPEC-ROUTING-001: Cache key uses internal txId for consistency with StatusService
         expect(defaultRedisMock.set).toHaveBeenCalledWith(
           `tx:status:${internalTxId}`,
           expect.objectContaining({
             transactionId: internalTxId,
-            ozRelayerTxId,
+            relayerTxId,
           }),
           600, // TTL in seconds
         );
@@ -428,13 +436,13 @@ describe("Webhooks E2E Tests", () => {
 
         // Then: Should succeed
         expect(response.status).toBe(200);
-        // FR-003: Uses update, not upsert - looks up by ozRelayerTxId
+        // FR-003: Uses update, not upsert - looks up by relayerTxId
         expect(defaultPrismaMock.transaction.update).toHaveBeenCalledWith(
           expect.objectContaining({
-            where: { ozRelayerTxId: payload.payload.id },
+            where: { relayerTxId: payload.payload.id },
             data: expect.objectContaining({
               status: "confirmed",
-              hash: payload.payload.hash,
+              transactionHash: payload.payload.hash,
             }),
           }),
         );
@@ -457,10 +465,10 @@ describe("Webhooks E2E Tests", () => {
 
         // Then: Should succeed
         expect(response.status).toBe(200);
-        // FR-003: Uses update, not upsert - looks up by ozRelayerTxId
+        // FR-003: Uses update, not upsert - looks up by relayerTxId
         expect(defaultPrismaMock.transaction.update).toHaveBeenCalledWith(
           expect.objectContaining({
-            where: { ozRelayerTxId: payload.payload.id },
+            where: { relayerTxId: payload.payload.id },
             data: expect.objectContaining({
               status: "failed",
             }),

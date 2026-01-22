@@ -6,13 +6,13 @@
   "packageManager": "pnpm@9.15.1",
   "scripts": {
     "dev": "pnpm --filter @msq-relayer/relay-api run dev",
-    "build": "pnpm -r run build",
-    "test": "pnpm -r --filter '!@msq-relayer/integration-tests' run test && echo '' && echo '=== ALL TESTS PASSED ===' || (echo '' && echo '=== TESTS FAILED ===' && exit 1)",
-    "test:e2e": "pnpm --filter @msq-relayer/relay-api run test:e2e",
-    "test:cov": "pnpm -r --filter '!@msq-relayer/integration-tests' run test:cov",
+    "build": "turbo run build",
+    "test": "turbo run test --filter='!@msq-relayer/integration-tests' && echo '' && echo '=== ALL TESTS PASSED ===' || (echo '' && echo '=== TESTS FAILED ===' && exit 1)",
+    "test:e2e": "turbo run test:e2e",
+    "test:cov": "turbo run test:cov --filter='!@msq-relayer/integration-tests'",
     "test:integration": "cd docker && docker compose run --rm integration-tests",
     "test:all": "pnpm test && pnpm test:e2e",
-    "lint": "pnpm -r run lint",
+    "lint": "turbo run lint",
     "docker:up": "cd docker && docker compose up -d",
     "docker:down": "cd docker && docker compose down",
     "docker:build": "cd docker && docker compose up --build",
@@ -27,7 +27,8 @@
   },
   "license": "MIT",
   "devDependencies": {
-    "ethers": "^6.13.0"
+    "ethers": "^6.13.0",
+    "turbo": "^2.7.5"
   },
   "pnpm": {
     "overrides": {
@@ -39,7 +40,7 @@
       "diff@<4.0.4": ">=4.0.4",
       "diff@>=5.0.0 <5.2.2": ">=5.2.2",
       "lodash@>=4.0.0 <=4.17.22": ">=4.17.23",
-      "undici@<6.23.0": ">=6.23.0"
+      "undici": "^6.23.0"
     }
   }
 }

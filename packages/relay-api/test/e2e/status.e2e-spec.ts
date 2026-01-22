@@ -32,15 +32,21 @@ describe("Status Polling E2E Tests", () => {
 
       // Mock MySQL to return non-terminal status
       defaultPrismaMock.transaction.findUnique.mockResolvedValueOnce({
-        id: txId,
-        ozRelayerTxId,
-        ozRelayerUrl: "http://oz-relayer-1:8080",
-        hash: null,
+        id: 1,
+        transactionId: txId,
+        relayerTxId: ozRelayerTxId,
+        relayerUrl: "http://oz-relayer-1:8080",
+        transactionHash: null,
         status: "pending",
         from: "0x" + "a".repeat(40),
         to: "0x" + "b".repeat(40),
         value: "1000000000000000000",
         data: null,
+        type: null,
+        request: null,
+        result: null,
+        error_message: null,
+        retryOnFailure: false,
         createdAt: new Date(),
         updatedAt: new Date(),
         confirmedAt: null,
@@ -66,15 +72,21 @@ describe("Status Polling E2E Tests", () => {
 
       // Mock MySQL to return terminal status (confirmed) - no OZ Relayer call needed
       defaultPrismaMock.transaction.findUnique.mockResolvedValueOnce({
-        id: txId,
-        ozRelayerTxId: randomUUID(),
-        ozRelayerUrl: "http://oz-relayer-1:8080",
-        hash,
+        id: 1,
+        transactionId: txId,
+        relayerTxId: randomUUID(),
+        relayerUrl: "http://oz-relayer-1:8080",
+        transactionHash: hash,
         status: "confirmed",
         from: "0x" + "a".repeat(40),
         to: "0x" + "b".repeat(40),
         value: "1000000000000000000",
         data: null,
+        type: null,
+        request: null,
+        result: null,
+        error_message: null,
+        retryOnFailure: false,
         createdAt: new Date(),
         updatedAt: new Date(),
         confirmedAt,
@@ -88,7 +100,7 @@ describe("Status Polling E2E Tests", () => {
       // Then: Should return 200 with confirmed status and hash
       expect(response.status).toBe(200);
       expect(response.body).toHaveProperty("status", "confirmed");
-      expect(response.body).toHaveProperty("hash", hash);
+      expect(response.body).toHaveProperty("transactionHash", hash);
       expect(response.body).toHaveProperty("confirmedAt");
     });
 
@@ -99,15 +111,21 @@ describe("Status Polling E2E Tests", () => {
 
       // Mock MySQL to return terminal status (failed) - no OZ Relayer call needed
       defaultPrismaMock.transaction.findUnique.mockResolvedValueOnce({
-        id: txId,
-        ozRelayerTxId: randomUUID(),
-        ozRelayerUrl: "http://oz-relayer-1:8080",
-        hash: null,
+        id: 1,
+        transactionId: txId,
+        relayerTxId: randomUUID(),
+        relayerUrl: "http://oz-relayer-1:8080",
+        transactionHash: null,
         status: "failed",
         from: "0x" + "a".repeat(40),
         to: "0x" + "b".repeat(40),
         value: "1000000000000000000",
         data: null,
+        type: null,
+        request: null,
+        result: null,
+        error_message: null,
+        retryOnFailure: false,
         createdAt: new Date(),
         updatedAt: new Date(),
         confirmedAt: null,
@@ -147,15 +165,21 @@ describe("Status Polling E2E Tests", () => {
 
       // Mock MySQL to return non-terminal status (pending)
       defaultPrismaMock.transaction.findUnique.mockResolvedValueOnce({
-        id: txId,
-        ozRelayerTxId,
-        ozRelayerUrl: "http://oz-relayer-1:8080",
-        hash: null,
+        id: 1,
+        transactionId: txId,
+        relayerTxId: ozRelayerTxId,
+        relayerUrl: "http://oz-relayer-1:8080",
+        transactionHash: null,
         status: "pending",
         from: "0x" + "a".repeat(40),
         to: "0x" + "b".repeat(40),
         value: "1000000000000000000",
         data: null,
+        type: null,
+        request: null,
+        result: null,
+        error_message: null,
+        retryOnFailure: false,
         createdAt: new Date(),
         updatedAt: new Date(),
         confirmedAt: null,
@@ -232,13 +256,21 @@ describe("Status Polling E2E Tests", () => {
       defaultRedisMock.get.mockResolvedValueOnce(null); // Redis miss
 
       const mysqlData = {
-        id: txId,
-        hash: "0x" + "b".repeat(64),
+        id: 1,
+        transactionId: txId,
+        transactionHash: "0x" + "b".repeat(64),
         status: "confirmed",
         from: "0x" + "c".repeat(40),
         to: "0x" + "d".repeat(40),
         value: "1000000000000000000",
         data: null,
+        type: null,
+        request: null,
+        result: null,
+        error_message: null,
+        relayerTxId: null,
+        relayerUrl: null,
+        retryOnFailure: false,
         createdAt: new Date(),
         updatedAt: new Date(),
         confirmedAt: new Date(),
@@ -273,15 +305,21 @@ describe("Status Polling E2E Tests", () => {
 
       // Mock MySQL to return non-terminal status
       defaultPrismaMock.transaction.findUnique.mockResolvedValueOnce({
-        id: txId,
-        ozRelayerTxId,
-        ozRelayerUrl: "http://oz-relayer-1:8080",
-        hash: null,
+        id: 1,
+        transactionId: txId,
+        relayerTxId: ozRelayerTxId,
+        relayerUrl: "http://oz-relayer-1:8080",
+        transactionHash: null,
         status: "pending", // Non-terminal status
         from: "0x" + "f".repeat(40),
         to: "0x" + "1".repeat(40),
         value: "1000000000000000000",
         data: null,
+        type: null,
+        request: null,
+        result: null,
+        error_message: null,
+        retryOnFailure: false,
         createdAt: new Date(),
         updatedAt: new Date(),
         confirmedAt: null,
@@ -313,13 +351,21 @@ describe("Status Polling E2E Tests", () => {
       );
 
       const mysqlData = {
-        id: txId,
-        hash: "0x" + "g".repeat(64),
+        id: 1,
+        transactionId: txId,
+        transactionHash: "0x" + "g".repeat(64),
         status: "mined",
         from: null,
         to: null,
         value: null,
         data: null,
+        type: null,
+        request: null,
+        result: null,
+        error_message: null,
+        relayerTxId: null,
+        relayerUrl: null,
+        retryOnFailure: false,
         createdAt: new Date(),
         updatedAt: new Date(),
         confirmedAt: null,
