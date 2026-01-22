@@ -8,7 +8,7 @@
     "dev": "pnpm --filter @msq-relayer/relay-api run dev",
     "build": "turbo run build",
     "test": "turbo run test --filter='!@msq-relayer/integration-tests' && echo '' && echo '=== ALL TESTS PASSED ===' || (echo '' && echo '=== TESTS FAILED ===' && exit 1)",
-    "test:e2e": "turbo run test:e2e",
+    "test:e2e": "turbo run test:e2e --filter=@msq-relayer/relay-api",
     "test:cov": "turbo run test:cov --filter='!@msq-relayer/integration-tests'",
     "test:integration": "cd docker && docker compose run --rm integration-tests",
     "test:all": "pnpm test && pnpm test:e2e",
