@@ -234,3 +234,4 @@ packages/relay-api/coverage/
 
 .github/workflows/*.yml.bak
 .gitlab-ci.yml.bak
+.moai/config/sections/
