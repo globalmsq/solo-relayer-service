@@ -1,33 +1,43 @@
 export default () => ({
-  nodeEnv: process.env.NODE_ENV || 'development',
-  port: parseInt(process.env.PORT || '3001', 10),
+  nodeEnv: process.env.NODE_ENV || "development",
+  port: parseInt(process.env.PORT || "3001", 10),
 
   database: {
-    url: process.env.DATABASE_URL || 'mysql://root:pass@localhost:3307/msq_relayer',
+    url:
+      process.env.DATABASE_URL ||
+      "mysql://root:pass@localhost:3307/msq_relayer",
   },
 
   redis: {
-    url: process.env.REDIS_URL || 'redis://localhost:6379',
+    url: process.env.REDIS_URL || "redis://localhost:6379",
   },
 
   sqs: {
     endpoint: process.env.SQS_ENDPOINT_URL,
-    queueUrl: process.env.SQS_QUEUE_URL || 'http://localhost:4566/000000000000/relay-transactions',
-    dlqUrl: process.env.SQS_DLQ_URL || 'http://localhost:4566/000000000000/relay-transactions-dlq',
-    region: process.env.AWS_REGION || 'ap-northeast-2',
+    queueUrl:
+      process.env.SQS_QUEUE_URL ||
+      "http://localhost:4566/000000000000/relay-transactions",
+    dlqUrl:
+      process.env.SQS_DLQ_URL ||
+      "http://localhost:4566/000000000000/relay-transactions-dlq",
+    region: process.env.AWS_REGION || "ap-northeast-2",
     accessKeyId: process.env.AWS_ACCESS_KEY_ID,
     secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY,
   },
 
   relayer: {
-    url: process.env.OZ_RELAYER_URL || 'http://localhost:8081',
+    url: process.env.OZ_RELAYER_URL || "http://localhost:8081",
     // SPEC-ROUTING-001 FR-005: Multi-relayer configuration from comma-separated URLs
-    urls: process.env.OZ_RELAYER_URLS || '',
-    apiKey: process.env.OZ_RELAYER_API_KEY || 'oz-relayer-shared-api-key-local-dev',
+    urls: process.env.OZ_RELAYER_URLS || "",
+    apiKey:
+      process.env.OZ_RELAYER_API_KEY || "oz-relayer-shared-api-key-local-dev",
     // Polling configuration for transaction confirmation
     polling: {
-      maxAttempts: parseInt(process.env.RELAYER_POLLING_MAX_ATTEMPTS || '30', 10),
-      delayMs: parseInt(process.env.RELAYER_POLLING_DELAY_MS || '500', 10),
+      maxAttempts: parseInt(
+        process.env.RELAYER_POLLING_MAX_ATTEMPTS || "30",
+        10,
+      ),
+      delayMs: parseInt(process.env.RELAYER_POLLING_DELAY_MS || "500", 10),
     },
   },
 
@@ -41,7 +51,7 @@ export default () => ({
   // SPEC-DLQ-001: DLQ Consumer Configuration
   dlqConsumer: {
     // E-4: Polling interval in milliseconds (default 10 seconds)
-    pollIntervalMs: parseInt(process.env.DLQ_POLL_INTERVAL_MS || '10000', 10),
+    pollIntervalMs: parseInt(process.env.DLQ_POLL_INTERVAL_MS || "10000", 10),
     // Long polling wait time for DLQ (10 seconds to match poll interval)
     waitTimeSeconds: 10,
     // Max messages per poll

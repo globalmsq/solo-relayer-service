@@ -105,62 +105,61 @@ describe("PrismaService", () => {
     it("should create a transaction", async () => {
       const createInput = {
         data: {
-          id: "test-tx-1",
           status: "pending",
           to: "0x1234567890123456789012345678901234567890",
           value: "1000000000000000000",
           data: "0x",
         },
       };
-      const mockTx = createInput.data;
+      const mockTx = { id: 1, transactionId: "test-tx-1", ...createInput.data };
       mockTransactionDelegate.create.mockResolvedValue(mockTx);
 
       const result = await service.transaction.create(createInput);
 
       expect(service.transaction.create).toHaveBeenCalledWith(createInput);
       expect(result).toBeDefined();
-      expect(result.id).toBe("test-tx-1");
+      expect(result.transactionId).toBe("test-tx-1");
       expect(result.status).toBe("pending");
     });
 
-    it("should create transaction with hash", async () => {
+    it("should create transaction with transactionHash", async () => {
       const createInput = {
         data: {
-          id: "test-tx-2",
           status: "pending",
-          hash: "0xabc123",
+          transactionHash: "0xabc123",
           to: "0x1234567890123456789012345678901234567890",
         },
       };
-      const mockTx = createInput.data;
+      const mockTx = { id: 2, transactionId: "test-tx-2", ...createInput.data };
       mockTransactionDelegate.create.mockResolvedValue(mockTx);
 
       const result = await service.transaction.create(createInput);
 
-      expect(result.hash).toBe("0xabc123");
+      expect(result.transactionHash).toBe("0xabc123");
     });
   });
 
   describe("Transaction Find", () => {
-    it("should find transaction by id", async () => {
+    it("should find transaction by transactionId", async () => {
       const txId = "test-tx-find";
       const mockTx = {
-        id: txId,
+        id: 1,
+        transactionId: txId,
         status: "confirmed",
-        hash: "0xabc123",
+        transactionHash: "0xabc123",
         to: "0x1234567890123456789012345678901234567890",
       };
       mockTransactionDelegate.findUnique.mockResolvedValue(mockTx);
 
       const result = await service.transaction.findUnique({
-        where: { id: txId },
+        where: { transactionId: txId },
       });
 
       expect(service.transaction.findUnique).toHaveBeenCalledWith({
-        where: { id: txId },
+        where: { transactionId: txId },
       });
       expect(result).toBeDefined();
-      expect(result!.id).toBe(txId);
+      expect(result!.transactionId).toBe(txId);
       expect(result!.status).toBe("confirmed");
     });
 
@@ -168,7 +167,7 @@ describe("PrismaService", () => {
       mockTransactionDelegate.findUnique.mockResolvedValue(null);
 
       const result = await service.transaction.findUnique({
-        where: { id: "non-existent" },
+        where: { transactionId: "non-existent" },
       });
 
       expect(result).toBeNull();
@@ -176,8 +175,8 @@ describe("PrismaService", () => {
 
     it("should find transactions by status", async () => {
       const mockTxs = [
-        { id: "tx-1", status: "pending" },
-        { id: "tx-2", status: "pending" },
+        { id: 1, transactionId: "tx-1", status: "pending" },
+        { id: 2, transactionId: "tx-2", status: "pending" },
       ];
       mockTransactionDelegate.findMany.mockResolvedValue(mockTxs);
 
@@ -196,21 +195,21 @@ describe("PrismaService", () => {
     it("should update a transaction", async () => {
       const txId = "test-tx-update";
       const updateInput = {
-        where: { id: txId },
+        where: { transactionId: txId },
         data: {
           status: "confirmed",
-          hash: "0xupdate123",
+          transactionHash: "0xupdate123",
           confirmedAt: new Date(),
         },
       };
-      const mockUpdated = { id: txId, ...updateInput.data };
+      const mockUpdated = { id: 1, transactionId: txId, ...updateInput.data };
       mockTransactionDelegate.update.mockResolvedValue(mockUpdated);
 
       const result = await service.transaction.update(updateInput);
 
       expect(service.transaction.update).toHaveBeenCalledWith(updateInput);
       expect(result.status).toBe("confirmed");
-      expect(result.hash).toBe("0xupdate123");
+      expect(result.transactionHash).toBe("0xupdate123");
     });
   });
 
@@ -218,17 +217,21 @@ describe("PrismaService", () => {
     it("should create transaction on first upsert", async () => {
       const txId = "test-tx-upsert";
       const upsertInput = {
-        where: { id: txId },
+        where: { transactionId: txId },
         create: {
-          id: txId,
           status: "pending",
-          hash: "0xoriginal",
+          transactionHash: "0xoriginal",
         },
         update: {
           status: "confirmed",
         },
       };
-      const mockResult = { id: txId, status: "pending", hash: "0xoriginal" };
+      const mockResult = {
+        id: 1,
+        transactionId: txId,
+        status: "pending",
+        transactionHash: "0xoriginal",
+      };
       mockTransactionDelegate.upsert.mockResolvedValue(mockResult);
 
       const result = await service.transaction.upsert(upsertInput);
@@ -240,40 +243,44 @@ describe("PrismaService", () => {
     it("should update transaction on second upsert", async () => {
       const txId = "test-tx-upsert";
       const upsertInput = {
-        where: { id: txId },
+        where: { transactionId: txId },
         create: {
-          id: txId,
           status: "pending",
         },
         update: {
           status: "confirmed",
-          hash: "0xupserted",
+          transactionHash: "0xupserted",
         },
       };
-      const mockResult = { id: txId, status: "confirmed", hash: "0xupserted" };
+      const mockResult = {
+        id: 1,
+        transactionId: txId,
+        status: "confirmed",
+        transactionHash: "0xupserted",
+      };
       mockTransactionDelegate.upsert.mockResolvedValue(mockResult);
 
       const result = await service.transaction.upsert(upsertInput);
 
       expect(result.status).toBe("confirmed");
-      expect(result.hash).toBe("0xupserted");
+      expect(result.transactionHash).toBe("0xupserted");
     });
   });
 
   describe("Transaction Delete", () => {
     it("should delete a transaction", async () => {
       const txId = "test-tx-delete";
-      const mockDeleted = { id: txId, status: "pending" };
+      const mockDeleted = { id: 1, transactionId: txId, status: "pending" };
       mockTransactionDelegate.delete.mockResolvedValue(mockDeleted);
 
       const result = await service.transaction.delete({
-        where: { id: txId },
+        where: { transactionId: txId },
       });
 
       expect(service.transaction.delete).toHaveBeenCalledWith({
-        where: { id: txId },
+        where: { transactionId: txId },
       });
-      expect(result.id).toBe(txId);
+      expect(result.transactionId).toBe(txId);
     });
 
     it("should delete many transactions", async () => {
@@ -301,11 +308,11 @@ describe("PrismaService", () => {
       expect(service.transaction.findMany).toHaveBeenCalled();
     });
 
-    it("should support queries with hash index", async () => {
+    it("should support queries with transactionHash index", async () => {
       mockTransactionDelegate.findMany.mockResolvedValue([]);
 
       await service.transaction.findMany({
-        where: { hash: "0xtest" },
+        where: { transactionHash: "0xtest" },
       });
 
       expect(service.transaction.findMany).toHaveBeenCalled();
@@ -323,16 +330,17 @@ describe("PrismaService", () => {
   });
 
   describe("Unique Constraints", () => {
-    it("should enforce unique hash constraint", async () => {
-      const hash = "0xunique123";
+    it("should enforce unique transactionHash constraint", async () => {
+      const transactionHash = "0xunique123";
       mockTransactionDelegate.create.mockRejectedValue(
-        new Error("Unique constraint failed on the fields: (`hash`)"),
+        new Error(
+          "Unique constraint failed on the fields: (`transaction_hash`)",
+        ),
       );
 
       const createInput = {
         data: {
-          id: "tx-1",
-          hash,
+          transactionHash,
           status: "pending",
         },
       };
@@ -374,9 +382,9 @@ describe("PrismaService", () => {
 
       await service.transaction.findMany({
         select: {
-          id: true,
+          transactionId: true,
           status: true,
-          hash: true,
+          transactionHash: true,
           createdAt: true,
         },
       });

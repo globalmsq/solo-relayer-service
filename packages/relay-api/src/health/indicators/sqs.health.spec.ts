@@ -102,7 +102,9 @@ describe("SqsHealthIndicator", () => {
       mockSend.mockRejectedValueOnce(new Error("Connection refused"));
 
       // Act & Assert
-      await expect(indicator.isHealthy("sqs")).rejects.toThrow(HealthCheckError);
+      await expect(indicator.isHealthy("sqs")).rejects.toThrow(
+        HealthCheckError,
+      );
     });
 
     it("should include error message in HealthCheckError", async () => {
@@ -115,7 +117,9 @@ describe("SqsHealthIndicator", () => {
         fail("Expected HealthCheckError to be thrown");
       } catch (error) {
         expect(error).toBeInstanceOf(HealthCheckError);
-        expect((error as HealthCheckError).message).toContain("Queue does not exist");
+        expect((error as HealthCheckError).message).toContain(
+          "Queue does not exist",
+        );
       }
     });
 

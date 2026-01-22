@@ -48,7 +48,7 @@ describe("StatusController", () => {
     it("should return 200 OK with transaction status for valid transaction ID", async () => {
       const mockResponse: TxStatusResponseDto = {
         transactionId: validTxId,
-        hash: "0x123456789...",
+        transactionHash: "0x123456789...",
         status: "confirmed",
         createdAt: "2025-12-22T10:00:00.000Z",
         confirmedAt: "2025-12-22T10:05:00.000Z",
@@ -138,7 +138,7 @@ describe("StatusController", () => {
     it("should return response matching TxStatusResponseDto schema", async () => {
       const mockResponse: TxStatusResponseDto = {
         transactionId: validTxId,
-        hash: null,
+        transactionHash: null,
         status: "pending",
         createdAt: "2025-12-22T10:00:00.000Z",
       };
@@ -151,15 +151,16 @@ describe("StatusController", () => {
 
       // Required fields
       expect(result).toHaveProperty("transactionId");
-      expect(result).toHaveProperty("hash");
+      expect(result).toHaveProperty("transactionHash");
       expect(result).toHaveProperty("status");
       expect(result).toHaveProperty("createdAt");
 
       // Field types
       expect(typeof result.transactionId).toBe("string");
-      expect(result.hash === null || typeof result.hash === "string").toBe(
-        true,
-      );
+      expect(
+        result.transactionHash === null ||
+          typeof result.transactionHash === "string",
+      ).toBe(true);
       expect(typeof result.status).toBe("string");
       expect(typeof result.createdAt).toBe("string");
 

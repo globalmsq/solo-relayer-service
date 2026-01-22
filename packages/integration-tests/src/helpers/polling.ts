@@ -17,7 +17,7 @@ export interface PollingConfig {
 
 export interface TxStatusResult {
   transactionId: string;
-  hash: string | null;
+  transactionHash: string | null;
   status: string;
   createdAt: string;
   confirmedAt?: string;

@@ -32,7 +32,7 @@ describe("GaslessService", () => {
 
   const mockQueuedResponse = {
     transactionId: "550e8400-e29b-12d3-a456-426614174000",
-    hash: null,
+    transactionHash: null,
     status: "queued",
     createdAt: new Date().toISOString(),
   };
@@ -51,7 +51,9 @@ describe("GaslessService", () => {
         {
           provide: QueueService,
           useValue: {
-            sendGaslessTransaction: jest.fn().mockResolvedValue(mockQueuedResponse),
+            sendGaslessTransaction: jest
+              .fn()
+              .mockResolvedValue(mockQueuedResponse),
           },
         },
         {
@@ -184,7 +186,9 @@ describe("GaslessService", () => {
       });
       jest
         .spyOn(queueService, "sendGaslessTransaction")
-        .mockRejectedValueOnce(new ServiceUnavailableException("Queue unavailable"));
+        .mockRejectedValueOnce(
+          new ServiceUnavailableException("Queue unavailable"),
+        );
 
       // Act & Assert
       await expect(service.sendGaslessTransaction(request)).rejects.toThrow(
@@ -264,12 +268,12 @@ describe("GaslessService", () => {
       // Assert
       expect(result).toBeInstanceOf(Object);
       expect(result.transactionId).toBe(mockQueuedResponse.transactionId);
-      expect(result.hash).toBeNull();
+      expect(result.transactionHash).toBeNull();
       expect(result.status).toBe("queued");
       expect(result.createdAt).toBeDefined();
     });
 
-    it("TC-018: Should handle null hash in queued response", async () => {
+    it("TC-018: Should handle null transactionHash in queued response", async () => {
       // Arrange
       const request = {
         from: testAddress,
@@ -294,7 +298,7 @@ describe("GaslessService", () => {
       const result = await service.sendGaslessTransaction(dto);
 
       // Assert
-      expect(result.hash).toBeNull();
+      expect(result.transactionHash).toBeNull();
       expect(result.status).toBe("queued");
     });
   });

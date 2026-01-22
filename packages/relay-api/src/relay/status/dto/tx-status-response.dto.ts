@@ -19,7 +19,7 @@ export class TxStatusResponseDto {
       "0x1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef",
     nullable: true,
   })
-  hash: string | null;
+  transactionHash: string | null;
 
   @ApiProperty({
     description: "Transaction status",

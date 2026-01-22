@@ -52,7 +52,9 @@ export class WebhookSignatureGuard implements CanActivate {
       throw new UnauthorizedException("Missing webhook signature");
     }
 
-    this.logger.debug(`Found signature in header: ${signature.substring(0, 20)}...`);
+    this.logger.debug(
+      `Found signature in header: ${signature.substring(0, 20)}...`,
+    );
 
     const signingKey = this.configService.get<string>("WEBHOOK_SIGNING_KEY");
 

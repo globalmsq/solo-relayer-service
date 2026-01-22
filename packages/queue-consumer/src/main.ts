@@ -1,12 +1,12 @@
-import { NestFactory } from '@nestjs/core';
-import { Logger } from '@nestjs/common';
-import { ConsumerModule } from './consumer.module';
+import { NestFactory } from "@nestjs/core";
+import { Logger } from "@nestjs/common";
+import { ConsumerModule } from "./consumer.module";
 
 async function bootstrap() {
-  const logger = new Logger('ConsumerBootstrap');
+  const logger = new Logger("ConsumerBootstrap");
 
   const app = await NestFactory.create(ConsumerModule, {
-    logger: ['error', 'warn', 'log', 'debug', 'verbose'],
+    logger: ["error", "warn", "log", "debug", "verbose"],
   });
 
   const port = process.env.PORT || 3001;
@@ -16,6 +16,6 @@ async function bootstrap() {
 }
 
 bootstrap().catch((err) => {
-  console.error('Consumer bootstrap failed:', err);
+  console.error("Consumer bootstrap failed:", err);
   process.exit(1);
 });

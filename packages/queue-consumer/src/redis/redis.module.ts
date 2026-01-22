@@ -1,5 +1,5 @@
-import { Global, Module } from '@nestjs/common';
-import { RedisService } from './redis.service';
+import { Global, Module } from "@nestjs/common";
+import { RedisService } from "./redis.service";
 
 /**
  * SPEC-DISCOVERY-001 Phase 2: Redis Module for Queue Consumer

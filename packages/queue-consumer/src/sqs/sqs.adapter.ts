@@ -1,12 +1,12 @@
-import { Injectable, Logger } from '@nestjs/common';
-import { ConfigService } from '@nestjs/config';
+import { Injectable, Logger } from "@nestjs/common";
+import { ConfigService } from "@nestjs/config";
 import {
   SQSClient,
   ReceiveMessageCommand,
   DeleteMessageCommand,
   Message,
   MessageSystemAttributeName,
-} from '@aws-sdk/client-sqs';
+} from "@aws-sdk/client-sqs";
 
 @Injectable()
 export class SqsAdapter {
@@ -18,11 +18,13 @@ export class SqsAdapter {
   }
 
   private initializeClient() {
-    const endpoint = this.configService.get<string>('sqs.endpoint');
-    const region = this.configService.get<string>('sqs.region');
+    const endpoint = this.configService.get<string>("sqs.endpoint");
+    const region = this.configService.get<string>("sqs.region");
     const isLocal = !!endpoint;
 
-    this.logger.log(`Initializing SQS Client (${isLocal ? 'LocalStack' : 'AWS'})`);
+    this.logger.log(
+      `Initializing SQS Client (${isLocal ? "LocalStack" : "AWS"})`,
+    );
 
     this.client = new SQSClient(
       isLocal
@@ -30,8 +32,9 @@ export class SqsAdapter {
             endpoint,
             region,
             credentials: {
-              accessKeyId: this.configService.get('sqs.accessKeyId') || 'test',
-              secretAccessKey: this.configService.get('sqs.secretAccessKey') || 'test',
+              accessKeyId: this.configService.get("sqs.accessKeyId") || "test",
+              secretAccessKey:
+                this.configService.get("sqs.secretAccessKey") || "test",
             },
           }
         : {
@@ -55,7 +58,8 @@ export class SqsAdapter {
     maxNumberOfMessages: number = 10,
     queueUrl?: string,
   ): Promise<Message[]> {
-    const targetQueueUrl = queueUrl || this.configService.get<string>('sqs.queueUrl');
+    const targetQueueUrl =
+      queueUrl || this.configService.get<string>("sqs.queueUrl");
 
     try {
       const command = new ReceiveMessageCommand({
@@ -72,7 +76,10 @@ export class SqsAdapter {
       return response.Messages || [];
     } catch (error: unknown) {
       const err = error as Error;
-      this.logger.error(`Failed to receive messages: ${err.message}`, err.stack);
+      this.logger.error(
+        `Failed to receive messages: ${err.message}`,
+        err.stack,
+      );
       throw error;
     }
   }
@@ -87,7 +94,8 @@ export class SqsAdapter {
    * @param queueUrl - Optional queue URL (default: main queue from config)
    */
   async deleteMessage(receiptHandle: string, queueUrl?: string): Promise<void> {
-    const targetQueueUrl = queueUrl || this.configService.get<string>('sqs.queueUrl');
+    const targetQueueUrl =
+      queueUrl || this.configService.get<string>("sqs.queueUrl");
 
     try {
       const command = new DeleteMessageCommand({

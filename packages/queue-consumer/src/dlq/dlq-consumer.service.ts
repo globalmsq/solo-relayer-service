@@ -3,17 +3,17 @@ import {
   Logger,
   OnModuleInit,
   OnModuleDestroy,
-} from '@nestjs/common';
-import { ConfigService } from '@nestjs/config';
-import { SqsAdapter } from '../sqs/sqs.adapter';
-import { PrismaService } from '../prisma/prisma.service';
+} from "@nestjs/common";
+import { ConfigService } from "@nestjs/config";
+import { SqsAdapter } from "../sqs/sqs.adapter";
+import { PrismaService } from "../prisma/prisma.service";
 
 /**
  * DLQ Message Types (same as main consumer)
  */
 interface DlqMessage {
   transactionId: string;
-  type: 'direct' | 'gasless';
+  type: "direct" | "gasless";
   request: unknown;
   forwarderAddress?: string;
   // SPEC-DLQ-001: Retry strategy flag
@@ -52,7 +52,7 @@ export class DlqConsumerService implements OnModuleInit, OnModuleDestroy {
    * S-1: Start DLQ Consumer alongside Main Consumer
    */
   async onModuleInit() {
-    this.logger.log('DLQ Consumer Service initialized');
+    this.logger.log("DLQ Consumer Service initialized");
     this.startPolling();
   }
 
@@ -60,12 +60,12 @@ export class DlqConsumerService implements OnModuleInit, OnModuleDestroy {
    * S-3: Stop polling loop on module destroy
    */
   async onModuleDestroy() {
-    this.logger.log('Received shutdown signal, stopping DLQ polling...');
+    this.logger.log("Received shutdown signal, stopping DLQ polling...");
     this.stopPolling();
 
     // Wait for any in-flight processing to complete
     await this.waitForInFlightProcessing(5000);
-    this.logger.log('DLQ Consumer gracefully shut down');
+    this.logger.log("DLQ Consumer gracefully shut down");
   }
 
   /**
@@ -74,7 +74,7 @@ export class DlqConsumerService implements OnModuleInit, OnModuleDestroy {
    */
   private startPolling(): void {
     this.isRunning = true;
-    this.logger.log('Starting DLQ polling loop');
+    this.logger.log("Starting DLQ polling loop");
     this.poll();
   }
 
@@ -106,7 +106,7 @@ export class DlqConsumerService implements OnModuleInit, OnModuleDestroy {
       .finally(() => {
         if (this.isRunning) {
           const pollIntervalMs = this.configService.get<number>(
-            'dlqConsumer.pollIntervalMs',
+            "dlqConsumer.pollIntervalMs",
             10000,
           );
           this.pollingTimeout = setTimeout(() => this.poll(), pollIntervalMs);
@@ -123,13 +123,13 @@ export class DlqConsumerService implements OnModuleInit, OnModuleDestroy {
    * the next iteration when isRunning becomes false.
    */
   async processDlqMessages(): Promise<void> {
-    const dlqUrl = this.configService.get<string>('sqs.dlqUrl');
+    const dlqUrl = this.configService.get<string>("sqs.dlqUrl");
     const waitTimeSeconds = this.configService.get<number>(
-      'dlqConsumer.waitTimeSeconds',
+      "dlqConsumer.waitTimeSeconds",
       10,
     );
     const maxNumberOfMessages = this.configService.get<number>(
-      'dlqConsumer.maxNumberOfMessages',
+      "dlqConsumer.maxNumberOfMessages",
       10,
     );
 
@@ -151,7 +151,10 @@ export class DlqConsumerService implements OnModuleInit, OnModuleDestroy {
       }
     } catch (error: unknown) {
       const err = error as Error;
-      this.logger.error(`DLQ message processing error: ${err.message}`, err.stack);
+      this.logger.error(
+        `DLQ message processing error: ${err.message}`,
+        err.stack,
+      );
     }
   }
 
@@ -168,7 +171,7 @@ export class DlqConsumerService implements OnModuleInit, OnModuleDestroy {
    */
   private async handleDlqMessage(message: any): Promise<void> {
     const { MessageId, Body, ReceiptHandle } = message;
-    const dlqUrl = this.configService.get<string>('sqs.dlqUrl');
+    const dlqUrl = this.configService.get<string>("sqs.dlqUrl");
 
     try {
       const messageBody: DlqMessage = JSON.parse(Body);
@@ -180,11 +183,11 @@ export class DlqConsumerService implements OnModuleInit, OnModuleDestroy {
 
       // U-5: Check transaction status for idempotency
       const transaction = await this.prisma.transaction.findUnique({
-        where: { id: transactionId },
+        where: { transactionId },
       });
 
       // E-6: If transaction already in terminal state, just delete message
-      if (transaction && ['confirmed', 'failed'].includes(transaction.status)) {
+      if (transaction && ["confirmed", "failed"].includes(transaction.status)) {
         this.logger.log(
           `[Idempotency] Transaction ${transactionId} already in terminal state: ${transaction.status}, deleting DLQ message`,
         );
@@ -201,7 +204,7 @@ export class DlqConsumerService implements OnModuleInit, OnModuleDestroy {
         );
         await this.markTransactionFailed(
           transactionId,
-          'DLQ: Max retries exceeded (retryOnFailure=true, reprocessing not yet implemented)',
+          "DLQ: Max retries exceeded (retryOnFailure=true, reprocessing not yet implemented)",
         );
       } else {
         // E-5: retryOnFailure=false/null - mark as failed immediately
@@ -210,13 +213,15 @@ export class DlqConsumerService implements OnModuleInit, OnModuleDestroy {
         );
         await this.markTransactionFailed(
           transactionId,
-          'DLQ: Max retries exceeded',
+          "DLQ: Max retries exceeded",
         );
       }
 
       // U-2: Always delete DLQ message after processing
       await this.sqsAdapter.deleteMessage(ReceiptHandle, dlqUrl);
-      this.logger.log(`[DLQ] Message processed and deleted: txId=${transactionId}`);
+      this.logger.log(
+        `[DLQ] Message processed and deleted: txId=${transactionId}`,
+      );
     } catch (error: unknown) {
       const err = error as Error;
       this.logger.error(
@@ -264,9 +269,9 @@ export class DlqConsumerService implements OnModuleInit, OnModuleDestroy {
   ): Promise<void> {
     try {
       await this.prisma.transaction.update({
-        where: { id: transactionId },
+        where: { transactionId },
         data: {
-          status: 'failed',
+          status: "failed",
           error_message: errorMessage,
         },
       });
@@ -285,7 +290,9 @@ export class DlqConsumerService implements OnModuleInit, OnModuleDestroy {
   private async waitForInFlightProcessing(timeout: number): Promise<void> {
     // Simple implementation: just wait a short period
     // In a more complex implementation, we'd track active processing
-    await new Promise((resolve) => setTimeout(resolve, Math.min(timeout, 1000)));
+    await new Promise((resolve) =>
+      setTimeout(resolve, Math.min(timeout, 1000)),
+    );
   }
 
   /**

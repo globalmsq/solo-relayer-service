@@ -1,8 +1,8 @@
-import { Module } from '@nestjs/common';
-import { ConfigModule } from '@nestjs/config';
-import { DlqConsumerService } from './dlq-consumer.service';
-import { SqsAdapter } from '../sqs/sqs.adapter';
-import { PrismaService } from '../prisma/prisma.service';
+import { Module } from "@nestjs/common";
+import { ConfigModule } from "@nestjs/config";
+import { DlqConsumerService } from "./dlq-consumer.service";
+import { SqsAdapter } from "../sqs/sqs.adapter";
+import { PrismaService } from "../prisma/prisma.service";
 
 /**
  * DLQ Consumer Module

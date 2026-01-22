@@ -1,7 +1,7 @@
-import { Module } from '@nestjs/common';
-import { QueueService } from './queue.service';
-import { SqsAdapter } from './sqs.adapter';
-import { PrismaModule } from '../prisma/prisma.module';
+import { Module } from "@nestjs/common";
+import { QueueService } from "./queue.service";
+import { SqsAdapter } from "./sqs.adapter";
+import { PrismaModule } from "../prisma/prisma.module";
 
 /**
  * QueueModule - Transaction Queue Producer Module

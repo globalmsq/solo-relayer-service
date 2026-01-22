@@ -1,10 +1,14 @@
-import { Injectable, Logger, ServiceUnavailableException } from '@nestjs/common';
-import { PrismaService } from '../prisma/prisma.service';
-import { SqsAdapter } from './sqs.adapter';
-import { DirectTxRequestDto } from '../relay/dto/direct-tx-request.dto';
-import { DirectTxResponseDto } from '../relay/dto/direct-tx-response.dto';
-import { GaslessTxRequestDto } from '../relay/dto/gasless-tx-request.dto';
-import { GaslessTxResponseDto } from '../relay/dto/gasless-tx-response.dto';
+import {
+  Injectable,
+  Logger,
+  ServiceUnavailableException,
+} from "@nestjs/common";
+import { PrismaService } from "../prisma/prisma.service";
+import { SqsAdapter } from "./sqs.adapter";
+import { DirectTxRequestDto } from "../relay/dto/direct-tx-request.dto";
+import { DirectTxResponseDto } from "../relay/dto/direct-tx-response.dto";
+import { GaslessTxRequestDto } from "../relay/dto/gasless-tx-request.dto";
+import { GaslessTxResponseDto } from "../relay/dto/gasless-tx-response.dto";
 
 /**
  * QueueService - Transaction Queue Producer
@@ -38,17 +42,19 @@ export class QueueService {
    * @returns 202 response with transactionId and status="queued"
    * @throws ServiceUnavailableException if DB or SQS fails
    */
-  async sendDirectTransaction(dto: DirectTxRequestDto): Promise<DirectTxResponseDto> {
+  async sendDirectTransaction(
+    dto: DirectTxRequestDto,
+  ): Promise<DirectTxResponseDto> {
     let transactionId: string;
 
     // Phase 1: Create transaction record with status="queued"
     try {
       const transaction = await this.prisma.transaction.create({
         data: {
-          status: 'queued',
-          type: 'direct',
+          status: "queued",
+          type: "direct",
           to: dto.to,
-          value: dto.value || '0',
+          value: dto.value || "0",
           data: dto.data,
           request: dto as any, // Store original request for consumer
           // SPEC-DLQ-001: Store retry strategy (default: false for backward compatibility)
@@ -56,15 +62,17 @@ export class QueueService {
         },
       });
 
-      transactionId = transaction.id;
+      transactionId = transaction.transactionId;
 
-      this.logger.log(`Direct transaction created: txId=${transactionId}, to=${dto.to}`);
+      this.logger.log(
+        `Direct transaction created: txId=${transactionId}, to=${dto.to}`,
+      );
 
       // Phase 2: Send to SQS
       try {
         await this.sqsAdapter.sendMessage({
           transactionId,
-          type: 'direct',
+          type: "direct",
           request: dto,
           // SPEC-DLQ-001: Include retry strategy for DLQ Consumer
           retryOnFailure: dto.retryOnFailure ?? false,
@@ -75,20 +83,22 @@ export class QueueService {
         // Return 202 response
         return {
           transactionId,
-          hash: null,
-          status: 'queued',
+          transactionHash: null,
+          status: "queued",
           createdAt: transaction.createdAt.toISOString(),
         };
       } catch (sqsError: unknown) {
         // Phase 3: Rollback - mark as failed
         const err = sqsError as Error;
-        this.logger.error(`SQS send failed for txId=${transactionId}: ${err.message}`);
+        this.logger.error(
+          `SQS send failed for txId=${transactionId}: ${err.message}`,
+        );
 
         try {
           await this.prisma.transaction.update({
-            where: { id: transactionId },
+            where: { transactionId },
             data: {
-              status: 'failed',
+              status: "failed",
               error_message: err.message,
             },
           });
@@ -102,7 +112,9 @@ export class QueueService {
           );
         }
 
-        throw new ServiceUnavailableException('Failed to queue transaction: SQS unavailable');
+        throw new ServiceUnavailableException(
+          "Failed to queue transaction: SQS unavailable",
+        );
       }
     } catch (dbError: unknown) {
       // DB creation failed - no rollback needed
@@ -114,7 +126,9 @@ export class QueueService {
       }
 
       this.logger.error(`DB creation failed: ${err.message}`);
-      throw new ServiceUnavailableException('Failed to create transaction record');
+      throw new ServiceUnavailableException(
+        "Failed to create transaction record",
+      );
     }
   }
 
@@ -139,11 +153,11 @@ export class QueueService {
     try {
       const transaction = await this.prisma.transaction.create({
         data: {
-          status: 'queued',
-          type: 'gasless',
+          status: "queued",
+          type: "gasless",
           from: dto.request.from,
           to: forwarderAddress,
-          value: '0', // Gasless transactions don't send value
+          value: "0", // Gasless transactions don't send value
           data: dto.request.data,
           request: dto as any, // Store original request for consumer
           // SPEC-DLQ-001: Store retry strategy (default: false for backward compatibility)
@@ -151,15 +165,17 @@ export class QueueService {
         },
       });
 
-      transactionId = transaction.id;
+      transactionId = transaction.transactionId;
 
-      this.logger.log(`Gasless transaction created: txId=${transactionId}, from=${dto.request.from}`);
+      this.logger.log(
+        `Gasless transaction created: txId=${transactionId}, from=${dto.request.from}`,
+      );
 
       // Phase 2: Send to SQS
       try {
         await this.sqsAdapter.sendMessage({
           transactionId,
-          type: 'gasless',
+          type: "gasless",
           request: dto,
           forwarderAddress, // Consumer needs this to build execute() call
           // SPEC-DLQ-001: Include retry strategy for DLQ Consumer
@@ -171,20 +187,22 @@ export class QueueService {
         // Return 202 response
         return {
           transactionId,
-          hash: null,
-          status: 'queued',
+          transactionHash: null,
+          status: "queued",
           createdAt: transaction.createdAt.toISOString(),
         };
       } catch (sqsError: unknown) {
         // Phase 3: Rollback - mark as failed
         const err = sqsError as Error;
-        this.logger.error(`SQS send failed for txId=${transactionId}: ${err.message}`);
+        this.logger.error(
+          `SQS send failed for txId=${transactionId}: ${err.message}`,
+        );
 
         try {
           await this.prisma.transaction.update({
-            where: { id: transactionId },
+            where: { transactionId },
             data: {
-              status: 'failed',
+              status: "failed",
               error_message: err.message,
             },
           });
@@ -198,7 +216,9 @@ export class QueueService {
           );
         }
 
-        throw new ServiceUnavailableException('Failed to queue transaction: SQS unavailable');
+        throw new ServiceUnavailableException(
+          "Failed to queue transaction: SQS unavailable",
+        );
       }
     } catch (dbError: unknown) {
       // DB creation failed - no rollback needed
@@ -210,7 +230,9 @@ export class QueueService {
       }
 
       this.logger.error(`DB creation failed: ${err.message}`);
-      throw new ServiceUnavailableException('Failed to create transaction record');
+      throw new ServiceUnavailableException(
+        "Failed to create transaction record",
+      );
     }
   }
 }

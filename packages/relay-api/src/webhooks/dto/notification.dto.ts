@@ -26,7 +26,7 @@ export class NotificationPayloadDto {
   /**
    * Transaction hash (if available)
    */
-  hash?: string | null;
+  transactionHash?: string | null;
 
   /**
    * ISO 8601 timestamp of the notification

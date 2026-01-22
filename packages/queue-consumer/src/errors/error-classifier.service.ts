@@ -1,4 +1,4 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable, Logger } from "@nestjs/common";
 import {
   ErrorCategory,
   ErrorClassificationResult,
@@ -6,7 +6,7 @@ import {
   NON_RETRYABLE_HTTP_STATUS_CODES,
   RETRYABLE_ERROR_PATTERNS,
   RETRYABLE_HTTP_STATUS_CODES,
-} from './relay-errors';
+} from "./relay-errors";
 
 /**
  * ErrorClassifierService - Classifies errors for DLQ routing decisions
@@ -38,7 +38,7 @@ export class ErrorClassifierService {
 
     // Log the error being classified
     this.logger.debug(
-      `Classifying error: "${errorMessage.substring(0, 100)}..."${httpStatus ? ` (HTTP ${httpStatus})` : ''}`,
+      `Classifying error: "${errorMessage.substring(0, 100)}..."${httpStatus ? ` (HTTP ${httpStatus})` : ""}`,
     );
 
     // Step 1: Check non-retryable patterns first (most specific)
@@ -57,9 +57,7 @@ export class ErrorClassifierService {
 
     // Step 2: Check non-retryable HTTP status codes
     if (httpStatus && NON_RETRYABLE_HTTP_STATUS_CODES.includes(httpStatus)) {
-      this.logger.log(
-        `[NON_RETRYABLE] HTTP status code: ${httpStatus}`,
-      );
+      this.logger.log(`[NON_RETRYABLE] HTTP status code: ${httpStatus}`);
       return {
         category: ErrorCategory.NON_RETRYABLE,
         reason: `HTTP client error: ${httpStatus}`,
@@ -70,9 +68,7 @@ export class ErrorClassifierService {
 
     // Step 3: Check retryable HTTP status codes
     if (httpStatus && RETRYABLE_HTTP_STATUS_CODES.includes(httpStatus)) {
-      this.logger.log(
-        `[RETRYABLE] HTTP status code: ${httpStatus}`,
-      );
+      this.logger.log(`[RETRYABLE] HTTP status code: ${httpStatus}`);
       return {
         category: ErrorCategory.RETRYABLE,
         reason: `HTTP server error: ${httpStatus}`,
@@ -84,9 +80,7 @@ export class ErrorClassifierService {
     // Step 4: Check retryable patterns
     const retryableMatch = this.matchRetryablePattern(errorMessage);
     if (retryableMatch) {
-      this.logger.log(
-        `[RETRYABLE] Pattern matched: "${retryableMatch}"`,
-      );
+      this.logger.log(`[RETRYABLE] Pattern matched: "${retryableMatch}"`);
       return {
         category: ErrorCategory.RETRYABLE,
         reason: retryableMatch,
@@ -102,7 +96,7 @@ export class ErrorClassifierService {
     );
     return {
       category: ErrorCategory.RETRYABLE,
-      reason: 'Unknown error - defaulting to retryable (fail-safe)',
+      reason: "Unknown error - defaulting to retryable (fail-safe)",
       originalMessage: errorMessage,
       httpStatus,
     };
@@ -136,11 +130,11 @@ export class ErrorClassifierService {
       return error.message;
     }
 
-    if (typeof error === 'string') {
+    if (typeof error === "string") {
       return error;
     }
 
-    if (error && typeof error === 'object') {
+    if (error && typeof error === "object") {
       // Handle Axios-style errors
       const axiosError = error as {
         message?: string;
@@ -167,7 +161,7 @@ export class ErrorClassifierService {
    * Extract HTTP status code from error if available
    */
   private extractHttpStatus(error: Error | unknown): number | undefined {
-    if (error && typeof error === 'object') {
+    if (error && typeof error === "object") {
       const httpError = error as {
         status?: number;
         statusCode?: number;
@@ -175,20 +169,20 @@ export class ErrorClassifierService {
       };
 
       // Direct status property
-      if (typeof httpError.status === 'number') {
+      if (typeof httpError.status === "number") {
         return httpError.status;
       }
 
-      if (typeof httpError.statusCode === 'number') {
+      if (typeof httpError.statusCode === "number") {
         return httpError.statusCode;
       }
 
       // Axios-style response.status
-      if (typeof httpError.response?.status === 'number') {
+      if (typeof httpError.response?.status === "number") {
         return httpError.response.status;
       }
 
-      if (typeof httpError.response?.statusCode === 'number') {
+      if (typeof httpError.response?.statusCode === "number") {
         return httpError.response.statusCode;
       }
     }

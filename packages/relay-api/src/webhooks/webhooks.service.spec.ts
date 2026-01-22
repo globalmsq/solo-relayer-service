@@ -15,12 +15,12 @@ describe("WebhooksService", () => {
   let redisService: RedisService;
   let notificationService: NotificationService;
 
-  // SPEC-ROUTING-001: mockTransaction now includes ozRelayerTxId
-  // payload.id in webhook maps to ozRelayerTxId, NOT to id
+  // SPEC-ROUTING-001: mockTransaction now includes relayerTxId
+  // payload.id in webhook maps to relayerTxId, NOT to transactionId
   const mockTransaction = {
-    id: "our-internal-uuid-123", // Our DB primary key
-    ozRelayerTxId: "oz-tx-123", // OZ Relayer's transaction ID (from webhook)
-    hash: "0xabcd1234",
+    transactionId: "our-internal-uuid-123", // Our DB unique identifier
+    relayerTxId: "oz-tx-123", // OZ Relayer's transaction ID (from webhook)
+    transactionHash: "0xabcd1234",
     status: "confirmed",
     from: "0x1234",
     to: "0x5678",
@@ -100,22 +100,22 @@ describe("WebhooksService", () => {
       expect(result.transactionId).toBe(payload.payload.id);
 
       // SPEC-ROUTING-001 FR-003: Verify MySQL UPDATE (not upsert) was called
-      // with ozRelayerTxId lookup (not id lookup)
+      // with relayerTxId lookup (not transactionId lookup)
       expect(prismaService.transaction.update).toHaveBeenCalledWith({
-        where: { ozRelayerTxId: payload.payload.id },
+        where: { relayerTxId: payload.payload.id },
         data: expect.objectContaining({
           status: payload.payload.status,
-          hash: payload.payload.hash,
+          transactionHash: payload.payload.hash,
         }),
       });
 
       // SPEC-ROUTING-001: Verify Redis cache was updated with TTL
-      // Cache key uses internal txId (mockTransaction.id), NOT ozRelayerTxId
+      // Cache key uses internal txId (mockTransaction.transactionId), NOT relayerTxId
       expect(redisService.set).toHaveBeenCalledWith(
-        `tx:status:${mockTransaction.id}`,
+        `tx:status:${mockTransaction.transactionId}`,
         expect.objectContaining({
-          transactionId: mockTransaction.id,
-          ozRelayerTxId: payload.payload.id,
+          transactionId: mockTransaction.transactionId,
+          relayerTxId: payload.payload.id,
           status: mockTransaction.status,
         }),
         600, // TTL in seconds
@@ -168,9 +168,9 @@ describe("WebhooksService", () => {
       const result = await service.handleWebhook(payload);
 
       expect(result.success).toBe(true);
-      // SPEC-ROUTING-001 FR-003: Uses update with ozRelayerTxId lookup
+      // SPEC-ROUTING-001 FR-003: Uses update with relayerTxId lookup
       expect(prismaService.transaction.update).toHaveBeenCalledWith({
-        where: { ozRelayerTxId: payload.payload.id },
+        where: { relayerTxId: payload.payload.id },
         data: expect.objectContaining({
           status: "failed",
         }),
@@ -208,7 +208,7 @@ describe("WebhooksService", () => {
 
       // Verify NO new transaction record is created (no upsert/create)
       expect(prismaService.transaction.update).toHaveBeenCalledWith({
-        where: { ozRelayerTxId: payload.payload.id },
+        where: { relayerTxId: payload.payload.id },
         data: expect.any(Object),
       });
     });
@@ -269,9 +269,9 @@ describe("WebhooksService", () => {
       const result = await service.handleWebhook(minimalPayload);
 
       expect(result.success).toBe(true);
-      // SPEC-ROUTING-001 FR-003: Uses update with ozRelayerTxId lookup
+      // SPEC-ROUTING-001 FR-003: Uses update with relayerTxId lookup
       expect(prismaService.transaction.update).toHaveBeenCalledWith({
-        where: { ozRelayerTxId: minimalPayload.payload.id },
+        where: { relayerTxId: minimalPayload.payload.id },
         data: expect.objectContaining({
           status: "pending",
         }),
@@ -283,9 +283,9 @@ describe("WebhooksService", () => {
 
       await service.handleWebhook(payload);
 
-      // SPEC-ROUTING-001: Cache key uses internal txId, NOT ozRelayerTxId
+      // SPEC-ROUTING-001: Cache key uses internal txId, NOT relayerTxId
       expect(redisService.set).toHaveBeenCalledWith(
-        `tx:status:${mockTransaction.id}`,
+        `tx:status:${mockTransaction.transactionId}`,
         expect.any(Object),
         600, // TTL should always be 600 seconds (10 minutes)
       );
