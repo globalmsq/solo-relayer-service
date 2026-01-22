@@ -193,11 +193,18 @@ export class RelayerRouterService implements OnModuleInit {
       }
 
       // Select relayer with lowest pending transaction count
-      const leastBusy = healthyRelayers.reduce((prev, curr) =>
-        prev.numberOfPendingTransactions <= curr.numberOfPendingTransactions
-          ? prev
-          : curr,
+      // FR-001.1: When multiple relayers have equal pending counts, use round-robin
+      const minPending = Math.min(
+        ...healthyRelayers.map((r) => r.numberOfPendingTransactions),
       );
+      const leastBusyRelayers = healthyRelayers.filter(
+        (r) => r.numberOfPendingTransactions === minPending,
+      );
+
+      // Round-robin among relayers with equal (minimum) pending count
+      const selectedIndex = this.roundRobinIndex % leastBusyRelayers.length;
+      const leastBusy = leastBusyRelayers[selectedIndex];
+      this.roundRobinIndex = (this.roundRobinIndex + 1) % 1000; // Prevent overflow
 
       const elapsedMs = Date.now() - startTime;
       this.logger.log(

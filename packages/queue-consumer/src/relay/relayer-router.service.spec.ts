@@ -161,7 +161,7 @@ describe("RelayerRouterService", () => {
       expect(result.relayerId).toBe("relayer-2-id");
     });
 
-    it("should select first relayer when all have equal pending transactions", async () => {
+    it("should use round-robin when all relayers have equal pending transactions", async () => {
       mockedAxios.get.mockResolvedValue({
         data: {
           data: [
@@ -170,10 +170,56 @@ describe("RelayerRouterService", () => {
         },
       });
 
-      const result = await service.getAvailableRelayer();
+      // Track selected relayers across multiple calls
+      const selectedUrls: string[] = [];
 
-      // Should select the first one (oz-relayer-0) when all are equal
-      expect(result.url).toBe("http://oz-relayer-0:8080");
+      // Call multiple times - should round-robin through all relayers
+      for (let i = 0; i < 6; i++) {
+        // Invalidate cache to ensure fresh selection each time
+        service.invalidateCache("http://oz-relayer-0:8080");
+        service.invalidateCache("http://oz-relayer-1:8080");
+        service.invalidateCache("http://oz-relayer-2:8080");
+
+        const result = await service.getAvailableRelayer();
+        selectedUrls.push(result.url);
+      }
+
+      // Should cycle through all 3 relayers twice (6 calls / 3 relayers = 2 cycles)
+      expect(selectedUrls).toEqual([
+        "http://oz-relayer-0:8080",
+        "http://oz-relayer-1:8080",
+        "http://oz-relayer-2:8080",
+        "http://oz-relayer-0:8080",
+        "http://oz-relayer-1:8080",
+        "http://oz-relayer-2:8080",
+      ]);
+    });
+
+    it("should distribute load evenly when pending counts are equal", async () => {
+      mockedAxios.get.mockResolvedValue({
+        data: {
+          data: [
+            { id: "relayer-id", pending_transactions: 0, status: "active" },
+          ],
+        },
+      });
+
+      const urlCounts = new Map<string, number>();
+
+      // Call 9 times (3 relayers x 3 cycles)
+      for (let i = 0; i < 9; i++) {
+        service.invalidateCache("http://oz-relayer-0:8080");
+        service.invalidateCache("http://oz-relayer-1:8080");
+        service.invalidateCache("http://oz-relayer-2:8080");
+
+        const result = await service.getAvailableRelayer();
+        urlCounts.set(result.url, (urlCounts.get(result.url) || 0) + 1);
+      }
+
+      // Each relayer should be selected exactly 3 times (even distribution)
+      expect(urlCounts.get("http://oz-relayer-0:8080")).toBe(3);
+      expect(urlCounts.get("http://oz-relayer-1:8080")).toBe(3);
+      expect(urlCounts.get("http://oz-relayer-2:8080")).toBe(3);
     });
 
     it("should skip unhealthy relayers (paused status)", async () => {
