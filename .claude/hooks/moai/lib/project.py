@@ -12,6 +12,8 @@ from contextlib import contextmanager
 from pathlib import Path
 from typing import Any
 
+import yaml
+
 # Import TimeoutError from lib.timeout (canonical definition)
 try:
     from lib.timeout import TimeoutError  # noqa: F401
@@ -23,16 +25,27 @@ except ImportError:
         pass
 
 
+# Import find_project_root from path_utils (canonical implementation)
+# This consolidates project root detection to a single source of truth
+try:
+    from lib.path_utils import find_project_root as _canonical_find_project_root
+except ImportError:
+    # Fallback if path_utils not available
+    _canonical_find_project_root = None  # type: ignore
+
+
 # Cache directory for version check results
 CACHE_DIR_NAME = ".moai/cache"
 
 
 def find_project_root(start_path: str | Path = ".") -> Path:
-    """Find MoAI-ADK project root by searching upward for .moai/config/config.json
+    """Find MoAI-ADK project root by searching upward for project markers.
 
-    Traverses up the directory tree until it finds .moai/config/config.json or CLAUDE.md,
-    which indicates the project root. This ensures cache and other files are
-    always created in the correct location, regardless of where hooks execute.
+    This is a wrapper around path_utils.find_project_root() for backward compatibility.
+    The canonical implementation in path_utils provides:
+    - Environment variable support (MOAI_PROJECT_ROOT, CLAUDE_PROJECT_DIR)
+    - Caching for performance
+    - Multiple project marker detection
 
     Args:
         start_path: Starting directory (default: current directory)
@@ -46,23 +59,21 @@ def find_project_root(start_path: str | Path = ".") -> Path:
         >>> find_project_root(".claude/hooks/alfred")
         Path("/Users/user/my-project")  # Found root 3 levels up
 
-    Notes:
-        - Searches for .moai/config/config.json first (most reliable)
-        - Falls back to CLAUDE.md if config.json not found
-        - Max depth: 10 levels up (prevent infinite loop)
-        - Returns absolute path for consistency
-
-    TDD History:
-        - RED: 4 test scenarios (root, nested, not found, symlinks)
-        - GREEN: Minimal upward search with .moai/config/config.json detection
-        - REFACTOR: Add CLAUDE.md fallback, max depth limit, absolute path return
+    Note:
+        For new code, prefer using path_utils.find_project_root() directly.
     """
+    # Use canonical implementation if available
+    if _canonical_find_project_root is not None:
+        path = Path(start_path).resolve() if start_path != "." else None
+        return _canonical_find_project_root(path)
+
+    # Fallback implementation if path_utils not available
     current = Path(start_path).resolve()
     max_depth = 10  # Prevent infinite loop
 
     for _ in range(max_depth):
-        # Check for .moai/config/config.json (primary indicator)
-        if (current / ".moai" / "config.json").exists():
+        # Check for .moai/config/config.yaml (primary indicator)
+        if (current / ".moai" / "config" / "config.yaml").exists():
             return current
 
         # Check for CLAUDE.md (secondary indicator)
@@ -130,10 +141,10 @@ def detect_language(cwd: str) -> str:
         >>> detect_language("/path/to/unknown/project")
         'Unknown Language'
 
-    TDD History:
-        - RED: Write a 21 items language detection test (20 items language + 1 items unknown)
-        - GREEN: 20 items language + unknown implementation, all tests passed
-        - REFACTOR: Optimize file inspection order, apply TypeScript priority principle
+    DDD History:
+        - ANALYZE: Write a 21 items language detection test (20 items language + 1 items unknown)
+        - PRESERVE: 20 items language + unknown implementation, all tests passed
+        - IMPROVE: Optimize file inspection order, apply TypeScript priority principle
     """
     cwd_path = Path(cwd)
 
@@ -207,10 +218,10 @@ def _run_git_command(args: list[str], cwd: str, timeout: int = 2) -> str:
         >>> _run_git_command(["branch", "--show-current"], ".")
         'main'
 
-    TDD History:
-        - RED: Git command hang scenario test
-        - GREEN: SIGALRM-based timeout implementation
-        - REFACTOR: Exception conversion to subprocess.TimeoutExpired
+    DDD History:
+        - ANALYZE: Git command hang scenario test
+        - PRESERVE: SIGALRM-based timeout implementation
+        - IMPROVE: Exception conversion to subprocess.TimeoutExpired
     """
     try:
         with timeout_handler(timeout):
@@ -264,10 +275,10 @@ def get_git_info(cwd: str) -> dict[str, Any]:
         - Error handling: Returns an empty dictionary in case of all exceptions
         - Commit message limited to 50 characters for display purposes
 
-    TDD History:
-        - RED: 3 items scenario test (Git repo, non-Git, error)
-        - GREEN: Implementation of subprocess-based Git command execution
-        - REFACTOR: Add timeout (2 seconds), strengthen exception handling, remove duplicates with helper function
+    DDD History:
+        - ANALYZE: 3 items scenario test (Git repo, non-Git, error)
+        - PRESERVE: Implementation of subprocess-based Git command execution
+        - IMPROVE: Add timeout (2 seconds), strengthen exception handling, remove duplicates with helper function
         - UPDATE: Added last_commit message field for SessionStart display
     """
     try:
@@ -292,7 +303,11 @@ def get_git_info(cwd: str) -> dict[str, Any]:
             "last_commit": last_commit,
         }
 
-    except (subprocess.TimeoutExpired, subprocess.CalledProcessError, FileNotFoundError):
+    except (
+        subprocess.TimeoutExpired,
+        subprocess.CalledProcessError,
+        FileNotFoundError,
+    ):
         return {}
 
 
@@ -325,10 +340,10 @@ def count_specs(cwd: str) -> dict[str, int]:
         - If parsing fails, the SPEC is considered incomplete.
         - Automatically finds project root to locate .moai/specs/
 
-    TDD History:
-        - RED: 5 items scenario test (0/0, 2/5, 5/5, no directory, parsing error)
-        - GREEN: SPEC search with Path.iterdir(), YAML parsing implementation
-        - REFACTOR: Strengthened exception handling, improved percentage calculation safety
+    DDD History:
+        - ANALYZE: 5 items scenario test (0/0, 2/5, 5/5, no directory, parsing error)
+        - PRESERVE: SPEC search with Path.iterdir(), YAML parsing implementation
+        - IMPROVE: Strengthened exception handling, improved percentage calculation safety
         - UPDATE: Add project root detection for consistent path resolution
     """
     # Find project root to ensure we read specs from correct location
@@ -353,7 +368,7 @@ def count_specs(cwd: str) -> dict[str, int]:
 
         # Parse YAML front matter
         try:
-            content = spec_file.read_text()
+            content = spec_file.read_text(encoding="utf-8", errors="replace")
             if content.startswith("---"):
                 yaml_end = content.find("---", 3)
                 if yaml_end > 0:
@@ -374,7 +389,7 @@ def count_specs(cwd: str) -> dict[str, int]:
 
 
 def get_project_language(cwd: str) -> str:
-    """Determine the primary project language (prefers config.json).
+    """Determine the primary project language (prefers config.yaml).
 
     Args:
         cwd: Project root directory (or any subdirectory, will search upward).
@@ -383,20 +398,20 @@ def get_project_language(cwd: str) -> str:
         Language string in lower-case.
 
     Notes:
-        - Reads ``.moai/config/config.json`` first for a quick answer.
+        - Reads ``.moai/config/config.yaml`` first for a quick answer.
         - Falls back to ``detect_language`` if configuration is missing.
-        - Automatically finds project root to locate .moai/config/config.json
+        - Automatically finds project root to locate .moai/config/config.yaml
     """
     # Find project root to ensure we read config from correct location
     project_root = find_project_root(cwd)
-    config_path = project_root / ".moai" / "config.json"
+    config_path = project_root / ".moai" / "config" / "config.yaml"
     if config_path.exists():
         try:
-            config = json.loads(config_path.read_text())
+            config = yaml.safe_load(config_path.read_text(encoding="utf-8", errors="replace")) or {}
             lang = config.get("language", "")
             if lang:
                 return lang
-        except (OSError, json.JSONDecodeError):
+        except (OSError, yaml.YAMLError):
             # Fall back to detection on parse errors
             pass
 
@@ -411,14 +426,14 @@ def _validate_project_structure(cwd: str) -> bool:
         cwd: Project root directory path
 
     Returns:
-        bool: True if .moai/config/config.json exists, False otherwise
+        bool: True if .moai/config/config.yaml exists, False otherwise
     """
     project_root = find_project_root(cwd)
-    return (project_root / ".moai" / "config.json").exists()
+    return (project_root / ".moai" / "config" / "config.yaml").exists()
 
 
 def get_version_check_config(cwd: str) -> dict[str, Any]:
-    """Read version check configuration from .moai/config/config.json
+    """Read version check configuration from .moai/config/config.yaml
 
     Returns version check settings with sensible defaults.
     Supports frequency-based cache TTL configuration.
@@ -438,10 +453,10 @@ def get_version_check_config(cwd: str) -> dict[str, Any]:
         - "weekly": 168 hours (7 days)
         - "never": infinity (never check)
 
-    TDD History:
-        - RED: 8 test scenarios (defaults, custom, disabled, TTL, etc.)
-        - GREEN: Minimal config reading with defaults
-        - REFACTOR: Add validation and error handling
+    DDD History:
+        - ANALYZE: 8 test scenarios (defaults, custom, disabled, TTL, etc.)
+        - PRESERVE: Minimal config reading with defaults
+        - IMPROVE: Add validation and error handling
     """
     # TTL mapping by frequency
     ttl_by_frequency = {"always": 0, "daily": 24, "weekly": 168, "never": float("inf")}
@@ -451,12 +466,12 @@ def get_version_check_config(cwd: str) -> dict[str, Any]:
 
     # Find project root to ensure we read config from correct location
     project_root = find_project_root(cwd)
-    config_path = project_root / ".moai" / "config.json"
+    config_path = project_root / ".moai" / "config" / "config.yaml"
     if not config_path.exists():
         return defaults
 
     try:
-        config = json.loads(config_path.read_text())
+        config = yaml.safe_load(config_path.read_text(encoding="utf-8", errors="replace")) or {}
 
         # Extract moai.version_check section
         moai_config = config.get("moai", {})
@@ -479,7 +494,11 @@ def get_version_check_config(cwd: str) -> dict[str, Any]:
         if "cache_ttl_hours" in version_check_config:
             cache_ttl_hours = version_check_config["cache_ttl_hours"]
 
-        return {"enabled": enabled, "frequency": frequency, "cache_ttl_hours": cache_ttl_hours}
+        return {
+            "enabled": enabled,
+            "frequency": frequency,
+            "cache_ttl_hours": cache_ttl_hours,
+        }
 
     except (OSError, json.JSONDecodeError, KeyError):
         # Config read or parse error - return defaults
@@ -505,10 +524,10 @@ def is_network_available(timeout_seconds: float = 0.1) -> bool:
         >>> is_network_available(timeout_seconds=0.001)
         False  # Timeout too short, returns False
 
-    TDD History:
-        - RED: 3 test scenarios (success, failure, timeout)
-        - GREEN: Minimal socket.create_connection implementation
-        - REFACTOR: Add error handling for all exception types
+    DDD History:
+        - ANALYZE: 3 test scenarios (success, failure, timeout)
+        - PRESERVE: Minimal socket.create_connection implementation
+        - IMPROVE: Add error handling for all exception types
     """
     try:
         # Try connecting to Google's public DNS server (8.8.8.8:53)
@@ -546,10 +565,10 @@ def is_major_version_change(current: str, latest: str) -> bool:
         >>> is_major_version_change("dev", "1.0.0")
         False  # Invalid versions return False
 
-    TDD History:
-        - RED: 4 test scenarios (0→1, 1→2, minor, invalid)
-        - GREEN: Minimal version parsing and comparison
-        - REFACTOR: Improve error handling for invalid versions
+    DDD History:
+        - ANALYZE: 4 test scenarios (0→1, 1→2, minor, invalid)
+        - PRESERVE: Minimal version parsing and comparison
+        - IMPROVE: Improve error handling for invalid versions
     """
     try:
         # Parse version strings into integer components
@@ -601,10 +620,10 @@ def get_package_version_info(cwd: str = ".") -> dict[str, Any]:
         - Network timeout: Returns current + "unknown" latest (~50ms) ✓
         - Any exception: Always returns current version ✓
 
-    TDD History:
-        - RED: 5 test scenarios (network detection, cache integration, offline mode)
-        - GREEN: Integrate VersionCache with network detection
-        - REFACTOR: Extract cache directory constant, improve error handling
+    DDD History:
+        - ANALYZE: 5 test scenarios (network detection, cache integration, offline mode)
+        - PRESERVE: Integrate VersionCache with network detection
+        - IMPROVE: Extract cache directory constant, improve error handling
     """
     import importlib.util
     import urllib.error
