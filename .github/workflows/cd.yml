@@ -1,0 +1,17 @@
+name: CD
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: cd-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  cd:
+    uses: ./.github/workflows/_shared.yml
+    with:
+      run-e2e: true
+      run-docker: true

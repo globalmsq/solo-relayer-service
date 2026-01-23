@@ -112,15 +112,21 @@ describe("Payment Integration E2E Tests", () => {
 
       // Mock MySQL to return pending status (transaction just submitted)
       defaultPrismaMock.transaction.findUnique.mockResolvedValueOnce({
-        id: transactionId,
-        ozRelayerTxId: "oz-relayer-tx-" + transactionId.substring(0, 8),
-        ozRelayerUrl: "http://oz-relayer-1:8080",
-        hash: null,
+        id: 1,
+        transactionId: transactionId,
+        relayerTxId: "oz-relayer-tx-" + transactionId.substring(0, 8),
+        relayerUrl: "http://oz-relayer-1:8080",
+        transactionHash: null,
         status: "pending", // Initial status after submission
         from: userAddress,
         to: recipientAddress,
         value: "0",
         data: forwardRequest.data,
+        type: "gasless",
+        request: null,
+        result: null,
+        error_message: null,
+        retryOnFailure: false,
         createdAt: new Date(),
         updatedAt: new Date(),
         confirmedAt: null,

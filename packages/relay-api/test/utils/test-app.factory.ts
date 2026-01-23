@@ -84,14 +84,26 @@ const generateMockTransactionId = () => {
 };
 
 // Default mock transaction data for Prisma
+// Field names must match Prisma schema exactly:
+// - id: Auto-increment integer PK (internal)
+// - transactionId: UUID for external API
+// - transactionHash: Transaction hash (nullable)
 const createMockTransaction = (overrides = {}) => ({
-  id: generateMockTransactionId(),
-  hash: "0x" + "1".repeat(64),
+  id: ++transactionCounter, // Integer PK (auto-increment)
+  transactionId: generateMockTransactionId(), // UUID for external API
+  transactionHash: "0x" + "1".repeat(64), // Transaction hash
   status: "queued", // SPEC-QUEUE-001: Default status is now "queued"
   from: "0x" + "a".repeat(40),
   to: "0x" + "b".repeat(40),
   value: "1000000000000000000",
   data: null,
+  type: null,
+  request: null,
+  result: null,
+  error_message: null,
+  relayerTxId: null,
+  relayerUrl: null,
+  retryOnFailure: false,
   createdAt: new Date(),
   updatedAt: new Date(),
   confirmedAt: null,

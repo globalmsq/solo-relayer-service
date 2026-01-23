@@ -188,23 +188,30 @@ describe("Webhook Integration E2E Tests", () => {
    * AC-2.1, AC-4.4: Webhook updates MySQL, resets Redis TTL, sends client notification
    *
    * SPEC-ROUTING-001 FR-003: OZ Relayer webhook has nested structure
-   * - Uses update (not upsert) with ozRelayerTxId lookup
+   * - Uses update (not upsert) with relayerTxId lookup
    */
   it("TC-E2E-INT002: Webhook updates MySQL, resets Redis TTL, sends notification", async () => {
-    // Given: Transaction exists in MySQL with ozRelayerTxId
-    const ozRelayerTxId = "oz-tx-456";
+    // Given: Transaction exists in MySQL with relayerTxId
+    const relayerTxId = "oz-tx-456";
     const ourDbId = "our-internal-uuid-456";
 
     // SPEC-ROUTING-001 FR-003: Uses update, not upsert
     defaultPrismaMock.transaction.update.mockResolvedValueOnce({
-      id: ourDbId,
-      ozRelayerTxId,
-      hash: "0x" + "1".repeat(64),
+      id: 1,
+      transactionId: ourDbId,
+      relayerTxId,
+      relayerUrl: null,
+      transactionHash: "0x" + "1".repeat(64),
       status: "confirmed",
       from: TEST_WALLETS.user.address,
       to: TEST_WALLETS.merchant.address,
       value: "1000000000000000000",
       data: null,
+      type: null,
+      request: null,
+      result: null,
+      error_message: null,
+      retryOnFailure: false,
       createdAt: new Date(),
       updatedAt: new Date(),
       confirmedAt: new Date(),
@@ -216,7 +223,7 @@ describe("Webhook Integration E2E Tests", () => {
       event: "transaction_update",
       payload: {
         payload_type: "transaction",
-        id: ozRelayerTxId, // OZ Relayer's transaction ID (maps to ozRelayerTxId)
+        id: relayerTxId, // OZ Relayer's transaction ID (maps to relayerTxId)
         hash: "0x" + "1".repeat(64),
         status: "confirmed",
         from: TEST_WALLETS.user.address,
@@ -236,25 +243,25 @@ describe("Webhook Integration E2E Tests", () => {
       .set("x-oz-signature", signature)
       .send(webhookPayload);
 
-    // Then: Verify MySQL update (FR-003: uses update with ozRelayerTxId lookup)
+    // Then: Verify MySQL update (FR-003: uses update with relayerTxId lookup)
     expect(response.status).toBe(200);
     expect(defaultPrismaMock.transaction.update).toHaveBeenCalledWith(
       expect.objectContaining({
-        where: { ozRelayerTxId },
+        where: { relayerTxId },
         data: expect.objectContaining({
           status: "confirmed",
-          hash: "0x" + "1".repeat(64),
+          transactionHash: "0x" + "1".repeat(64),
         }),
       }),
     );
 
     // Verify Redis TTL reset
-    // SPEC-ROUTING-001: Cache key uses internal txId (ourDbId), NOT ozRelayerTxId
+    // SPEC-ROUTING-001: Cache key uses internal txId (ourDbId), NOT relayerTxId
     expect(defaultRedisMock.set).toHaveBeenCalledWith(
       `tx:status:${ourDbId}`,
       expect.objectContaining({
         transactionId: ourDbId,
-        ozRelayerTxId,
+        relayerTxId,
         status: "confirmed",
       }),
       600, // TTL reset to 600s
@@ -335,13 +342,21 @@ describe("Webhook Integration E2E Tests", () => {
     defaultRedisMock.get.mockResolvedValueOnce(null); // Cache miss
 
     const mysqlData = {
-      id: txId,
-      hash: "0x" + "3".repeat(64),
+      id: 1,
+      transactionId: txId,
+      transactionHash: "0x" + "3".repeat(64),
       status: "mined", // Terminal status
       from: TEST_WALLETS.user.address,
       to: TEST_WALLETS.merchant.address,
       value: "2000000000000000000",
       data: null,
+      type: null,
+      request: null,
+      result: null,
+      error_message: null,
+      relayerTxId: null,
+      relayerUrl: null,
+      retryOnFailure: false,
       createdAt: new Date(),
       updatedAt: new Date(),
       confirmedAt: new Date(),
@@ -384,20 +399,26 @@ describe("Webhook Integration E2E Tests", () => {
   it("TC-E2E-INT006: MySQL non-terminal status returns current data", async () => {
     // Given: Redis miss, MySQL has non-terminal status
     const txId = "550e8400-e29b-41d4-a716-446655440003"; // Valid UUID v4 (our DB id)
-    const ozRelayerTxId = "oz-relayer-tx-003";
+    const relayerTxId = "oz-relayer-tx-003";
     defaultRedisMock.get.mockResolvedValueOnce(null);
 
     // MySQL has record with non-terminal status (pending)
     defaultPrismaMock.transaction.findUnique.mockResolvedValueOnce({
-      id: txId,
-      ozRelayerTxId,
-      ozRelayerUrl: "http://oz-relayer-1:8080",
-      hash: null, // Non-terminal: no hash yet
+      id: 1,
+      transactionId: txId,
+      relayerTxId,
+      relayerUrl: "http://oz-relayer-1:8080",
+      transactionHash: null, // Non-terminal: no hash yet
       status: "pending", // Non-terminal status
       from: TEST_WALLETS.user.address,
       to: TEST_WALLETS.merchant.address,
       value: "3000000000000000000",
       data: null,
+      type: null,
+      request: null,
+      result: null,
+      error_message: null,
+      retryOnFailure: false,
       createdAt: new Date(),
       updatedAt: new Date(),
       confirmedAt: null,
@@ -434,13 +455,21 @@ describe("Webhook Integration E2E Tests", () => {
     );
 
     const mysqlData = {
-      id: txId,
-      hash: "0x" + "5".repeat(64),
+      id: 1,
+      transactionId: txId,
+      transactionHash: "0x" + "5".repeat(64),
       status: "confirmed",
       from: TEST_WALLETS.user.address,
       to: TEST_WALLETS.merchant.address,
       value: "4000000000000000000",
       data: null,
+      type: null,
+      request: null,
+      result: null,
+      error_message: null,
+      relayerTxId: null,
+      relayerUrl: null,
+      retryOnFailure: false,
       createdAt: new Date(),
       updatedAt: new Date(),
       confirmedAt: new Date(),
@@ -458,7 +487,7 @@ describe("Webhook Integration E2E Tests", () => {
 
     // Verify MySQL was called after Redis failure
     expect(defaultPrismaMock.transaction.findUnique).toHaveBeenCalledWith({
-      where: { id: txId },
+      where: { transactionId: txId },
     });
   });
 
@@ -471,20 +500,26 @@ describe("Webhook Integration E2E Tests", () => {
   it("TC-E2E-INT008: Redis failure with MySQL non-terminal status returns MySQL data", async () => {
     // Given: Redis fails, MySQL has non-terminal status
     const txId = "550e8400-e29b-41d4-a716-446655440005"; // Valid UUID v4
-    const ozRelayerTxId = "oz-relayer-tx-005";
+    const relayerTxId = "oz-relayer-tx-005";
     defaultRedisMock.get.mockRejectedValueOnce(new Error("Redis unavailable"));
 
     // MySQL returns record with non-terminal status
     defaultPrismaMock.transaction.findUnique.mockResolvedValueOnce({
-      id: txId,
-      ozRelayerTxId,
-      ozRelayerUrl: "http://oz-relayer-1:8080",
-      hash: null,
+      id: 1,
+      transactionId: txId,
+      relayerTxId,
+      relayerUrl: "http://oz-relayer-1:8080",
+      transactionHash: null,
       status: "pending", // Non-terminal status
       from: TEST_WALLETS.user.address,
       to: TEST_WALLETS.merchant.address,
       value: "5000000000000000000",
       data: null,
+      type: null,
+      request: null,
+      result: null,
+      error_message: null,
+      retryOnFailure: false,
       createdAt: new Date(),
       updatedAt: new Date(),
       confirmedAt: null,
@@ -512,7 +547,7 @@ describe("Webhook Integration E2E Tests", () => {
     // Given: Mock webhook server is running
     clearReceivedWebhooks();
 
-    const ozRelayerTxId = "oz-tx-notify-006";
+    const relayerTxId = "oz-tx-notify-006";
     const ourDbId = "our-internal-uuid-006";
 
     // SPEC-ROUTING-001: OZ Relayer webhook has nested structure
@@ -521,7 +556,7 @@ describe("Webhook Integration E2E Tests", () => {
       event: "transaction_update",
       payload: {
         payload_type: "transaction",
-        id: ozRelayerTxId, // OZ Relayer's transaction ID (maps to ozRelayerTxId)
+        id: relayerTxId, // OZ Relayer's transaction ID (maps to relayerTxId)
         hash: "0x" + "7".repeat(64),
         status: "confirmed",
         from: TEST_WALLETS.user.address,
@@ -535,14 +570,21 @@ describe("Webhook Integration E2E Tests", () => {
 
     // SPEC-ROUTING-001 FR-003: Uses update, not upsert
     defaultPrismaMock.transaction.update.mockResolvedValueOnce({
-      id: ourDbId,
-      ozRelayerTxId,
-      hash: webhookPayload.payload.hash,
+      id: 1,
+      transactionId: ourDbId,
+      relayerTxId,
+      relayerUrl: null,
+      transactionHash: webhookPayload.payload.hash,
       status: webhookPayload.payload.status,
       from: TEST_WALLETS.user.address,
       to: TEST_WALLETS.merchant.address,
       value: "6000000000000000000",
       data: null,
+      type: null,
+      request: null,
+      result: null,
+      error_message: null,
+      retryOnFailure: false,
       createdAt: new Date(),
       updatedAt: new Date(),
       confirmedAt: new Date(),
