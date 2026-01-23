@@ -2,7 +2,7 @@
 id: SPEC-PROXY-001
 title: Nginx Load Balancer-based OZ Relayer Proxy and Direct Transaction API
 domain: PROXY
-status: draft
+status: completed
 priority: high
 created_at: 2025-12-19
 updated_at: 2025-12-19
