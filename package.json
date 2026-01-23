@@ -1,6 +1,6 @@
 {
   "name": "msq-relayer-service",
-  "version": "1.0.0",
+  "version": "0.0.1",
   "private": true,
   "description": "MSQ Relayer Service - Meta Transaction Relay Infrastructure",
   "packageManager": "pnpm@9.15.1",
@@ -16,7 +16,8 @@
     "docker:up": "cd docker && docker compose up -d",
     "docker:down": "cd docker && docker compose down",
     "docker:build": "cd docker && docker compose up --build",
-    "create-keystore": "node scripts/create-keystore.js"
+    "create-keystore": "node scripts/create-keystore.js",
+    "version-packages": "changeset version && node scripts/bump-root-version.js"
   },
   "engines": {
     "node": ">=18.0.0"
@@ -27,6 +28,7 @@
   },
   "license": "MIT",
   "devDependencies": {
+    "@changesets/cli": "^2.29.8",
     "ethers": "^6.13.0",
     "turbo": "^2.7.5"
   },

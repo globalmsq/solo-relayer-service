@@ -1,6 +1,6 @@
 {
   "name": "@msq-relayer/relay-api",
-  "version": "1.0.0",
+  "version": "0.0.1",
   "private": true,
   "description": "Relay API for MSQ Relayer Service",
   "main": "dist/main.js",

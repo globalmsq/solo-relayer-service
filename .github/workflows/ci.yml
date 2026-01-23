@@ -13,4 +13,3 @@ jobs:
     uses: ./.github/workflows/_shared.yml
     with:
       run-e2e: false
-      run-docker: false

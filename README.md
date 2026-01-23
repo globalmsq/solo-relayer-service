@@ -115,6 +115,7 @@ curl http://localhost:3000/api/v1/relay/status/550e8400-e29b-41d4-a716-446655440
 | Document | Description | Purpose |
 |----------|-------------|---------|
 | [docs/DEPLOYMENT.md](./docs/DEPLOYMENT.md) | Docker Compose setup, multi-relayer config, environment variables | Deployment |
+| [docs/CI_CD.md](./docs/CI_CD.md) | CI/CD strategy, Docker tagging, version management with Changesets | CI/CD |
 | [docs/TESTING.md](./docs/TESTING.md) | Testing guide (unit, E2E, integration), 74 test cases | Quality Assurance |
 | [docs/DOCKER_SETUP.md](./docs/DOCKER_SETUP.md) | Docker installation, configuration, 3-relayer setup, troubleshooting | Docker Guide |
 | [docs/CONTRACTS_GUIDE.md](./docs/CONTRACTS_GUIDE.md) | Smart contract integration, ERC2771Forwarder, meta-transactions | Smart Contracts |
@@ -324,6 +325,36 @@ pnpm --filter @msq-relayer/relay-api test:e2e
 # Coverage report
 pnpm --filter @msq-relayer/relay-api test:cov
 ```
+
+### Version Management
+
+This project uses [Changesets](https://github.com/changesets/changesets) for version management.
+
+**After developing a feature:**
+
+```bash
+# 1. Create a changeset to record your changes
+pnpm changeset
+
+# 2. Follow the prompts:
+#    - Select affected packages
+#    - Choose version bump type (patch/minor/major)
+#    - Write a summary of changes
+
+# 3. Commit the changeset file with your PR
+git add .changeset/
+git commit -m "feat: add new feature"
+```
+
+**Version bump types:**
+
+| Type | When to Use | Example |
+|------|-------------|---------|
+| `patch` | Bug fixes, docs, internal refactoring | 1.0.0 → 1.0.1 |
+| `minor` | New features, backward-compatible changes | 1.0.0 → 1.1.0 |
+| `major` | Breaking changes | 1.0.0 → 2.0.0 |
+
+See [docs/CI_CD.md](./docs/CI_CD.md) for detailed CI/CD strategy and Docker image tagging.
 
 ## Deployment
 

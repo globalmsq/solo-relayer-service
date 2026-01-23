@@ -1,0 +1,108 @@
+name: Release
+
+on:
+  release:
+    types: [published]
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  validate:
+    name: Validate Release
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.validate.outputs.version }}
+    steps:
+      - name: Validate release tag
+        id: validate
+        run: |
+          TAG="${{ github.event.release.tag_name }}"
+
+          # Validate semver format (v1.0.0, v1.0.0-beta.1, etc.)
+          if [[ ! "$TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+(-[a-zA-Z0-9.]+)?$ ]]; then
+            echo "❌ Invalid release tag format: $TAG"
+            echo "Expected format: v1.0.0 or v1.0.0-beta.1"
+            exit 1
+          fi
+
+          echo "✅ Valid release tag: $TAG"
+          echo "version=$TAG" >> $GITHUB_OUTPUT
+
+  docker:
+    name: Build & Deploy
+    needs: validate
+    uses: ./.github/workflows/_docker.yml
+    with:
+      push: true
+      tag-type: release
+      release-version: ${{ needs.validate.outputs.version }}
+    secrets:
+      AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+      AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+
+  update-release-notes:
+    name: Update Release Notes
+    needs: [validate, docker]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Update release notes with Docker images
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          REGISTRY="347765734000.dkr.ecr.ap-northeast-2.amazonaws.com/relayer-service"
+
+          # Read each package's version (independent versioning)
+          RELAY_API_VER=$(jq -r '.version' packages/relay-api/package.json)
+          QUEUE_CONSUMER_VER=$(jq -r '.version' packages/queue-consumer/package.json)
+          RELAYER_DISCOVERY_VER=$(jq -r '.version' packages/relayer-discovery/package.json)
+
+          # Helper function to get major.minor
+          get_major_minor() {
+            local VER=$1
+            echo "v$(echo "$VER" | cut -d. -f1).$(echo "$VER" | cut -d. -f2)"
+          }
+
+          RELAY_API_MM=$(get_major_minor "$RELAY_API_VER")
+          QUEUE_CONSUMER_MM=$(get_major_minor "$QUEUE_CONSUMER_VER")
+          RELAYER_DISCOVERY_MM=$(get_major_minor "$RELAYER_DISCOVERY_VER")
+
+          # Get current release body
+          CURRENT_BODY=$(gh api repos/${{ github.repository }}/releases/${{ github.event.release.id }} --jq '.body')
+
+          # Append Docker image information
+          NEW_BODY="${CURRENT_BODY}
+
+          ---
+
+          ## Docker Images
+
+          Available on AWS ECR:
+
+          | Package | Version | Tags |
+          |---------|---------|------|
+          | relay-api | ${RELAY_API_VER} | \`v${RELAY_API_VER}\`, \`${RELAY_API_MM}\`, \`stable\` |
+          | queue-consumer | ${QUEUE_CONSUMER_VER} | \`v${QUEUE_CONSUMER_VER}\`, \`${QUEUE_CONSUMER_MM}\`, \`stable\` |
+          | relayer-discovery | ${RELAYER_DISCOVERY_VER} | \`v${RELAYER_DISCOVERY_VER}\`, \`${RELAYER_DISCOVERY_MM}\`, \`stable\` |
+
+          \`\`\`bash
+          # Pull images
+          aws ecr get-login-password --region ap-northeast-2 | docker login --username AWS --password-stdin ${REGISTRY}
+          docker pull ${REGISTRY}/relay-api:v${RELAY_API_VER}
+          docker pull ${REGISTRY}/queue-consumer:v${QUEUE_CONSUMER_VER}
+          docker pull ${REGISTRY}/relayer-discovery:v${RELAYER_DISCOVERY_VER}
+          \`\`\`
+          "
+
+          # Update release
+          gh api repos/${{ github.repository }}/releases/${{ github.event.release.id }} \
+            -X PATCH \
+            -f body="$NEW_BODY"
+
+          echo "✅ Release notes updated with Docker image information"

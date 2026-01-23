@@ -1,6 +1,6 @@
 {
   "name": "@msq-relayer/queue-consumer",
-  "version": "1.0.0",
+  "version": "0.0.1",
   "private": true,
   "description": "SQS Queue Consumer for MSQ Relayer Service",
   "main": "dist/main.js",
