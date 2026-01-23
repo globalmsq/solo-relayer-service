@@ -1,0 +1,94 @@
+name: Release
+
+on:
+  release:
+    types: [published]
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  validate:
+    name: Validate Release
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.validate.outputs.version }}
+    steps:
+      - name: Validate release tag
+        id: validate
+        run: |
+          TAG="${{ github.event.release.tag_name }}"
+
+          # Validate semver format (v1.0.0, v1.0.0-beta.1, etc.)
+          if [[ ! "$TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+(-[a-zA-Z0-9.]+)?$ ]]; then
+            echo "❌ Invalid release tag format: $TAG"
+            echo "Expected format: v1.0.0 or v1.0.0-beta.1"
+            exit 1
+          fi
+
+          echo "✅ Valid release tag: $TAG"
+          echo "version=$TAG" >> $GITHUB_OUTPUT
+
+  docker:
+    name: Build & Deploy
+    needs: validate
+    uses: ./.github/workflows/_docker.yml
+    with:
+      push: true
+      tag-type: release
+      release-version: ${{ needs.validate.outputs.version }}
+    secrets:
+      AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+      AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+
+  update-release-notes:
+    name: Update Release Notes
+    needs: [validate, docker]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Update release notes with Docker images
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          VERSION="${{ needs.validate.outputs.version }}"
+          VERSION_NUM="${VERSION#v}"
+          MAJOR=$(echo "$VERSION_NUM" | cut -d. -f1)
+          MINOR=$(echo "$VERSION_NUM" | cut -d. -f2)
+          REGISTRY="347765734000.dkr.ecr.ap-northeast-2.amazonaws.com/relayer-service"
+
+          # Get current release body
+          CURRENT_BODY=$(gh api repos/${{ github.repository }}/releases/${{ github.event.release.id }} --jq '.body')
+
+          # Append Docker image information
+          NEW_BODY="${CURRENT_BODY}
+
+          ---
+
+          ## Docker Images
+
+          Available on AWS ECR:
+
+          | Package | Tags |
+          |---------|------|
+          | relay-api | \`${VERSION}\`, \`v${MAJOR}.${MINOR}\`, \`v${MAJOR}\`, \`stable\` |
+          | queue-consumer | \`${VERSION}\`, \`v${MAJOR}.${MINOR}\`, \`v${MAJOR}\`, \`stable\` |
+          | relayer-discovery | \`${VERSION}\`, \`v${MAJOR}.${MINOR}\`, \`v${MAJOR}\`, \`stable\` |
+
+          \`\`\`bash
+          # Pull images
+          aws ecr get-login-password --region ap-northeast-2 | docker login --username AWS --password-stdin ${REGISTRY}
+          docker pull ${REGISTRY}/relay-api:${VERSION}
+          docker pull ${REGISTRY}/queue-consumer:${VERSION}
+          docker pull ${REGISTRY}/relayer-discovery:${VERSION}
+          \`\`\`
+          "
+
+          # Update release
+          gh api repos/${{ github.repository }}/releases/${{ github.event.release.id }} \
+            -X PATCH \
+            -f body="$NEW_BODY"
+
+          echo "✅ Release notes updated with Docker image information"

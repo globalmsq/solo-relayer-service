@@ -1,0 +1,196 @@
+name: Docker Build & Push
+
+on:
+  workflow_call:
+    inputs:
+      push:
+        description: 'Push Docker images to ECR'
+        required: false
+        type: boolean
+        default: false
+      tag-type:
+        description: 'Tag type: nightly or release'
+        required: false
+        type: string
+        default: 'nightly'
+      release-version:
+        description: 'Release version (for release builds)'
+        required: false
+        type: string
+        default: ''
+    secrets:
+      AWS_ACCESS_KEY_ID:
+        required: false
+      AWS_SECRET_ACCESS_KEY:
+        required: false
+
+env:
+  NODE_VERSION: "24"
+  PNPM_VERSION: "9.15.1"
+  AWS_REGION: "ap-northeast-2"
+  ECR_REGISTRY: "347765734000.dkr.ecr.ap-northeast-2.amazonaws.com/relayer-service"
+
+jobs:
+  docker:
+    name: Build & Push
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup
+        uses: ./.github/actions/setup-node-pnpm
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          pnpm-version: ${{ env.PNPM_VERSION }}
+
+      - name: Check affected packages
+        id: affected
+        run: |
+          # Compare against previous commit on main
+          BASE_REF="HEAD~1"
+
+          # Get affected packages from Turborepo
+          AFFECTED=$(pnpm turbo build --filter="...[$BASE_REF]" --dry-run=json 2>/dev/null | jq -r '.packages | join(",")' || echo "")
+          echo "packages=$AFFECTED" >> $GITHUB_OUTPUT
+          echo "Affected packages: $AFFECTED"
+
+          # Set individual flags for each package
+          for pkg in relay-api queue-consumer relayer-discovery; do
+            pkg_var=$(echo "$pkg" | tr '-' '_')
+            if echo "$AFFECTED" | grep -q "$pkg"; then
+              echo "${pkg_var}=true" >> $GITHUB_OUTPUT
+            else
+              echo "${pkg_var}=false" >> $GITHUB_OUTPUT
+            fi
+          done
+
+          # Check if any Docker build is needed
+          if [ -z "$AFFECTED" ]; then
+            echo "has_changes=false" >> $GITHUB_OUTPUT
+            echo "No affected packages found"
+          else
+            echo "has_changes=true" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Extract versions and generate tags
+        id: tags
+        if: steps.affected.outputs.has_changes == 'true'
+        run: |
+          REGISTRY="${{ env.ECR_REGISTRY }}"
+          DATE=$(date +'%Y%m%d')
+          SHA_SHORT=$(echo "${{ github.sha }}" | cut -c1-8)
+          TAG_TYPE="${{ inputs.tag-type }}"
+          RELEASE_VERSION="${{ inputs.release-version }}"
+
+          # Function to generate tags for a package
+          generate_tags() {
+            local PKG=$1
+            local VERSION=$(jq -r '.version' "packages/${PKG}/package.json")
+            local TAGS=""
+
+            if [ "$TAG_TYPE" = "release" ] && [ -n "$RELEASE_VERSION" ]; then
+              local VER="${RELEASE_VERSION#v}"
+              local MAJOR=$(echo "$VER" | cut -d. -f1)
+              local MINOR=$(echo "$VER" | cut -d. -f2)
+              TAGS="${REGISTRY}/${PKG}:v${VER}"
+              TAGS="${TAGS},${REGISTRY}/${PKG}:v${MAJOR}.${MINOR}"
+              TAGS="${TAGS},${REGISTRY}/${PKG}:v${MAJOR}"
+              TAGS="${TAGS},${REGISTRY}/${PKG}:stable"
+            else
+              TAGS="${REGISTRY}/${PKG}:${VERSION}-nightly"
+              TAGS="${TAGS},${REGISTRY}/${PKG}:${VERSION}-nightly.${DATE}"
+              TAGS="${TAGS},${REGISTRY}/${PKG}:${SHA_SHORT}"
+              TAGS="${TAGS},${REGISTRY}/${PKG}:nightly"
+            fi
+            echo "$TAGS"
+          }
+
+          # Generate tags for each package
+          echo "relay_api=$(generate_tags relay-api)" >> $GITHUB_OUTPUT
+          echo "queue_consumer=$(generate_tags queue-consumer)" >> $GITHUB_OUTPUT
+          echo "relayer_discovery=$(generate_tags relayer-discovery)" >> $GITHUB_OUTPUT
+
+          echo "Generated tags for tag-type=$TAG_TYPE"
+
+      - name: Configure AWS credentials
+        if: steps.affected.outputs.has_changes == 'true' && inputs.push
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Login to Amazon ECR
+        if: steps.affected.outputs.has_changes == 'true' && inputs.push
+        uses: aws-actions/amazon-ecr-login@v2
+
+      - name: Set up Docker Buildx
+        if: steps.affected.outputs.has_changes == 'true'
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build and push relay-api
+        if: steps.affected.outputs.relay_api == 'true'
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: docker/Dockerfile.packages
+          target: relay-api
+          push: ${{ inputs.push }}
+          cache-from: type=gha,scope=relay-api
+          cache-to: type=gha,mode=max,scope=relay-api
+          tags: ${{ steps.tags.outputs.relay_api }}
+
+      - name: Build and push queue-consumer
+        if: steps.affected.outputs.queue_consumer == 'true' || steps.affected.outputs.relay_api == 'true'
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: docker/Dockerfile.packages
+          target: queue-consumer
+          push: ${{ inputs.push }}
+          cache-from: type=gha,scope=queue-consumer
+          cache-to: type=gha,mode=max,scope=queue-consumer
+          tags: ${{ steps.tags.outputs.queue_consumer }}
+
+      - name: Build and push relayer-discovery
+        if: steps.affected.outputs.relayer_discovery == 'true'
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: docker/Dockerfile.packages
+          target: relayer-discovery
+          push: ${{ inputs.push }}
+          cache-from: type=gha,scope=relayer-discovery
+          cache-to: type=gha,mode=max,scope=relayer-discovery
+          tags: ${{ steps.tags.outputs.relayer_discovery }}
+
+      - name: Summary
+        run: |
+          echo "## Docker Build Summary" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**Tag Type:** ${{ inputs.tag-type }}" >> $GITHUB_STEP_SUMMARY
+          echo "**Push to ECR:** ${{ inputs.push }}" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "| Package | Built | Tags |" >> $GITHUB_STEP_SUMMARY
+          echo "|---------|-------|------|" >> $GITHUB_STEP_SUMMARY
+
+          if [ "${{ steps.affected.outputs.relay_api }}" = "true" ]; then
+            echo "| relay-api | ✅ | \`${{ steps.tags.outputs.relay_api }}\` |" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "| relay-api | ⏭️ skipped | - |" >> $GITHUB_STEP_SUMMARY
+          fi
+
+          if [ "${{ steps.affected.outputs.queue_consumer }}" = "true" ] || [ "${{ steps.affected.outputs.relay_api }}" = "true" ]; then
+            echo "| queue-consumer | ✅ | \`${{ steps.tags.outputs.queue_consumer }}\` |" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "| queue-consumer | ⏭️ skipped | - |" >> $GITHUB_STEP_SUMMARY
+          fi
+
+          if [ "${{ steps.affected.outputs.relayer_discovery }}" = "true" ]; then
+            echo "| relayer-discovery | ✅ | \`${{ steps.tags.outputs.relayer_discovery }}\` |" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "| relayer-discovery | ⏭️ skipped | - |" >> $GITHUB_STEP_SUMMARY
+          fi

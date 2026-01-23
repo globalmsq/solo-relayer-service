@@ -8,124 +8,40 @@ on:
         required: false
         type: boolean
         default: false
-      run-docker:
-        description: 'Run Docker builds'
-        required: false
-        type: boolean
-        default: false
 
 env:
   NODE_VERSION: "24"
   PNPM_VERSION: "9.15.1"
 
 jobs:
-  setup:
-    name: Setup
-    runs-on: ubuntu-latest
-    outputs:
-      cache-key: ${{ steps.cache-deps.outputs.cache-primary-key }}
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Setup pnpm
-        uses: pnpm/action-setup@v4
-        with:
-          version: ${{ env.PNPM_VERSION }}
-
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: ${{ env.NODE_VERSION }}
-          cache: "pnpm"
-
-      - name: Get pnpm store directory
-        shell: bash
-        run: |
-          echo "STORE_PATH=$(pnpm store path --silent)" >> $GITHUB_ENV
-
-      - name: Cache pnpm store
-        id: cache-deps
-        uses: actions/cache@v4
-        with:
-          path: ${{ env.STORE_PATH }}
-          key: pnpm-${{ runner.os }}-${{ hashFiles('**/pnpm-lock.yaml') }}
-          restore-keys: |
-            pnpm-${{ runner.os }}-
-
-      - name: Install dependencies
-        run: pnpm install --frozen-lockfile
-
-      - name: Cache node_modules
-        uses: actions/cache@v4
-        with:
-          path: |
-            node_modules
-            packages/*/node_modules
-          key: node-modules-${{ runner.os }}-${{ hashFiles('**/pnpm-lock.yaml') }}
-
   lint:
     name: Lint
-    needs: setup
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Setup pnpm
-        uses: pnpm/action-setup@v4
-        with:
-          version: ${{ env.PNPM_VERSION }}
-
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
+      - name: Setup
+        uses: ./.github/actions/setup-node-pnpm
         with:
           node-version: ${{ env.NODE_VERSION }}
-          cache: "pnpm"
-
-      - name: Restore node_modules cache
-        uses: actions/cache@v4
-        with:
-          path: |
-            node_modules
-            packages/*/node_modules
-          key: node-modules-${{ runner.os }}-${{ hashFiles('**/pnpm-lock.yaml') }}
-
-      - name: Install dependencies
-        run: pnpm install --frozen-lockfile
+          pnpm-version: ${{ env.PNPM_VERSION }}
 
       - name: Run lint
         run: pnpm lint
 
   test:
     name: Test
-    needs: setup
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Setup pnpm
-        uses: pnpm/action-setup@v4
-        with:
-          version: ${{ env.PNPM_VERSION }}
-
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
+      - name: Setup
+        uses: ./.github/actions/setup-node-pnpm
         with:
           node-version: ${{ env.NODE_VERSION }}
-          cache: "pnpm"
-
-      - name: Restore node_modules cache
-        uses: actions/cache@v4
-        with:
-          path: |
-            node_modules
-            packages/*/node_modules
-          key: node-modules-${{ runner.os }}-${{ hashFiles('**/pnpm-lock.yaml') }}
-
-      - name: Install dependencies
-        run: pnpm install --frozen-lockfile
+          pnpm-version: ${{ env.PNPM_VERSION }}
 
       - name: Generate Prisma Client
         run: pnpm --filter @msq-relayer/relay-api exec prisma generate
@@ -142,33 +58,16 @@ jobs:
 
   build:
     name: Build
-    needs: setup
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Setup pnpm
-        uses: pnpm/action-setup@v4
-        with:
-          version: ${{ env.PNPM_VERSION }}
-
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
+      - name: Setup
+        uses: ./.github/actions/setup-node-pnpm
         with:
           node-version: ${{ env.NODE_VERSION }}
-          cache: "pnpm"
-
-      - name: Restore node_modules cache
-        uses: actions/cache@v4
-        with:
-          path: |
-            node_modules
-            packages/*/node_modules
-          key: node-modules-${{ runner.os }}-${{ hashFiles('**/pnpm-lock.yaml') }}
-
-      - name: Install dependencies
-        run: pnpm install --frozen-lockfile
+          pnpm-version: ${{ env.PNPM_VERSION }}
 
       - name: Generate Prisma Client
         run: pnpm --filter @msq-relayer/relay-api exec prisma generate
@@ -192,151 +91,14 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Setup pnpm
-        uses: pnpm/action-setup@v4
-        with:
-          version: ${{ env.PNPM_VERSION }}
-
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
+      - name: Setup
+        uses: ./.github/actions/setup-node-pnpm
         with:
           node-version: ${{ env.NODE_VERSION }}
-          cache: "pnpm"
-
-      - name: Restore node_modules cache
-        uses: actions/cache@v4
-        with:
-          path: |
-            node_modules
-            packages/*/node_modules
-          key: node-modules-${{ runner.os }}-${{ hashFiles('**/pnpm-lock.yaml') }}
-
-      - name: Install dependencies
-        run: pnpm install --frozen-lockfile
+          pnpm-version: ${{ env.PNPM_VERSION }}
 
       - name: Generate Prisma Client
         run: pnpm --filter @msq-relayer/relay-api exec prisma generate
 
       - name: Run E2E tests
         run: pnpm --filter @msq-relayer/relay-api test:e2e
-
-  docker:
-    name: Docker Build
-    if: ${{ inputs.run-docker }}
-    needs: build
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-
-      - name: Setup pnpm
-        uses: pnpm/action-setup@v4
-        with:
-          version: ${{ env.PNPM_VERSION }}
-
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: ${{ env.NODE_VERSION }}
-          cache: "pnpm"
-
-      - name: Restore node_modules cache
-        uses: actions/cache@v4
-        with:
-          path: |
-            node_modules
-            packages/*/node_modules
-          key: node-modules-${{ runner.os }}-${{ hashFiles('**/pnpm-lock.yaml') }}
-
-      - name: Install dependencies
-        run: pnpm install --frozen-lockfile
-
-      - name: Check affected packages
-        id: affected
-        run: |
-          # Compare against previous commit on main
-          BASE_REF="HEAD~1"
-
-          # Get affected packages from Turborepo
-          AFFECTED=$(pnpm turbo build --filter="...[$BASE_REF]" --dry-run=json 2>/dev/null | jq -r '.packages | join(",")' || echo "")
-          echo "packages=$AFFECTED" >> $GITHUB_OUTPUT
-          echo "Affected packages: $AFFECTED"
-
-          # Set individual flags for each package
-          if echo "$AFFECTED" | grep -q "relay-api"; then
-            echo "relay_api=true" >> $GITHUB_OUTPUT
-          else
-            echo "relay_api=false" >> $GITHUB_OUTPUT
-          fi
-
-          if echo "$AFFECTED" | grep -q "queue-consumer"; then
-            echo "queue_consumer=true" >> $GITHUB_OUTPUT
-          else
-            echo "queue_consumer=false" >> $GITHUB_OUTPUT
-          fi
-
-          if echo "$AFFECTED" | grep -q "relayer-discovery"; then
-            echo "relayer_discovery=true" >> $GITHUB_OUTPUT
-          else
-            echo "relayer_discovery=false" >> $GITHUB_OUTPUT
-          fi
-
-          # Check if any Docker build is needed
-          if [ -z "$AFFECTED" ]; then
-            echo "has_changes=false" >> $GITHUB_OUTPUT
-            echo "No affected packages found"
-          else
-            echo "has_changes=true" >> $GITHUB_OUTPUT
-          fi
-
-      - name: Set up Docker Buildx
-        if: steps.affected.outputs.has_changes == 'true'
-        uses: docker/setup-buildx-action@v3
-
-      - name: Build relay-api
-        if: steps.affected.outputs.relay_api == 'true'
-        uses: docker/build-push-action@v6
-        with:
-          context: .
-          file: docker/Dockerfile.packages
-          target: relay-api
-          push: false
-          cache-from: type=gha,scope=relay-api
-          cache-to: type=gha,mode=max,scope=relay-api
-          tags: msq-relayer/relay-api:${{ github.sha }}
-
-      - name: Build queue-consumer
-        if: steps.affected.outputs.queue_consumer == 'true' || steps.affected.outputs.relay_api == 'true'
-        uses: docker/build-push-action@v6
-        with:
-          context: .
-          file: docker/Dockerfile.packages
-          target: queue-consumer
-          push: false
-          cache-from: type=gha,scope=queue-consumer
-          cache-to: type=gha,mode=max,scope=queue-consumer
-          tags: msq-relayer/queue-consumer:${{ github.sha }}
-
-      - name: Build relayer-discovery
-        if: steps.affected.outputs.relayer_discovery == 'true'
-        uses: docker/build-push-action@v6
-        with:
-          context: .
-          file: docker/Dockerfile.packages
-          target: relayer-discovery
-          push: false
-          cache-from: type=gha,scope=relayer-discovery
-          cache-to: type=gha,mode=max,scope=relayer-discovery
-          tags: msq-relayer/relayer-discovery:${{ github.sha }}
-
-      - name: Summary
-        run: |
-          echo "## Docker Build Summary" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
-          echo "| Package | Built |" >> $GITHUB_STEP_SUMMARY
-          echo "|---------|-------|" >> $GITHUB_STEP_SUMMARY
-          echo "| relay-api | ${{ steps.affected.outputs.relay_api == 'true' && '✅' || '⏭️ skipped' }} |" >> $GITHUB_STEP_SUMMARY
-          echo "| queue-consumer | ${{ (steps.affected.outputs.queue_consumer == 'true' || steps.affected.outputs.relay_api == 'true') && '✅' || '⏭️ skipped' }} |" >> $GITHUB_STEP_SUMMARY
-          echo "| relayer-discovery | ${{ steps.affected.outputs.relayer_discovery == 'true' && '✅' || '⏭️ skipped' }} |" >> $GITHUB_STEP_SUMMARY
