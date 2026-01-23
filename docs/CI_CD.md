@@ -57,14 +57,16 @@ Main 브랜치에 머지될 때마다 자동으로 빌드됩니다.
 
 ### Release Tags (GitHub Release)
 
-GitHub Release를 생성하면 자동으로 빌드됩니다.
+GitHub Release를 생성하면 자동으로 빌드됩니다. **각 패키지는 자체 버전으로 태깅됩니다.**
 
 | Tag | Example | Type | Purpose |
 |-----|---------|------|---------|
-| `v{version}` | `v1.1.0` | Immutable | 정확한 버전 |
-| `v{major}.{minor}` | `v1.1` | Rolling | 패치 자동 업데이트 |
-| `v{major}` | `v1` | Rolling | 마이너 자동 업데이트 |
+| `v{pkg-version}` | `v0.1.0` | Immutable | 패키지별 정확한 버전 |
+| `v{major}.{minor}` | `v0.1` | Rolling | 패치 자동 업데이트 |
 | `stable` | `stable` | Rolling | 프로덕션 최신 |
+
+> **Note:** 독립 버전 관리로 각 패키지가 서로 다른 버전을 가질 수 있습니다.
+> 예: relay-api:v0.1.0, queue-consumer:v0.0.1, relayer-discovery:v0.0.1
 
 ## Version Management (Changesets)
 
@@ -72,13 +74,42 @@ Changesets를 사용하여 monorepo의 버전을 관리합니다.
 
 ### Changesets 설정
 
-모든 패키지가 동일한 버전을 유지하도록 `fixed` 옵션이 설정되어 있습니다:
+**독립 버전 관리**: 각 패키지가 개별적으로 버전 업됩니다.
 
 ```json
 // .changeset/config.json
 {
-  "fixed": [["@msq-relayer/*"]]
+  "fixed": [],
+  "ignore": ["@msq-relayer/integration-tests"]
 }
+```
+
+- `fixed: []` - 패키지별 독립 버전 관리
+- `ignore` - 테스트 패키지는 버전 관리에서 제외
+
+### Root 버전 자동 업데이트
+
+패키지 버전이 업데이트되면 root `package.json`의 버전도 자동으로 patch bump됩니다:
+
+```bash
+# version-packages 스크립트 실행 시:
+# 1. changeset version (패키지별 버전 업데이트)
+# 2. scripts/bump-root-version.js (root patch bump)
+```
+
+예시:
+```
+changeset으로 relay-api만 minor bump 선택
+
+결과:
+  relay-api:         0.0.1 → 0.1.0 (선택됨)
+  queue-consumer:    0.0.1 (변경 없음)
+  relayer-discovery: 0.0.1 (변경 없음)
+  root:              0.0.1 → 0.0.2 (자동 patch bump)
+
+GitHub Release: v0.0.2 (root 버전)
+Docker Tags (변경된 패키지만):
+  relay-api:v0.1.0, relay-api:v0.1, relay-api:stable
 ```
 
 ### 개발 후 버전 업데이트 방법
@@ -91,18 +122,18 @@ Changesets를 사용하여 monorepo의 버전을 관리합니다.
 pnpm changeset
 ```
 
-대화형 프롬프트가 나타납니다:
+대화형 프롬프트가 나타납니다. **변경된 패키지만 선택하고, 각 패키지별로 bump 타입을 지정**합니다:
 
 ```
 ? Which packages would you like to include?
-  ◉ @msq-relayer/relay-api
-  ◉ @msq-relayer/queue-consumer
-  ◉ @msq-relayer/relayer-discovery
+  ◉ @msq-relayer/relay-api       # 변경된 패키지만 선택
+  ○ @msq-relayer/queue-consumer
+  ○ @msq-relayer/relayer-discovery
 
-? What kind of change is this for @msq-relayer/* packages?
-  ○ patch (1.0.0 → 1.0.1)  # 버그 수정, 사소한 변경
-  ○ minor (1.0.0 → 1.1.0)  # 새 기능 추가
-  ○ major (1.0.0 → 2.0.0)  # Breaking change
+? What kind of change is this for @msq-relayer/relay-api?
+  ○ patch (0.0.1 → 0.0.2)  # 버그 수정, 사소한 변경
+  ● minor (0.0.1 → 0.1.0)  # 새 기능 추가
+  ○ major (0.0.1 → 1.0.0)  # Breaking change
 
 ? Summary: Added new authentication feature
 ```
@@ -112,12 +143,12 @@ pnpm changeset
 ```markdown
 ---
 "@msq-relayer/relay-api": minor
-"@msq-relayer/queue-consumer": minor
-"@msq-relayer/relayer-discovery": minor
 ---
 
 Added new authentication feature
 ```
+
+> **Note:** 독립 버전 관리이므로 변경되지 않은 패키지는 선택하지 않아도 됩니다.
 
 #### Step 2: PR 생성 및 머지
 
@@ -297,10 +328,10 @@ docker pull 347765734000.dkr.ecr.ap-northeast-2.amazonaws.com/relayer-service/re
 docker pull 347765734000.dkr.ecr.ap-northeast-2.amazonaws.com/relayer-service/queue-consumer:nightly
 docker pull 347765734000.dkr.ecr.ap-northeast-2.amazonaws.com/relayer-service/relayer-discovery:nightly
 
-# Release 이미지 Pull
-docker pull 347765734000.dkr.ecr.ap-northeast-2.amazonaws.com/relayer-service/relay-api:v1.0.0
-docker pull 347765734000.dkr.ecr.ap-northeast-2.amazonaws.com/relayer-service/queue-consumer:v1.0.0
-docker pull 347765734000.dkr.ecr.ap-northeast-2.amazonaws.com/relayer-service/relayer-discovery:v1.0.0
+# Release 이미지 Pull (각 패키지별 버전 확인 필요)
+docker pull 347765734000.dkr.ecr.ap-northeast-2.amazonaws.com/relayer-service/relay-api:v0.1.0
+docker pull 347765734000.dkr.ecr.ap-northeast-2.amazonaws.com/relayer-service/queue-consumer:v0.0.1
+docker pull 347765734000.dkr.ecr.ap-northeast-2.amazonaws.com/relayer-service/relayer-discovery:v0.0.1
 ```
 
 ## ECR Lifecycle Policy (권장)
@@ -339,4 +370,4 @@ docker pull 347765734000.dkr.ecr.ap-northeast-2.amazonaws.com/relayer-service/re
 ---
 
 **Last Updated**: 2026-01-23
-**Version**: 1.0.0
+**Version**: 2.0.0 (Independent versioning)

@@ -91,13 +91,13 @@ jobs:
             local VERSION=$(jq -r '.version' "packages/${PKG}/package.json")
             local TAGS=""
 
-            if [ "$TAG_TYPE" = "release" ] && [ -n "$RELEASE_VERSION" ]; then
-              local VER="${RELEASE_VERSION#v}"
+            if [ "$TAG_TYPE" = "release" ]; then
+              # Use package's own version (independent versioning)
+              local VER="$VERSION"
               local MAJOR=$(echo "$VER" | cut -d. -f1)
               local MINOR=$(echo "$VER" | cut -d. -f2)
               TAGS="${REGISTRY}/${PKG}:v${VER}"
               TAGS="${TAGS},${REGISTRY}/${PKG}:v${MAJOR}.${MINOR}"
-              TAGS="${TAGS},${REGISTRY}/${PKG}:v${MAJOR}"
               TAGS="${TAGS},${REGISTRY}/${PKG}:stable"
             else
               TAGS="${REGISTRY}/${PKG}:${VERSION}-nightly"
