@@ -59,7 +59,7 @@ docker compose -f docker/docker-compose.yaml down
 | Service | Command | Purpose |
 |---------|---------|---------|
 | contracts-init | Auto-runs on `docker compose up` | Deploy contracts to Hardhat node (runs once) |
-| integration-tests | `docker compose run --rm integration-tests` | Run integration tests (manual profile) |
+| integration-tests | `docker compose -f docker/docker-compose.yaml run --rm integration-tests` | Run integration tests (manual profile) |
 
 **contracts-init**: Automatically deploys ERC2771Forwarder, SampleToken, and SampleNFT to the local Hardhat node when starting services. Runs once and exits (`restart: "no"`).
 
