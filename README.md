@@ -33,7 +33,7 @@ cp -R docker/keys-example docker/keys
 docker compose -f docker/docker-compose.yaml up -d
 
 # 3. Health check
-curl http://localhost:3000/api/v1/health
+curl http://localhost:8080/api/v1/health
 
 # View logs
 docker compose -f docker/docker-compose.yaml logs -f relay-api
@@ -46,19 +46,38 @@ docker compose -f docker/docker-compose.yaml down
 
 | Service | URL | Purpose |
 |---------|-----|---------|
-| API Gateway | http://localhost:3000 | REST API, Swagger UI |
-| Swagger Docs | http://localhost:3000/api/docs | Interactive API documentation |
+| API Gateway | http://localhost:8080 | REST API, Swagger UI |
+| Swagger Docs | http://localhost:8080/api/docs | Interactive API documentation |
 | Relayer Discovery | http://localhost:3001 | Dynamic oz-relayer health monitoring (SPEC-DISCOVERY-001) |
 | Hardhat Node | http://localhost:8545 | Local blockchain |
 | LocalStack | http://localhost:4566 | AWS SQS emulation |
 | Redis | localhost:6379 | Cache & Queue |
 | MySQL | localhost:3307 | Transaction storage |
 
+### Init & Test Services
+
+| Service | Command | Purpose |
+|---------|---------|---------|
+| contracts-init | Auto-runs on `docker compose up` | Deploy contracts to Hardhat node (runs once) |
+| integration-tests | `docker compose -f docker/docker-compose.yaml run --rm integration-tests` | Run integration tests (manual profile) |
+
+**contracts-init**: Automatically deploys ERC2771Forwarder, SampleToken, and SampleNFT to the local Hardhat node when starting services. Runs once and exits (`restart: "no"`).
+
+**integration-tests**: Runs E2E tests against the running services. Must be executed manually:
+
+```bash
+# Run all integration tests
+docker compose -f docker/docker-compose.yaml run --rm integration-tests
+
+# Run specific test
+docker compose -f docker/docker-compose.yaml run --rm integration-tests pnpm test -- --testNamePattern="direct transaction"
+```
+
 ### API Example
 
 ```bash
 # Direct Transaction
-curl -X POST http://localhost:3000/api/v1/relay/direct \
+curl -X POST http://localhost:8080/api/v1/relay/direct \
   -H "Content-Type: application/json" \
   -H "X-API-Key: local-dev-api-key" \
   -d '{"to": "0x5FbDB2315678afecb367f032d93F642f64180aa3", "data": "0x", "value": "0"}'
@@ -71,7 +90,7 @@ curl -X POST http://localhost:3000/api/v1/relay/direct \
 }
 
 # Query Status
-curl http://localhost:3000/api/v1/relay/status/550e8400-e29b-41d4-a716-446655440000 \
+curl http://localhost:8080/api/v1/relay/status/550e8400-e29b-41d4-a716-446655440000 \
   -H "X-API-Key: local-dev-api-key"
 
 # Expected Response
@@ -306,7 +325,7 @@ pnpm --filter @msq-relayer/relay-api run start:dev
 pnpm --filter @msq-relayer/queue-consumer run start:dev
 
 # 5. Test API
-curl -X POST http://localhost:3000/api/v1/relay/direct \
+curl -X POST http://localhost:8080/api/v1/relay/direct \
   -H "Content-Type: application/json" \
   -H "X-API-Key: local-dev-api-key" \
   -d '{"to":"0x5FbDB2315678afecb367f032d93F642f64180aa3","data":"0x"}'
@@ -512,7 +531,7 @@ GET /api/v1/health
 
 ```bash
 # API Gateway
-curl http://localhost:3000/api/v1/health
+curl http://localhost:8080/api/v1/health
 
 # Relayer Discovery (Active relayer status)
 curl http://localhost:3001/status

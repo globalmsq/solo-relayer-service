@@ -5,7 +5,7 @@
 ```yaml
 id: SPEC-HEALTH-001
 title: Health Check Endpoint Implementation with @nestjs/terminus Pattern
-status: pending
+status: completed
 priority: high
 created: 2025-12-17
 updated: 2025-12-17

@@ -1,7 +1,7 @@
 ---
 id: SPEC-DISCOVERY-001
 version: "1.0.2"
-status: "draft"
+status: "completed"
 created: "2026-01-17"
 updated: "2026-01-20"
 author: "MoAI-ADK"

@@ -2,7 +2,7 @@
 id: SPEC-CONTRACTS-001
 title: Smart Contracts Package and ERC2771Forwarder Deployment Scripts
 domain: CONTRACTS
-status: pending
+status: completed
 priority: high
 created_at: 2025-12-18
 updated_at: 2025-12-18

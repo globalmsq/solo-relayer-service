@@ -1,7 +1,7 @@
 ---
 id: SPEC-DEPLOY-001
 version: "1.0.0"
-status: "draft"
+status: "completed"
 created: "2024-12-25"
 updated: "2024-12-25"
 author: "@user"
