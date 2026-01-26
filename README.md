@@ -33,7 +33,7 @@ cp -R docker/keys-example docker/keys
 docker compose -f docker/docker-compose.yaml up -d
 
 # 3. Health check
-curl http://localhost:3000/api/v1/health
+curl http://localhost:8080/api/v1/health
 
 # View logs
 docker compose -f docker/docker-compose.yaml logs -f relay-api
@@ -77,7 +77,7 @@ docker compose -f docker/docker-compose.yaml run --rm integration-tests pnpm tes
 
 ```bash
 # Direct Transaction
-curl -X POST http://localhost:3000/api/v1/relay/direct \
+curl -X POST http://localhost:8080/api/v1/relay/direct \
   -H "Content-Type: application/json" \
   -H "X-API-Key: local-dev-api-key" \
   -d '{"to": "0x5FbDB2315678afecb367f032d93F642f64180aa3", "data": "0x", "value": "0"}'
@@ -90,7 +90,7 @@ curl -X POST http://localhost:3000/api/v1/relay/direct \
 }
 
 # Query Status
-curl http://localhost:3000/api/v1/relay/status/550e8400-e29b-41d4-a716-446655440000 \
+curl http://localhost:8080/api/v1/relay/status/550e8400-e29b-41d4-a716-446655440000 \
   -H "X-API-Key: local-dev-api-key"
 
 # Expected Response
@@ -325,7 +325,7 @@ pnpm --filter @msq-relayer/relay-api run start:dev
 pnpm --filter @msq-relayer/queue-consumer run start:dev
 
 # 5. Test API
-curl -X POST http://localhost:3000/api/v1/relay/direct \
+curl -X POST http://localhost:8080/api/v1/relay/direct \
   -H "Content-Type: application/json" \
   -H "X-API-Key: local-dev-api-key" \
   -d '{"to":"0x5FbDB2315678afecb367f032d93F642f64180aa3","data":"0x"}'
@@ -531,7 +531,7 @@ GET /api/v1/health
 
 ```bash
 # API Gateway
-curl http://localhost:3000/api/v1/health
+curl http://localhost:8080/api/v1/health
 
 # Relayer Discovery (Active relayer status)
 curl http://localhost:3001/status
