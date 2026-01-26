@@ -46,13 +46,32 @@ docker compose -f docker/docker-compose.yaml down
 
 | Service | URL | Purpose |
 |---------|-----|---------|
-| API Gateway | http://localhost:3000 | REST API, Swagger UI |
-| Swagger Docs | http://localhost:3000/api/docs | Interactive API documentation |
+| API Gateway | http://localhost:8080 | REST API, Swagger UI |
+| Swagger Docs | http://localhost:8080/api/docs | Interactive API documentation |
 | Relayer Discovery | http://localhost:3001 | Dynamic oz-relayer health monitoring (SPEC-DISCOVERY-001) |
 | Hardhat Node | http://localhost:8545 | Local blockchain |
 | LocalStack | http://localhost:4566 | AWS SQS emulation |
 | Redis | localhost:6379 | Cache & Queue |
 | MySQL | localhost:3307 | Transaction storage |
+
+### Init & Test Services
+
+| Service | Command | Purpose |
+|---------|---------|---------|
+| contracts-init | Auto-runs on `docker compose up` | Deploy contracts to Hardhat node (runs once) |
+| integration-tests | `docker compose run --rm integration-tests` | Run integration tests (manual profile) |
+
+**contracts-init**: Automatically deploys ERC2771Forwarder, SampleToken, and SampleNFT to the local Hardhat node when starting services. Runs once and exits (`restart: "no"`).
+
+**integration-tests**: Runs E2E tests against the running services. Must be executed manually:
+
+```bash
+# Run all integration tests
+docker compose -f docker/docker-compose.yaml run --rm integration-tests
+
+# Run specific test
+docker compose -f docker/docker-compose.yaml run --rm integration-tests pnpm test -- --testNamePattern="direct transaction"
+```
 
 ### API Example
 
