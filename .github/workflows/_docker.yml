@@ -58,7 +58,7 @@ jobs:
           echo "Affected packages: $AFFECTED"
 
           # Set individual flags for each package
-          for pkg in relay-api queue-consumer relayer-discovery; do
+          for pkg in relay-api queue-consumer relayer-discovery contracts integration-tests; do
             pkg_var=$(echo "$pkg" | tr '-' '_')
             if echo "$AFFECTED" | grep -q "$pkg"; then
               echo "${pkg_var}=true" >> $GITHUB_OUTPUT
@@ -112,6 +112,8 @@ jobs:
           echo "relay_api=$(generate_tags relay-api)" >> $GITHUB_OUTPUT
           echo "queue_consumer=$(generate_tags queue-consumer)" >> $GITHUB_OUTPUT
           echo "relayer_discovery=$(generate_tags relayer-discovery)" >> $GITHUB_OUTPUT
+          echo "contracts=$(generate_tags contracts)" >> $GITHUB_OUTPUT
+          echo "integration_tests=$(generate_tags integration-tests)" >> $GITHUB_OUTPUT
 
           echo "Generated tags for tag-type=$TAG_TYPE"
 
@@ -167,6 +169,30 @@ jobs:
           cache-to: type=gha,mode=max,scope=relayer-discovery
           tags: ${{ steps.tags.outputs.relayer_discovery }}
 
+      - name: Build and push contracts-deploy
+        if: steps.affected.outputs.contracts == 'true'
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: docker/Dockerfile.packages
+          target: contracts-deploy
+          push: ${{ inputs.push }}
+          cache-from: type=gha,scope=contracts
+          cache-to: type=gha,mode=max,scope=contracts
+          tags: ${{ steps.tags.outputs.contracts }}
+
+      - name: Build and push integration-tests
+        if: steps.affected.outputs.integration_tests == 'true'
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: docker/Dockerfile.packages
+          target: integration-tests
+          push: ${{ inputs.push }}
+          cache-from: type=gha,scope=integration-tests
+          cache-to: type=gha,mode=max,scope=integration-tests
+          tags: ${{ steps.tags.outputs.integration_tests }}
+
       - name: Summary
         run: |
           echo "## Docker Build Summary" >> $GITHUB_STEP_SUMMARY
@@ -193,4 +219,16 @@ jobs:
             echo "| relayer-discovery | ✅ | \`${{ steps.tags.outputs.relayer_discovery }}\` |" >> $GITHUB_STEP_SUMMARY
           else
             echo "| relayer-discovery | ⏭️ skipped | - |" >> $GITHUB_STEP_SUMMARY
+          fi
+
+          if [ "${{ steps.affected.outputs.contracts }}" = "true" ]; then
+            echo "| contracts | ✅ | \`${{ steps.tags.outputs.contracts }}\` |" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "| contracts | ⏭️ skipped | - |" >> $GITHUB_STEP_SUMMARY
+          fi
+
+          if [ "${{ steps.affected.outputs.integration_tests }}" = "true" ]; then
+            echo "| integration-tests | ✅ | \`${{ steps.tags.outputs.integration_tests }}\` |" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "| integration-tests | ⏭️ skipped | - |" >> $GITHUB_STEP_SUMMARY
           fi
