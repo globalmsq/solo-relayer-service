@@ -45,7 +45,7 @@ pnpm deploy:local
 pnpm deploy
 ```
 
-**Creates**: ERC2771Forwarder at deterministic address
+**Creates**: ERC2771Forwarder (address is displayed in deployment output and saved to `deployments/{network}/forwarder.json`)
 
 ### 3. Call Relayer API with Gasless Transaction
 
