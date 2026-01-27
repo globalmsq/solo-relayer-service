@@ -611,26 +611,28 @@ To run Hardhat Node without Docker:
 
 ```bash
 cd packages/contracts
-npx hardhat node
+pnpm node
 ```
 
 This starts a local Hardhat network on `http://localhost:8545`.
 
-### Smart Contract Deployment via Hardhat
+### Smart Contract Deployment
 
-Deploy contracts to Hardhat Node:
+> **📘 Deployment Commands**: For detailed deployment options including selective contract deployment via environment variables, see the [packages/contracts/README.md](../packages/contracts/README.md#unified-deployment-spec-contracts-002).
+
+**Quick Reference:**
 
 ```bash
 cd packages/contracts
 
-# Deploy ERC2771Forwarder
-npx hardhat run scripts/deploy-forwarder.ts --network localhost
+# Deploy all contracts (local development)
+DEPLOY_FORWARDER=true DEPLOY_SAMPLE_TOKEN=true DEPLOY_SAMPLE_NFT=true pnpm deploy
 
-# Deploy sample contracts (SampleToken, SampleNFT)
-npx hardhat run scripts/deploy-samples.ts --network localhost
+# Deploy Forwarder only (production)
+pnpm deploy
 
 # Run tests
-npx hardhat test
+pnpm test
 ```
 
 See [SPEC-CONTRACTS-001](../.moai/specs/SPEC-CONTRACTS-001/spec.md) for detailed contract specifications.

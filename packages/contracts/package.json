@@ -8,6 +8,7 @@
     "test": "hardhat test",
     "test:coverage": "hardhat coverage",
     "node": "hardhat node --hostname 0.0.0.0",
+    "deploy": "hardhat run scripts/deploy.ts --network external",
     "deploy:local": "hardhat run scripts/deploy-samples.ts --network external",
     "deploy:forwarder": "hardhat run scripts/deploy-forwarder.ts --network external",
     "verify": "hardhat verify --network external",

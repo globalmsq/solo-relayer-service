@@ -113,8 +113,16 @@ RUN sed -i 's/optional=false/optional=true/' /app/.npmrc && pnpm install --force
 ENV RPC_URL=http://hardhat-node:8545
 ENV CHAIN_ID=31337
 
-# Deploy contracts to localhost
-CMD ["pnpm", "run", "deploy:local"]
+# Contract deployment flags (SPEC-CONTRACTS-002)
+# DEPLOY_FORWARDER: default true (required for meta-transactions)
+# DEPLOY_SAMPLE_TOKEN: default false (development/testing only)
+# DEPLOY_SAMPLE_NFT: default false (development/testing only)
+ENV DEPLOY_FORWARDER=true
+ENV DEPLOY_SAMPLE_TOKEN=false
+ENV DEPLOY_SAMPLE_NFT=false
+
+# Deploy contracts using unified deploy script
+CMD ["pnpm", "run", "deploy"]
 
 # ============================================================================
 # QUEUE-CONSUMER TARGET: SQS Consumer Service (SPEC-QUEUE-001)
