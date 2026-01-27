@@ -59,6 +59,11 @@ services:
   # === Contracts Deployment (Standalone mode only) ===
   # Use profile "standalone" to deploy own contracts
   # Default: uses contracts deployed by msqpay-monorepo
+  # === Contracts Deployment (SPEC-CONTRACTS-002) ===
+  # Supports selective deployment via environment variables:
+  # - DEPLOY_FORWARDER: Deploy ERC2771Forwarder (default: true)
+  # - DEPLOY_SAMPLE_TOKEN: Deploy SampleToken (default: false for production, true for local)
+  # - DEPLOY_SAMPLE_NFT: Deploy SampleNFT (default: false for production, true for local)
   contracts-init:
     build:
       context: ..
@@ -72,6 +77,10 @@ services:
       CHAIN_ID: 31337
       # Hardhat Account #0 (well-known test key, no real funds)
       PRIVATE_KEY: "0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80"
+      # Local development: deploy all contracts
+      DEPLOY_FORWARDER: "true"
+      DEPLOY_SAMPLE_TOKEN: "true"
+      DEPLOY_SAMPLE_NFT: "true"
     networks:
       - msq-relayer-network
     restart: "no"

@@ -24,33 +24,28 @@ This guide explains how to use MSQ Relayer Service smart contracts for gasless t
 
 ## Quick Start
 
-### 1. Deploy Forwarder to Hardhat (Local Development)
+> **📘 Deployment Commands**: For detailed deployment commands and options, see the [packages/contracts/README.md](../packages/contracts/README.md#unified-deployment-spec-contracts-002).
+
+### 1. Deploy to Hardhat (Local Development)
 
 ```bash
 cd packages/contracts
-npx hardhat run scripts/deploy-forwarder.ts --network localhost
+
+# Deploy all contracts (Forwarder + SampleToken + SampleNFT)
+DEPLOY_FORWARDER=true DEPLOY_SAMPLE_TOKEN=true DEPLOY_SAMPLE_NFT=true pnpm deploy
+
+# Or use the convenience script
+pnpm deploy:local
 ```
 
-**Output**:
-```json
-{
-  "address": "0x...",
-  "network": "localhost",
-  "chainId": 31337,
-  "name": "Relayer-Forwarder-localhost"
-}
-```
-
-### 2. Deploy Sample Contracts (Localhost Only)
+### 2. Deploy Forwarder Only (Production)
 
 ```bash
-npx hardhat run scripts/deploy-samples.ts --network localhost
+# Forwarder-only deployment (recommended for production)
+pnpm deploy
 ```
 
-**Creates**:
-- ERC2771Forwarder: `0x...`
-- SampleToken: `0x...`
-- SampleNFT: `0x...`
+**Creates**: ERC2771Forwarder (address is displayed in deployment output and saved to `deployments/{network}/forwarder.json`)
 
 ### 3. Call Relayer API with Gasless Transaction
 

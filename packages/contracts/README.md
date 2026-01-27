@@ -26,9 +26,41 @@ pnpm test:coverage
 # Start local Hardhat node
 pnpm node
 
-# In another terminal, deploy to localhost
+# In another terminal, deploy to localhost (all contracts)
 pnpm deploy:local
 ```
+
+### Unified Deployment (SPEC-CONTRACTS-002)
+
+The `pnpm deploy` command supports selective contract deployment via environment variables:
+
+```bash
+# Deploy only ERC2771Forwarder (default for production)
+DEPLOY_FORWARDER=true \
+DEPLOY_SAMPLE_TOKEN=false \
+DEPLOY_SAMPLE_NFT=false \
+pnpm deploy
+
+# Deploy all contracts (local development)
+DEPLOY_FORWARDER=true \
+DEPLOY_SAMPLE_TOKEN=true \
+DEPLOY_SAMPLE_NFT=true \
+pnpm deploy
+
+# Deploy Forwarder + SampleToken only
+DEPLOY_FORWARDER=true \
+DEPLOY_SAMPLE_TOKEN=true \
+pnpm deploy
+```
+
+**Environment Variable Defaults:**
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `DEPLOY_FORWARDER` | `true` | Deploy ERC2771Forwarder (required for meta-transactions) |
+| `DEPLOY_SAMPLE_TOKEN` | `false` | Deploy SampleToken (development/testing only) |
+| `DEPLOY_SAMPLE_NFT` | `false` | Deploy SampleNFT (development/testing only) |
+
+**Note:** SampleToken and SampleNFT require Forwarder. Attempting to deploy them without Forwarder will result in an error.
 
 ### Deployment to Testnet (Polygon Amoy)
 
@@ -151,8 +183,9 @@ pnpm test:coverage
 | `pnpm test` | Run tests (27 passing tests covering all functionality) |
 | `pnpm test:coverage` | Run tests with coverage report |
 | `pnpm node` | Start local Hardhat node |
-| `pnpm deploy:local` | Deploy sample contracts (SampleToken + SampleNFT) |
-| `pnpm deploy:forwarder` | Deploy ERC2771Forwarder |
+| `pnpm deploy` | Unified deployment (selective via `DEPLOY_*` env vars) |
+| `pnpm deploy:local` | Deploy all sample contracts (SampleToken + SampleNFT) |
+| `pnpm deploy:forwarder` | Deploy ERC2771Forwarder only |
 | `pnpm verify` | Verify contract on block explorer |
 | `pnpm clean` | Clean artifacts |
 | `pnpm typechain` | Generate TypeChain types |
@@ -179,8 +212,14 @@ contracts/              # Solidity source files
 │   ├── SampleToken.sol
 │   └── SampleNFT.sol
 scripts/                # Deployment scripts
-├── deploy-forwarder.ts
-├── deploy-samples.ts
+├── deploy.ts           # Unified entry point (SPEC-CONTRACTS-002)
+├── deploy-forwarder.ts # Legacy: Forwarder-only deployment
+├── deploy-samples.ts   # Legacy: Sample contracts deployment
+├── deployers/          # Modular deployer functions
+│   ├── index.ts        # Re-exports all deployers
+│   ├── forwarder.ts    # ERC2771Forwarder deployer
+│   ├── sample-token.ts # SampleToken deployer
+│   └── sample-nft.ts   # SampleNFT deployer
 └── utils/
 test/                   # Test files
 artifacts/              # Compiled contracts (generated)
