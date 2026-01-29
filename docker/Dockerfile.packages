@@ -66,16 +66,7 @@ CMD ["pnpm", "run", "start"]
 # ============================================================================
 FROM base AS hardhat-node
 
-# Copy contracts package
-COPY packages/contracts ./packages/contracts
-
-# Set working directory
-WORKDIR /app/packages/contracts
-
-# Install package-specific dependencies
-# Enable optional deps for solidity-analyzer platform binaries (override root .npmrc)
-# Use --force to skip interactive prompts in Docker build
-RUN sed -i 's/optional=false/optional=true/' /app/.npmrc && pnpm install --force
+WORKDIR /app
 
 # Expose JSON-RPC port
 EXPOSE 8545
@@ -89,8 +80,8 @@ ENV ACCOUNTS_TO_CREATE=20
 HEALTHCHECK --interval=10s --timeout=5s --retries=5 --start-period=10s \
     CMD curl -f http://localhost:8545 || exit 1
 
-# Start Hardhat Node
-CMD ["pnpm", "run", "node"]
+# Start Hardhat Node directly (no contracts package needed, contracts deployed by contracts-init)
+CMD ["npx", "hardhat", "node", "--hostname", "0.0.0.0"]
 
 # ============================================================================
 # CONTRACTS-DEPLOY TARGET: Deploy contracts to Hardhat Node
