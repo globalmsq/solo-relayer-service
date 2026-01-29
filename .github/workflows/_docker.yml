@@ -57,10 +57,19 @@ jobs:
           echo "packages=$AFFECTED" >> $GITHUB_OUTPUT
           echo "Affected packages: $AFFECTED"
 
+          # Check if Dockerfile changed (triggers all Docker builds)
+          DOCKERFILE_CHANGED=$(git diff --name-only HEAD~1 HEAD -- docker/Dockerfile.packages 2>/dev/null || echo "")
+          if [ -n "$DOCKERFILE_CHANGED" ]; then
+            echo "Dockerfile.packages changed - marking all Docker targets as affected"
+            echo "dockerfile_changed=true" >> $GITHUB_OUTPUT
+          else
+            echo "dockerfile_changed=false" >> $GITHUB_OUTPUT
+          fi
+
           # Set individual flags for each package
           for pkg in relay-api queue-consumer relayer-discovery contracts integration-tests hardhat-node; do
             pkg_var=$(echo "$pkg" | tr '-' '_')
-            if echo "$AFFECTED" | grep -q "$pkg"; then
+            if echo "$AFFECTED" | grep -q "$pkg" || [ -n "$DOCKERFILE_CHANGED" ]; then
               echo "${pkg_var}=true" >> $GITHUB_OUTPUT
             else
               echo "${pkg_var}=false" >> $GITHUB_OUTPUT
@@ -68,7 +77,7 @@ jobs:
           done
 
           # Check if any Docker build is needed
-          if [ -z "$AFFECTED" ]; then
+          if [ -z "$AFFECTED" ] && [ -z "$DOCKERFILE_CHANGED" ]; then
             echo "has_changes=false" >> $GITHUB_OUTPUT
             echo "No affected packages found"
           else
