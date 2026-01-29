@@ -58,7 +58,7 @@ jobs:
           echo "Affected packages: $AFFECTED"
 
           # Set individual flags for each package
-          for pkg in relay-api queue-consumer relayer-discovery contracts integration-tests; do
+          for pkg in relay-api queue-consumer relayer-discovery contracts integration-tests hardhat-node; do
             pkg_var=$(echo "$pkg" | tr '-' '_')
             if echo "$AFFECTED" | grep -q "$pkg"; then
               echo "${pkg_var}=true" >> $GITHUB_OUTPUT
@@ -88,7 +88,12 @@ jobs:
           # Function to generate tags for a package
           generate_tags() {
             local PKG=$1
-            local VERSION=$(jq -r '.version' "packages/${PKG}/package.json")
+            local PKG_PATH=$PKG
+            # hardhat-node uses contracts version (no separate package.json)
+            if [ "$PKG" = "hardhat-node" ]; then
+              PKG_PATH="contracts"
+            fi
+            local VERSION=$(jq -r '.version' "packages/${PKG_PATH}/package.json")
             local TAGS=""
 
             if [ "$TAG_TYPE" = "release" ]; then
@@ -113,6 +118,7 @@ jobs:
           echo "queue_consumer=$(generate_tags queue-consumer)" >> $GITHUB_OUTPUT
           echo "relayer_discovery=$(generate_tags relayer-discovery)" >> $GITHUB_OUTPUT
           echo "contracts=$(generate_tags contracts)" >> $GITHUB_OUTPUT
+          echo "hardhat_node=$(generate_tags hardhat-node)" >> $GITHUB_OUTPUT
           echo "integration_tests=$(generate_tags integration-tests)" >> $GITHUB_OUTPUT
 
           echo "Generated tags for tag-type=$TAG_TYPE"
@@ -181,6 +187,18 @@ jobs:
           cache-to: type=gha,mode=max,scope=contracts
           tags: ${{ steps.tags.outputs.contracts }}
 
+      - name: Build and push hardhat-node
+        if: steps.affected.outputs.contracts == 'true' || steps.affected.outputs.hardhat_node == 'true'
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: docker/Dockerfile.packages
+          target: hardhat-node
+          push: ${{ inputs.push }}
+          cache-from: type=gha,scope=hardhat-node
+          cache-to: type=gha,mode=max,scope=hardhat-node
+          tags: ${{ steps.tags.outputs.hardhat_node }}
+
       - name: Build and push integration-tests
         if: steps.affected.outputs.integration_tests == 'true'
         uses: docker/build-push-action@v6
@@ -225,6 +243,12 @@ jobs:
             echo "| contracts | ✅ | \`${{ steps.tags.outputs.contracts }}\` |" >> $GITHUB_STEP_SUMMARY
           else
             echo "| contracts | ⏭️ skipped | - |" >> $GITHUB_STEP_SUMMARY
+          fi
+
+          if [ "${{ steps.affected.outputs.contracts }}" = "true" ] || [ "${{ steps.affected.outputs.hardhat_node }}" = "true" ]; then
+            echo "| hardhat-node | ✅ | \`${{ steps.tags.outputs.hardhat_node }}\` |" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "| hardhat-node | ⏭️ skipped | - |" >> $GITHUB_STEP_SUMMARY
           fi
 
           if [ "${{ steps.affected.outputs.integration_tests }}" = "true" ]; then
