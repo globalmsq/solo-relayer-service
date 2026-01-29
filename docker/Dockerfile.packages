@@ -70,10 +70,11 @@ FROM base AS hardhat-node
 WORKDIR /app
 
 # Install hardhat for running the node (not in root package.json)
-RUN pnpm add -w hardhat
+# Set type=module for ESM support required by Hardhat
+RUN pnpm add -w hardhat && npm pkg set type="module"
 
-# Create minimal hardhat config for running the node
-RUN echo 'module.exports = { networks: { hardhat: { chainId: 31337, accounts: { count: 20, accountsBalance: "10000000000000000000000" } } } };' > hardhat.config.js
+# Create minimal hardhat config for running the node (ESM format, Hardhat v3+)
+RUN echo 'export default { networks: { hardhat: { type: "edr-simulated", chainId: 31337, accounts: { count: 20, accountsBalance: "10000000000000000000000" } } } };' > hardhat.config.js
 
 # Expose JSON-RPC port
 EXPOSE 8545
