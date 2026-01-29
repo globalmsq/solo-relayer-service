@@ -68,6 +68,9 @@ FROM base AS hardhat-node
 
 WORKDIR /app
 
+# Install hardhat for running the node (not in root package.json)
+RUN pnpm add hardhat
+
 # Expose JSON-RPC port
 EXPOSE 8545
 
