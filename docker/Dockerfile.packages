@@ -63,6 +63,7 @@ CMD ["pnpm", "run", "start"]
 
 # ============================================================================
 # HARDHAT-NODE TARGET: Local blockchain environment
+# Minimal image - hardhat installed directly, contracts deployed by contracts-init
 # ============================================================================
 FROM base AS hardhat-node
 
