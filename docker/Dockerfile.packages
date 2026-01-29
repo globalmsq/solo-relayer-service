@@ -81,7 +81,7 @@ HEALTHCHECK --interval=10s --timeout=5s --retries=5 --start-period=10s \
     CMD curl -f http://localhost:8545 || exit 1
 
 # Start Hardhat Node directly (no contracts package needed, contracts deployed by contracts-init)
-CMD ["npx", "hardhat", "node", "--hostname", "0.0.0.0"]
+CMD ["pnpm", "exec", "hardhat", "node", "--hostname", "0.0.0.0"]
 
 # ============================================================================
 # CONTRACTS-DEPLOY TARGET: Deploy contracts to Hardhat Node
