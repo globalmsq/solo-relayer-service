@@ -37,6 +37,7 @@ interface RelayerInfo {
 export class RelayerRouterService implements OnModuleInit {
   private readonly logger = new Logger(RelayerRouterService.name);
   private readonly apiKey: string;
+  private readonly dnsSuffix: string;
 
   // Fallback relayer URLs from environment config
   private readonly fallbackRelayerUrls: string[];
@@ -78,6 +79,8 @@ export class RelayerRouterService implements OnModuleInit {
     this.fallbackRelayerUrls = urlsConfig
       ? urlsConfig.split(",").map((url) => url.trim())
       : [singleUrl];
+
+    this.dnsSuffix = this.configService.get<string>("relayer.dnsSuffix") || "";
 
     this.apiKey =
       this.configService.get<string>("relayer.apiKey") ||
@@ -126,7 +129,7 @@ export class RelayerRouterService implements OnModuleInit {
         // Construct URLs from Redis hostnames (e.g., oz-relayer-0 -> http://oz-relayer-0:8080)
         this.currentRelayerUrls = activeRelayers
           .sort() // Sort for consistent ordering
-          .map((hostname) => `http://${hostname}:${this.RELAYER_PORT}`);
+          .map((hostname) => `http://${hostname}${this.dnsSuffix}:${this.RELAYER_PORT}`);
 
         // Update cache timestamp on success
         this.activeRelayersCacheTime = now;
