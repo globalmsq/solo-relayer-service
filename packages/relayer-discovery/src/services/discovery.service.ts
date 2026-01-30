@@ -18,6 +18,7 @@ export class DiscoveryService implements OnModuleInit, OnModuleDestroy {
 
   private readonly relayerCount: number;
   private readonly relayerPort: number;
+  private readonly relayerDnsSuffix: string;
   private readonly relayerApiKey: string;
   private readonly healthCheckInterval: number;
   private readonly healthCheckTimeout: number;
@@ -31,6 +32,8 @@ export class DiscoveryService implements OnModuleInit, OnModuleDestroy {
       "discovery.relayerCount",
     )!;
     this.relayerPort = this.configService.get<number>("discovery.relayerPort")!;
+    this.relayerDnsSuffix =
+      this.configService.get<string>("discovery.relayerDnsSuffix") || "";
     this.relayerApiKey =
       this.configService.get<string>("discovery.relayerApiKey") || "";
     this.healthCheckInterval = this.configService.get<number>(
@@ -163,7 +166,7 @@ export class DiscoveryService implements OnModuleInit, OnModuleDestroy {
   }
 
   private constructHealthUrl(relayerId: string): string {
-    return `http://${relayerId}:${this.relayerPort}/api/v1/relayers`;
+    return `http://${relayerId}${this.relayerDnsSuffix}:${this.relayerPort}/api/v1/relayers`;
   }
 
   private determineOverallStatus(

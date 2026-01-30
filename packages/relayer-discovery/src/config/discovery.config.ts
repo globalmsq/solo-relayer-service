@@ -3,6 +3,7 @@ import { registerAs } from "@nestjs/config";
 export interface DiscoveryConfig {
   relayerCount: number;
   relayerPort: number;
+  relayerDnsSuffix: string;
   relayerApiKey: string;
   healthCheckInterval: number;
   healthCheckTimeout: number;
@@ -26,6 +27,7 @@ function validateRange(
 export default registerAs("discovery", (): DiscoveryConfig => {
   const relayerCount = parseInt(process.env.RELAYER_COUNT || "3", 10);
   const relayerPort = parseInt(process.env.RELAYER_PORT || "8080", 10);
+  const relayerDnsSuffix = process.env.RELAYER_DNS_SUFFIX || "";
   const relayerApiKey = process.env.OZ_RELAYER_API_KEY || "";
   const healthCheckInterval = parseInt(
     process.env.HEALTH_CHECK_INTERVAL_MS || "10000",
@@ -45,6 +47,7 @@ export default registerAs("discovery", (): DiscoveryConfig => {
   return {
     relayerCount,
     relayerPort,
+    relayerDnsSuffix,
     relayerApiKey,
     healthCheckInterval,
     healthCheckTimeout,
