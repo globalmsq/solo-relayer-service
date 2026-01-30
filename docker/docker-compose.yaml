@@ -299,6 +299,12 @@ services:
       HEALTH_CHECK_TIMEOUT_MS: 500
       REDIS_HOST: redis
       REDIS_PORT: 6379
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3001/status"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 15s
     networks:
       - msq-relayer-network
     restart: unless-stopped
@@ -353,6 +359,7 @@ services:
   # === Integration Tests (profile: manual) ===
   # Run with: docker compose run --rm integration-tests
   # Note: Tests call relay-api via HTTP, no direct Redis/MySQL connection needed
+  # FIX: Added all relayer dependencies to prevent race conditions
   integration-tests:
     build:
       context: ..
@@ -364,18 +371,27 @@ services:
         condition: service_healthy
       oz-relayer-0:
         condition: service_healthy
+      oz-relayer-1:
+        condition: service_healthy
+      oz-relayer-2:
+        condition: service_healthy
+      queue-consumer:
+        condition: service_started
+      relayer-discovery:
+        condition: service_healthy
     environment:
       # Blockchain RPC for on-chain verification (balance, nonce, contract calls)
       RPC_URL: ${RPC_URL:-http://hardhat-node:8545}
       CHAIN_ID: 31337
       # Forwarder address for EIP-712 signing
       FORWARDER_ADDRESS: ${FORWARDER_ADDRESS:-0x5FbDB2315678afecb367f032d93F642f64180aa3}
+      # Sample Contracts (optional - defaults to Hardhat addresses)
+      SAMPLE_TOKEN_ADDRESS: 0xe7f1725E7734CE288F8367e1Bb143E90bb3F0512
+      SAMPLE_NFT_ADDRESS: 0x9fE46736679d2D9a65F0992F2272dE9f3c7fa6e0
       # Relay API endpoint (tests call via HTTP, not direct import)
       RELAY_API_URL: http://relay-api:8080
       RELAY_API_KEY: ${RELAY_API_KEY:-local-dev-api-key}
-      # OZ Relayer for direct relayer status checks
-      OZ_RELAYER_URL: http://oz-relayer-0:8080
-      OZ_RELAYER_API_KEY: ${OZ_RELAYER_API_KEY:-oz-relayer-shared-api-key-local-dev}
+
     networks:
       - msq-relayer-network
       - msq-network
