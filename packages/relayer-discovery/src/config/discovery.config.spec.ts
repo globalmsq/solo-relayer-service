@@ -216,6 +216,7 @@ describe("discoveryConfig", () => {
       expect(config).toEqual({
         relayerCount: 3,
         relayerPort: 8080,
+        relayerDnsSuffix: "",
         relayerApiKey: "test-api-key",
         healthCheckInterval: 10000,
         healthCheckTimeout: 500,
