@@ -1,0 +1,278 @@
+name: Docker Manual Build
+
+on:
+  workflow_dispatch:
+    inputs:
+      image:
+        description: 'Select image to build'
+        required: true
+        type: choice
+        options:
+          - all
+          - relay-api
+          - queue-consumer
+          - relayer-discovery
+          - contracts-deploy
+          - hardhat-node
+          - integration-tests
+      push:
+        description: 'Push to ECR'
+        required: true
+        type: boolean
+        default: true
+      tag-type:
+        description: 'Tag type'
+        required: true
+        type: choice
+        options:
+          - nightly
+          - release
+        default: nightly
+
+env:
+  NODE_VERSION: "24"
+  PNPM_VERSION: "9.15.1"
+  AWS_REGION: "ap-northeast-2"
+  ECR_REGISTRY: "347765734000.dkr.ecr.ap-northeast-2.amazonaws.com/relayer-service"
+
+jobs:
+  docker-manual:
+    name: Manual Build & Push
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup
+        uses: ./.github/actions/setup-node-pnpm
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          pnpm-version: ${{ env.PNPM_VERSION }}
+
+      - name: Determine build targets
+        id: targets
+        run: |
+          IMAGE="${{ inputs.image }}"
+          echo "Selected image: $IMAGE"
+
+          # Set build flags based on selection
+          if [ "$IMAGE" = "all" ] || [ "$IMAGE" = "relay-api" ]; then
+            echo "relay_api=true" >> $GITHUB_OUTPUT
+          else
+            echo "relay_api=false" >> $GITHUB_OUTPUT
+          fi
+
+          if [ "$IMAGE" = "all" ] || [ "$IMAGE" = "queue-consumer" ]; then
+            echo "queue_consumer=true" >> $GITHUB_OUTPUT
+          else
+            echo "queue_consumer=false" >> $GITHUB_OUTPUT
+          fi
+
+          if [ "$IMAGE" = "all" ] || [ "$IMAGE" = "relayer-discovery" ]; then
+            echo "relayer_discovery=true" >> $GITHUB_OUTPUT
+          else
+            echo "relayer_discovery=false" >> $GITHUB_OUTPUT
+          fi
+
+          if [ "$IMAGE" = "all" ] || [ "$IMAGE" = "contracts-deploy" ]; then
+            echo "contracts=true" >> $GITHUB_OUTPUT
+          else
+            echo "contracts=false" >> $GITHUB_OUTPUT
+          fi
+
+          if [ "$IMAGE" = "all" ] || [ "$IMAGE" = "hardhat-node" ]; then
+            echo "hardhat_node=true" >> $GITHUB_OUTPUT
+          else
+            echo "hardhat_node=false" >> $GITHUB_OUTPUT
+          fi
+
+          if [ "$IMAGE" = "all" ] || [ "$IMAGE" = "integration-tests" ]; then
+            echo "integration_tests=true" >> $GITHUB_OUTPUT
+          else
+            echo "integration_tests=false" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Extract versions and generate tags
+        id: tags
+        run: |
+          REGISTRY="${{ env.ECR_REGISTRY }}"
+          DATE=$(date +'%Y%m%d')
+          SHA_SHORT=$(echo "${{ github.sha }}" | cut -c1-8)
+          TAG_TYPE="${{ inputs.tag-type }}"
+
+          # Function to generate tags for a package
+          generate_tags() {
+            local PKG=$1
+            local PKG_PATH=$PKG
+            # hardhat-node uses contracts version (no separate package.json)
+            if [ "$PKG" = "hardhat-node" ]; then
+              PKG_PATH="contracts"
+            fi
+            local VERSION=$(jq -r '.version' "packages/${PKG_PATH}/package.json")
+            local TAGS=""
+
+            if [ "$TAG_TYPE" = "release" ]; then
+              # Use package's own version (independent versioning)
+              local VER="$VERSION"
+              local MAJOR=$(echo "$VER" | cut -d. -f1)
+              local MINOR=$(echo "$VER" | cut -d. -f2)
+              TAGS="${REGISTRY}/${PKG}:v${VER}"
+              TAGS="${TAGS},${REGISTRY}/${PKG}:v${MAJOR}.${MINOR}"
+              TAGS="${TAGS},${REGISTRY}/${PKG}:stable"
+            else
+              TAGS="${REGISTRY}/${PKG}:${VERSION}-nightly"
+              TAGS="${TAGS},${REGISTRY}/${PKG}:${VERSION}-nightly.${DATE}"
+              TAGS="${TAGS},${REGISTRY}/${PKG}:${SHA_SHORT}"
+              TAGS="${TAGS},${REGISTRY}/${PKG}:nightly"
+            fi
+            echo "$TAGS"
+          }
+
+          # Generate tags for each package
+          echo "relay_api=$(generate_tags relay-api)" >> $GITHUB_OUTPUT
+          echo "queue_consumer=$(generate_tags queue-consumer)" >> $GITHUB_OUTPUT
+          echo "relayer_discovery=$(generate_tags relayer-discovery)" >> $GITHUB_OUTPUT
+          echo "contracts=$(generate_tags contracts)" >> $GITHUB_OUTPUT
+          echo "hardhat_node=$(generate_tags hardhat-node)" >> $GITHUB_OUTPUT
+          echo "integration_tests=$(generate_tags integration-tests)" >> $GITHUB_OUTPUT
+
+          echo "Generated tags for tag-type=$TAG_TYPE"
+
+      - name: Configure AWS credentials
+        if: inputs.push
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Login to Amazon ECR
+        if: inputs.push
+        uses: aws-actions/amazon-ecr-login@v2
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build and push relay-api
+        if: steps.targets.outputs.relay_api == 'true'
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: docker/Dockerfile.packages
+          target: relay-api
+          push: ${{ inputs.push }}
+          cache-from: type=gha,scope=relay-api
+          cache-to: type=gha,mode=max,scope=relay-api
+          tags: ${{ steps.tags.outputs.relay_api }}
+
+      - name: Build and push queue-consumer
+        if: steps.targets.outputs.queue_consumer == 'true'
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: docker/Dockerfile.packages
+          target: queue-consumer
+          push: ${{ inputs.push }}
+          cache-from: type=gha,scope=queue-consumer
+          cache-to: type=gha,mode=max,scope=queue-consumer
+          tags: ${{ steps.tags.outputs.queue_consumer }}
+
+      - name: Build and push relayer-discovery
+        if: steps.targets.outputs.relayer_discovery == 'true'
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: docker/Dockerfile.packages
+          target: relayer-discovery
+          push: ${{ inputs.push }}
+          cache-from: type=gha,scope=relayer-discovery
+          cache-to: type=gha,mode=max,scope=relayer-discovery
+          tags: ${{ steps.tags.outputs.relayer_discovery }}
+
+      - name: Build and push contracts-deploy
+        if: steps.targets.outputs.contracts == 'true'
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: docker/Dockerfile.packages
+          target: contracts-deploy
+          push: ${{ inputs.push }}
+          cache-from: type=gha,scope=contracts
+          cache-to: type=gha,mode=max,scope=contracts
+          tags: ${{ steps.tags.outputs.contracts }}
+
+      - name: Build and push hardhat-node
+        if: steps.targets.outputs.hardhat_node == 'true'
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: docker/Dockerfile.packages
+          target: hardhat-node
+          push: ${{ inputs.push }}
+          cache-from: type=gha,scope=hardhat-node
+          cache-to: type=gha,mode=max,scope=hardhat-node
+          tags: ${{ steps.tags.outputs.hardhat_node }}
+
+      - name: Build and push integration-tests
+        if: steps.targets.outputs.integration_tests == 'true'
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: docker/Dockerfile.packages
+          target: integration-tests
+          push: ${{ inputs.push }}
+          cache-from: type=gha,scope=integration-tests
+          cache-to: type=gha,mode=max,scope=integration-tests
+          tags: ${{ steps.tags.outputs.integration_tests }}
+
+      - name: Summary
+        run: |
+          echo "## 🐳 Docker Manual Build Summary" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**Selected Image:** ${{ inputs.image }}" >> $GITHUB_STEP_SUMMARY
+          echo "**Tag Type:** ${{ inputs.tag-type }}" >> $GITHUB_STEP_SUMMARY
+          echo "**Push to ECR:** ${{ inputs.push }}" >> $GITHUB_STEP_SUMMARY
+          echo "**Triggered by:** @${{ github.actor }}" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### Build Results" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "| Package | Built | Tags |" >> $GITHUB_STEP_SUMMARY
+          echo "|---------|-------|------|" >> $GITHUB_STEP_SUMMARY
+
+          if [ "${{ steps.targets.outputs.relay_api }}" = "true" ]; then
+            echo "| relay-api | ✅ | \`${{ steps.tags.outputs.relay_api }}\` |" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "| relay-api | ⏭️ not selected | - |" >> $GITHUB_STEP_SUMMARY
+          fi
+
+          if [ "${{ steps.targets.outputs.queue_consumer }}" = "true" ]; then
+            echo "| queue-consumer | ✅ | \`${{ steps.tags.outputs.queue_consumer }}\` |" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "| queue-consumer | ⏭️ not selected | - |" >> $GITHUB_STEP_SUMMARY
+          fi
+
+          if [ "${{ steps.targets.outputs.relayer_discovery }}" = "true" ]; then
+            echo "| relayer-discovery | ✅ | \`${{ steps.tags.outputs.relayer_discovery }}\` |" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "| relayer-discovery | ⏭️ not selected | - |" >> $GITHUB_STEP_SUMMARY
+          fi
+
+          if [ "${{ steps.targets.outputs.contracts }}" = "true" ]; then
+            echo "| contracts-deploy | ✅ | \`${{ steps.tags.outputs.contracts }}\` |" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "| contracts-deploy | ⏭️ not selected | - |" >> $GITHUB_STEP_SUMMARY
+          fi
+
+          if [ "${{ steps.targets.outputs.hardhat_node }}" = "true" ]; then
+            echo "| hardhat-node | ✅ | \`${{ steps.tags.outputs.hardhat_node }}\` |" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "| hardhat-node | ⏭️ not selected | - |" >> $GITHUB_STEP_SUMMARY
+          fi
+
+          if [ "${{ steps.targets.outputs.integration_tests }}" = "true" ]; then
+            echo "| integration-tests | ✅ | \`${{ steps.tags.outputs.integration_tests }}\` |" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "| integration-tests | ⏭️ not selected | - |" >> $GITHUB_STEP_SUMMARY
+          fi
