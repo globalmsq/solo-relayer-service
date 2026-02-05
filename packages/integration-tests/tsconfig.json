@@ -20,7 +20,7 @@
     "esModuleInterop": true,
     "resolveJsonModule": true,
     "paths": {
-      "@msq-relayer/relay-api/*": ["../relay-api/*"]
+      "@solo-relayer/relay-api/*": ["../relay-api/*"]
     }
   },
   "include": ["src/**/*", "tests/**/*"],

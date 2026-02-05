@@ -8,7 +8,7 @@
 
 ## Overview
 
-This document covers the testing infrastructure for MSQ Relayer Service, including unit tests, E2E tests, integration tests, and load tests.
+This document covers the testing infrastructure for Solo Relayer Service, including unit tests, E2E tests, integration tests, and load tests.
 
 | Test Type | Purpose | Scope | Command |
 |-----------|---------|-------|---------|
@@ -512,7 +512,7 @@ Real transaction lifecycle verification on live blockchain (not mocked). Tests t
 | Scope | Submit → OZ Relayer → Blockchain → Mining → Confirmation |
 | Network | Hardhat local node (Docker Compose) |
 | TC Prefix | TC-TXL-xxx |
-| Package | `@msq-relayer/integration-tests` |
+| Package | `@solo-relayer/integration-tests` |
 
 ### Test Cases
 
@@ -535,10 +535,10 @@ Real transaction lifecycle verification on live blockchain (not mocked). Tests t
 docker compose -f docker/docker-compose.yaml up -d
 
 # Run lifecycle tests only
-pnpm --filter @msq-relayer/integration-tests test:lifecycle
+pnpm --filter @solo-relayer/integration-tests test:lifecycle
 
 # Run all integration tests
-pnpm --filter @msq-relayer/integration-tests test
+pnpm --filter @solo-relayer/integration-tests test
 ```
 
 ### Test Files

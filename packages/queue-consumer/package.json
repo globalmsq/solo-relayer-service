@@ -1,8 +1,8 @@
 {
-  "name": "@msq-relayer/queue-consumer",
+  "name": "@solo-relayer/queue-consumer",
   "version": "0.0.1",
   "private": true,
-  "description": "SQS Queue Consumer for MSQ Relayer Service",
+  "description": "SQS Queue Consumer for Solo Relayer Service",
   "main": "dist/main.js",
   "scripts": {
     "build": "nest build",

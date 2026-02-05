@@ -21,7 +21,7 @@ describe("SignatureVerifierService", () => {
             get: (key: string) => {
               if (key === "CHAIN_ID") return testChainId;
               if (key === "FORWARDER_ADDRESS") return testForwarder;
-              if (key === "FORWARDER_NAME") return "MSQForwarder";
+              if (key === "FORWARDER_NAME") return "SoloForwarder";
               return null;
             },
           },

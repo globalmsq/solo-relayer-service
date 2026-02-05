@@ -2,7 +2,7 @@
   "relayers": [
     {
       "id": "relayer-1",
-      "name": "MSQ Relayer 1 (Hardhat Account #11)",
+      "name": "Solo Relayer 1 (Hardhat Account #11)",
       "network": "hardhat",
       "network_type": "evm",
       "signer_id": "relayer-1-signer",

@@ -1,4 +1,4 @@
-# Multi-stage Dockerfile for MSQ Relayer Service
+# Multi-stage Dockerfile for Solo Relayer Service
 # Builds relay-api and hardhat-node targets
 
 # ============================================================================

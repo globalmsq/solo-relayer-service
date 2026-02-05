@@ -1,8 +1,8 @@
 {
-  "name": "@msq-relayer/relayer-discovery",
+  "name": "@solo-relayer/relayer-discovery",
   "version": "0.0.1",
   "private": true,
-  "description": "Relayer Discovery Service for MSQ Relayer Service",
+  "description": "Relayer Discovery Service for Solo Relayer Service",
   "main": "dist/main.js",
   "scripts": {
     "build": "nest build",

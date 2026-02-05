@@ -23,7 +23,7 @@ export class SignatureVerifierService {
    * Used for signature verification with ethers.js verifyTypedData()
    *
    * Domain parameters:
-   * - name: from FORWARDER_NAME env var (default: 'MSQForwarder')
+   * - name: from FORWARDER_NAME env var (default: 'SoloForwarder')
    *         MUST match the name used during ERC2771Forwarder deployment
    * - version: '1' (contract version)
    * - chainId: from configuration (network chain ID)
@@ -31,7 +31,7 @@ export class SignatureVerifierService {
    */
   private buildEIP712Domain(): TypedDataDomain {
     return {
-      name: this.configService.get<string>("FORWARDER_NAME") || "MSQForwarder",
+      name: this.configService.get<string>("FORWARDER_NAME") || "SoloForwarder",
       version: "1",
       chainId: this.configService.get<number>("CHAIN_ID") || 31337,
       verifyingContract: this.configService.get<string>("FORWARDER_ADDRESS"),

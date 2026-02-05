@@ -1,8 +1,8 @@
 {
-  "name": "@msq-relayer/integration-tests",
+  "name": "@solo-relayer/integration-tests",
   "version": "0.0.1",
   "private": true,
-  "description": "Integration tests for MSQ Relayer Service",
+  "description": "Integration tests for Solo Relayer Service",
   "scripts": {
     "test": "jest --runInBand",
     "test:amoy": "ENV_FILE=.env jest",

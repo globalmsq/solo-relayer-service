@@ -1,6 +1,6 @@
 # CI/CD Strategy
 
-MSQ Relayer Service의 CI/CD 파이프라인 및 버전 관리 전략을 설명합니다.
+Solo Relayer Service의 CI/CD 파이프라인 및 버전 관리 전략을 설명합니다.
 
 ## Overview
 
@@ -80,7 +80,7 @@ Changesets를 사용하여 monorepo의 버전을 관리합니다.
 // .changeset/config.json
 {
   "fixed": [],
-  "ignore": ["@msq-relayer/integration-tests"]
+  "ignore": ["@solo-relayer/integration-tests"]
 }
 ```
 
@@ -126,11 +126,11 @@ pnpm changeset
 
 ```
 ? Which packages would you like to include?
-  ◉ @msq-relayer/relay-api       # 변경된 패키지만 선택
-  ○ @msq-relayer/queue-consumer
-  ○ @msq-relayer/relayer-discovery
+  ◉ @solo-relayer/relay-api       # 변경된 패키지만 선택
+  ○ @solo-relayer/queue-consumer
+  ○ @solo-relayer/relayer-discovery
 
-? What kind of change is this for @msq-relayer/relay-api?
+? What kind of change is this for @solo-relayer/relay-api?
   ○ patch (0.0.1 → 0.0.2)  # 버그 수정, 사소한 변경
   ● minor (0.0.1 → 0.1.0)  # 새 기능 추가
   ○ major (0.0.1 → 1.0.0)  # Breaking change
@@ -142,7 +142,7 @@ pnpm changeset
 
 ```markdown
 ---
-"@msq-relayer/relay-api": minor
+"@solo-relayer/relay-api": minor
 ---
 
 Added new authentication feature

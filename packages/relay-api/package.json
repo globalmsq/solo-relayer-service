@@ -1,8 +1,8 @@
 {
-  "name": "@msq-relayer/relay-api",
+  "name": "@solo-relayer/relay-api",
   "version": "0.0.1",
   "private": true,
-  "description": "Relay API for MSQ Relayer Service",
+  "description": "Relay API for Solo Relayer Service",
   "main": "dist/main.js",
   "scripts": {
     "build": "nest build",

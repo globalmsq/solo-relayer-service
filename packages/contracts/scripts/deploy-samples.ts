@@ -29,7 +29,7 @@ async function main() {
   // Step 1: Deploy ERC2771Forwarder
   console.log("\nDeploying ERC2771Forwarder...");
   const ForwarderFactory = await ethers.getContractFactory("contracts/ERC2771Forwarder.sol:ERC2771Forwarder");
-  const forwarder = await ForwarderFactory.deploy("MSQForwarder");
+  const forwarder = await ForwarderFactory.deploy("SoloForwarder");
   await forwarder.waitForDeployment();
   const forwarderAddr = await forwarder.getAddress();
   console.log(`ERC2771Forwarder deployed to: ${forwarderAddr}`);

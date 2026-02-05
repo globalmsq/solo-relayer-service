@@ -10,7 +10,7 @@ export async function deployForwarder(): Promise<string> {
   const Factory = await ethers.getContractFactory(
     "contracts/ERC2771Forwarder.sol:ERC2771Forwarder"
   );
-  const contract = await Factory.deploy("MSQForwarder");
+  const contract = await Factory.deploy("SoloForwarder");
   await contract.waitForDeployment();
 
   const addr = await contract.getAddress();

@@ -7,7 +7,7 @@ module.exports = {
     '^.+\\.(t|j)s$': 'ts-jest',
   },
   moduleNameMapper: {
-    '^@msq-relayer/relay-api/(.*)$': '<rootDir>/../relay-api/$1',
+    '^@solo-relayer/relay-api/(.*)$': '<rootDir>/../relay-api/$1',
   },
   testEnvironment: 'node',
   setupFilesAfterEnv: ['<rootDir>/src/setup.ts'],

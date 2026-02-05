@@ -1,8 +1,8 @@
 # Relayer Discovery Service
 
-**Centralized health check and active relayer management for MSQ Relayer Service**
+**Centralized health check and active relayer management for Solo Relayer Service**
 
-Part of the MSQ Relayer Service monorepo - A self-hosted blockchain transaction relay system.
+Part of the Solo Relayer Service monorepo - A self-hosted blockchain transaction relay system.
 
 ## Overview
 
@@ -455,7 +455,7 @@ This package follows the project-wide development standards:
 
 ## License
 
-Part of MSQ Relayer Service (AGPL-3.0 + MIT dual license)
+Part of Solo Relayer Service (AGPL-3.0 + MIT dual license)
 
 ---
 
