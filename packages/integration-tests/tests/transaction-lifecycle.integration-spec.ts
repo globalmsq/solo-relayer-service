@@ -2,7 +2,7 @@ import axios, { AxiosInstance } from 'axios';
 import { TEST_WALLETS, TEST_ADDRESSES } from '../src/helpers/test-wallets';
 import { signForwardRequest as signForwardRequestE2E, createForwardRequest as createForwardRequestE2E } from '../src/helpers/eip712-signer-static';
 import { signForwardRequestWithDomain, createForwardRequest } from '../src/helpers/signer';
-import { getNetworkConfig, isNetworkAvailable } from '../src/helpers/network';
+import { getNetworkConfig, isNetworkAvailable, isLocalNetwork } from '../src/helpers/network';
 import {
   getContractAddresses,
   verifyContractDeployed,
@@ -19,6 +19,7 @@ import {
   pollTransactionStatus,
   HARDHAT_POLLING_CONFIG,
   isSuccessStatus,
+  PollingConfig,
 } from '../src/helpers/polling';
 import { parseTokenAmount } from '../src/helpers/token';
 
@@ -34,11 +35,21 @@ function getRequiredEnv(name: string): string {
   return value;
 }
 
+// Polling config for live networks (longer timeouts)
+const LIVE_POLLING_CONFIG: PollingConfig = {
+  maxAttempts: 40,
+  initialDelayMs: 1000,
+  maxDelayMs: 5000,
+  backoffMultiplier: 1.3,
+  terminalStatuses: ['confirmed', 'mined', 'failed', 'reverted'],
+};
+
 describe('Transaction Lifecycle Tests', () => {
   let apiClient: AxiosInstance;
   let networkConfig: ReturnType<typeof getNetworkConfig>;
   let contracts: ContractAddresses;
   let contractsDeployed = false;
+  let pollingConfig: PollingConfig;
 
   beforeAll(async () => {
     const relayApiUrl = getRequiredEnv('RELAY_API_URL');
@@ -62,8 +73,11 @@ describe('Transaction Lifecycle Tests', () => {
     contracts = getContractAddresses();
     contractsDeployed = await verifyContractDeployed(contracts.forwarder);
 
-    // Pre-fund accounts with tokens
-    if (contractsDeployed) {
+    // Set polling config based on network type
+    pollingConfig = isLocalNetwork() ? HARDHAT_POLLING_CONFIG : LIVE_POLLING_CONFIG;
+
+    // Pre-fund accounts with tokens (only on local Hardhat network)
+    if (contractsDeployed && isLocalNetwork()) {
       try {
         const mintAmount = parseTokenAmount('10000');
         // Mint to all relayer accounts
@@ -135,7 +149,7 @@ describe('Transaction Lifecycle Tests', () => {
 
       const finalStatus = await pollTransactionStatus(
         response.data.transactionId,
-        HARDHAT_POLLING_CONFIG,
+        pollingConfig,
       );
 
       expect(isSuccessStatus(finalStatus.status)).toBe(true);
@@ -245,7 +259,7 @@ describe('Transaction Lifecycle Tests', () => {
       // Poll
       const finalStatus = await pollTransactionStatus(
         response.data.transactionId,
-        HARDHAT_POLLING_CONFIG,
+        pollingConfig,
       );
       expect(isSuccessStatus(finalStatus.status)).toBe(true);
 

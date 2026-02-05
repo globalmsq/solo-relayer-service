@@ -70,3 +70,12 @@ export async function getBalance(address: string): Promise<bigint> {
   }
 }
 
+/**
+ * Check if running on local Hardhat/Anvil network
+ * Local networks have chainId 31337
+ */
+export function isLocalNetwork(): boolean {
+  const { chainId } = getNetworkConfig();
+  return chainId === 31337;
+}
+

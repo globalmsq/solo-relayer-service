@@ -1,7 +1,7 @@
 import axios, { AxiosInstance } from 'axios';
 import { TEST_WALLETS, TEST_ADDRESSES } from '../src/helpers/test-wallets';
 import { signForwardRequestWithDomain, createForwardRequest } from '../src/helpers/signer';
-import { isNetworkAvailable, getNetworkConfig } from '../src/helpers/network';
+import { isNetworkAvailable, getNetworkConfig, isLocalNetwork } from '../src/helpers/network';
 import {
   getContractAddresses,
   verifyContractDeployed,
@@ -65,8 +65,8 @@ describe('SPEC-DLQ-001: DLQ Processing Integration Tests', () => {
     contracts = getContractAddresses();
     contractsDeployed = await verifyContractDeployed(contracts.forwarder);
 
-    // Pre-fund accounts with tokens for testing
-    if (contractsDeployed) {
+    // Pre-fund accounts with tokens for testing (only on local Hardhat network)
+    if (contractsDeployed && isLocalNetwork()) {
       try {
         const mintAmount = parseTokenAmount('10000');
         for (const relayerAddress of HARDHAT_RELAYERS) {
