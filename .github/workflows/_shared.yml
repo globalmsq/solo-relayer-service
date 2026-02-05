@@ -44,7 +44,7 @@ jobs:
           pnpm-version: ${{ env.PNPM_VERSION }}
 
       - name: Generate Prisma Client
-        run: pnpm --filter @msq-relayer/relay-api exec prisma generate
+        run: pnpm --filter @solo-relayer/relay-api exec prisma generate
 
       - name: Run tests with coverage
         run: pnpm test:cov
@@ -70,7 +70,7 @@ jobs:
           pnpm-version: ${{ env.PNPM_VERSION }}
 
       - name: Generate Prisma Client
-        run: pnpm --filter @msq-relayer/relay-api exec prisma generate
+        run: pnpm --filter @solo-relayer/relay-api exec prisma generate
 
       - name: Build
         run: pnpm build
@@ -98,7 +98,7 @@ jobs:
           pnpm-version: ${{ env.PNPM_VERSION }}
 
       - name: Generate Prisma Client
-        run: pnpm --filter @msq-relayer/relay-api exec prisma generate
+        run: pnpm --filter @solo-relayer/relay-api exec prisma generate
 
       - name: Run E2E tests
-        run: pnpm --filter @msq-relayer/relay-api test:e2e
+        run: pnpm --filter @solo-relayer/relay-api test:e2e

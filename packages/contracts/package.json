@@ -1,8 +1,8 @@
 {
-  "name": "@msq-relayer/contracts",
+  "name": "@solo-relayer/contracts",
   "version": "0.0.1",
   "private": true,
-  "description": "Smart contracts for MSQ Relayer Service",
+  "description": "Smart contracts for Solo Relayer Service",
   "scripts": {
     "compile": "hardhat compile",
     "test": "hardhat test",

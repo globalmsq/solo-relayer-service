@@ -11,8 +11,8 @@ x-relayer-common: &relayer-common
       condition: service_healthy
   restart: unless-stopped
   networks:
-    - msq-relayer-network
-    - msq-network
+    - solo-relayer-network
+    - solo-network
   healthcheck:
     test: ["CMD-SHELL", "cat /proc/net/tcp | grep ':1F90' || exit 1"]
     interval: 10s
@@ -25,7 +25,7 @@ x-relayer-env: &relayer-env
   RELAY_API_KEY: ${RELAY_API_KEY:-local-dev-api-key}
   KEYSTORE_PASSPHRASE: ${KEYSTORE_PASSPHRASE:-hardhat-test-passphrase}
   WEBHOOK_SIGNING_KEY: ${WEBHOOK_SIGNING_KEY:-local-dev-webhook-signing-key-32ch}
-  # Uses local hardhat-node (shared with msqpay-monorepo via msq-network)
+  # Uses local hardhat-node (shared with msqpay-monorepo via solo-network)
   RPC_URL: ${RPC_URL:-http://hardhat-node:8545}
   REDIS_URL: redis://redis:6379
 
@@ -52,8 +52,8 @@ services:
       retries: 5
       start_period: 10s
     networks:
-      - msq-relayer-network
-      - msq-network
+      - solo-relayer-network
+      - solo-network
     restart: unless-stopped
 
   # === Contracts Deployment (Standalone mode only) ===
@@ -82,7 +82,7 @@ services:
       DEPLOY_SAMPLE_TOKEN: "true"
       DEPLOY_SAMPLE_NFT: "true"
     networks:
-      - msq-relayer-network
+      - solo-relayer-network
     restart: "no"
 
   # === Redis Cache & Queue ===
@@ -99,9 +99,9 @@ services:
       timeout: 3s
       retries: 5
     volumes:
-      - msq-relayer-redis-data:/data
+      - solo-relayer-redis-data:/data
     networks:
-      - msq-relayer-network
+      - solo-relayer-network
     restart: unless-stopped
 
   # === MySQL Database (Phase 2+) ===
@@ -111,9 +111,9 @@ services:
       - "3307:3306"
     environment:
       MYSQL_ROOT_PASSWORD: pass
-      MYSQL_DATABASE: msq_relayer
+      MYSQL_DATABASE: solo_relayer
     volumes:
-      - msq-relayer-mysql-data:/var/lib/mysql
+      - solo-relayer-mysql-data:/var/lib/mysql
       # Note: Schema initialization moved to relay-api entrypoint (prisma migrate deploy)
     healthcheck:
       test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-u", "root", "-ppass"]
@@ -122,7 +122,7 @@ services:
       retries: 5
       start_period: 30s
     networks:
-      - msq-relayer-network
+      - solo-relayer-network
     restart: unless-stopped
 
   # === LocalStack (AWS SQS Emulation) - SPEC-QUEUE-001 ===
@@ -152,7 +152,7 @@ services:
       retries: 5
       start_period: 15s
     networks:
-      - msq-relayer-network
+      - solo-relayer-network
     restart: unless-stopped
 
   # === SQS Admin UI - SPEC-QUEUE-001 ===
@@ -169,7 +169,7 @@ services:
       SQS_ENDPOINT_URL: http://localstack:4566
       SQS_AWS_REGION: ap-northeast-2
     networks:
-      - msq-relayer-network
+      - solo-relayer-network
     restart: unless-stopped
 
   # === Relay API (NestJS) ===
@@ -195,8 +195,8 @@ services:
       NODE_ENV: development
       REDIS_URL: redis://redis:6379
       REDIS_STATUS_TTL_SECONDS: ${REDIS_STATUS_TTL_SECONDS:-600}
-      DATABASE_URL: ${DATABASE_URL:-mysql://root:pass@mysql:3306/msq_relayer}
-      # Uses local hardhat-node (shared with msqpay-monorepo via msq-network)
+      DATABASE_URL: ${DATABASE_URL:-mysql://root:pass@mysql:3306/solo_relayer}
+      # Uses local hardhat-node (shared with msqpay-monorepo via solo-network)
       RPC_URL: ${RPC_URL:-http://hardhat-node:8545}
       RELAY_API_KEY: ${RELAY_API_KEY:-local-dev-api-key}
       CHAIN_ID: 31337
@@ -214,8 +214,8 @@ services:
       SQS_QUEUE_URL: http://localstack:4566/000000000000/relay-transactions
       SQS_DLQ_URL: http://localstack:4566/000000000000/relay-transactions-dlq
     networks:
-      - msq-relayer-network
-      - msq-network
+      - solo-relayer-network
+      - solo-network
     restart: unless-stopped
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8080/api/v1/health"]
@@ -306,7 +306,7 @@ services:
       retries: 5
       start_period: 15s
     networks:
-      - msq-relayer-network
+      - solo-relayer-network
     restart: unless-stopped
 
   # === Queue Consumer (SPEC-QUEUE-001 + SPEC-ROUTING-001) ===
@@ -334,7 +334,7 @@ services:
     environment:
       NODE_ENV: development
       # Database
-      DATABASE_URL: ${DATABASE_URL:-mysql://root:pass@mysql:3306/msq_relayer}
+      DATABASE_URL: ${DATABASE_URL:-mysql://root:pass@mysql:3306/solo_relayer}
       # Redis
       REDIS_URL: redis://redis:6379
       # SQS Configuration
@@ -352,7 +352,7 @@ services:
       OZ_RELAYER_URLS: http://oz-relayer-0:8080,http://oz-relayer-1:8080,http://oz-relayer-2:8080
       OZ_RELAYER_API_KEY: ${OZ_RELAYER_API_KEY:-oz-relayer-shared-api-key-local-dev}
     networks:
-      - msq-relayer-network
+      - solo-relayer-network
     restart: unless-stopped
     stop_grace_period: 30s
 
@@ -393,8 +393,8 @@ services:
       RELAY_API_KEY: ${RELAY_API_KEY:-local-dev-api-key}
 
     networks:
-      - msq-relayer-network
-      - msq-network
+      - solo-relayer-network
+      - solo-network
 
   # === Phase 2+: Services (commented, enabled via profiles) ===
   # oz-monitor:
@@ -403,16 +403,16 @@ services:
   #   volumes:
   #     - ./config/oz-monitor:/app/config
   #   networks:
-  #     - msq-relayer-network
+  #     - solo-relayer-network
 
 networks:
-  msq-relayer-network:
+  solo-relayer-network:
     driver: bridge
-  msq-network:
+  solo-network:
     external: true
 
 volumes:
-  msq-relayer-redis-data:
+  solo-relayer-redis-data:
     driver: local
-  msq-relayer-mysql-data:
+  solo-relayer-mysql-data:
     driver: local

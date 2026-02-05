@@ -12,8 +12,8 @@ x-relayer-common: &relayer-common
       condition: service_healthy
   restart: unless-stopped
   networks:
-    - msq-relayer-network
-    - msq-network
+    - solo-relayer-network
+    - solo-network
   healthcheck:
     test: ["CMD-SHELL", "cat /proc/net/tcp | grep ':1F90' || exit 1"]
     interval: 10s
@@ -45,9 +45,9 @@ services:
       timeout: 3s
       retries: 5
     volumes:
-      - msq-relayer-redis-data-amoy:/data
+      - solo-relayer-redis-data-amoy:/data
     networks:
-      - msq-relayer-network
+      - solo-relayer-network
     restart: unless-stopped
 
   # === MySQL Database (Phase 2+) ===
@@ -57,9 +57,9 @@ services:
       - "3307:3306"
     environment:
       MYSQL_ROOT_PASSWORD: pass
-      MYSQL_DATABASE: msq_relayer
+      MYSQL_DATABASE: solo_relayer
     volumes:
-      - msq-relayer-mysql-data-amoy:/var/lib/mysql
+      - solo-relayer-mysql-data-amoy:/var/lib/mysql
       # Note: Schema initialization moved to relay-api entrypoint (prisma migrate deploy)
     healthcheck:
       test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-u", "root", "-ppass"]
@@ -68,7 +68,7 @@ services:
       retries: 5
       start_period: 30s
     networks:
-      - msq-relayer-network
+      - solo-relayer-network
     restart: unless-stopped
 
   # === LocalStack (AWS SQS Emulation) - SPEC-QUEUE-001 ===
@@ -98,7 +98,7 @@ services:
       retries: 5
       start_period: 15s
     networks:
-      - msq-relayer-network
+      - solo-relayer-network
     restart: unless-stopped
 
   # === SQS Admin UI - SPEC-QUEUE-001 ===
@@ -115,7 +115,7 @@ services:
       SQS_ENDPOINT_URL: http://localstack:4566
       SQS_AWS_REGION: ap-northeast-2
     networks:
-      - msq-relayer-network
+      - solo-relayer-network
     restart: unless-stopped
 
   # === Relay API (NestJS) ===
@@ -141,7 +141,7 @@ services:
       NODE_ENV: staging
       REDIS_URL: redis://redis:6379
       REDIS_STATUS_TTL_SECONDS: ${REDIS_STATUS_TTL_SECONDS:-600}
-      DATABASE_URL: ${DATABASE_URL:-mysql://root:pass@mysql:3306/msq_relayer}
+      DATABASE_URL: ${DATABASE_URL:-mysql://root:pass@mysql:3306/solo_relayer}
       RPC_URL: ${RPC_URL:-https://rpc-amoy.polygon.technology}
       RELAY_API_KEY: ${RELAY_API_KEY:-amoy-dev-api-key}
       CHAIN_ID: 80002
@@ -158,8 +158,8 @@ services:
       SQS_QUEUE_URL: http://localstack:4566/000000000000/relay-transactions
       SQS_DLQ_URL: http://localstack:4566/000000000000/relay-transactions-dlq
     networks:
-      - msq-relayer-network
-      - msq-network
+      - solo-relayer-network
+      - solo-network
     restart: unless-stopped
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8080/api/v1/health"]
@@ -242,7 +242,7 @@ services:
       REDIS_HOST: redis
       REDIS_PORT: 6379
     networks:
-      - msq-relayer-network
+      - solo-relayer-network
     restart: unless-stopped
 
   # === Queue Consumer (SPEC-QUEUE-001 + SPEC-ROUTING-001) ===
@@ -270,7 +270,7 @@ services:
     environment:
       NODE_ENV: staging
       # Database
-      DATABASE_URL: ${DATABASE_URL:-mysql://root:pass@mysql:3306/msq_relayer}
+      DATABASE_URL: ${DATABASE_URL:-mysql://root:pass@mysql:3306/solo_relayer}
       # Redis
       REDIS_URL: redis://redis:6379
       # SQS Configuration
@@ -287,7 +287,7 @@ services:
       OZ_RELAYER_URLS: http://oz-relayer-0:8080,http://oz-relayer-1:8080,http://oz-relayer-2:8080
       OZ_RELAYER_API_KEY: ${OZ_RELAYER_API_KEY:-amoy-oz-relayer-shared-api-key-32ch}
     networks:
-      - msq-relayer-network
+      - solo-relayer-network
     restart: unless-stopped
     stop_grace_period: 30s
 
@@ -313,17 +313,17 @@ services:
       OZ_RELAYER_URL: http://oz-relayer-0:8080
       OZ_RELAYER_API_KEY: ${OZ_RELAYER_API_KEY:-amoy-oz-relayer-shared-api-key-32ch}
     networks:
-      - msq-relayer-network
-      - msq-network
+      - solo-relayer-network
+      - solo-network
 
 networks:
-  msq-relayer-network:
+  solo-relayer-network:
     driver: bridge
-  msq-network:
+  solo-network:
     external: true
 
 volumes:
-  msq-relayer-redis-data-amoy:
+  solo-relayer-redis-data-amoy:
     driver: local
-  msq-relayer-mysql-data-amoy:
+  solo-relayer-mysql-data-amoy:
     driver: local

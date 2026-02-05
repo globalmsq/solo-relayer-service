@@ -1,5 +1,5 @@
 /**
- * Error Classification System for MSQ Relayer Service
+ * Error Classification System for Solo Relayer Service
  *
  * SPEC-DLQ-001: Dead Letter Queue Processing and Error Classification
  *

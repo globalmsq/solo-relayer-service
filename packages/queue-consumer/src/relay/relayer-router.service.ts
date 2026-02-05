@@ -129,7 +129,10 @@ export class RelayerRouterService implements OnModuleInit {
         // Construct URLs from Redis hostnames (e.g., oz-relayer-0 -> http://oz-relayer-0:8080)
         this.currentRelayerUrls = activeRelayers
           .sort() // Sort for consistent ordering
-          .map((hostname) => `http://${hostname}${this.dnsSuffix}:${this.RELAYER_PORT}`);
+          .map(
+            (hostname) =>
+              `http://${hostname}${this.dnsSuffix}:${this.RELAYER_PORT}`,
+          );
 
         // Update cache timestamp on success
         this.activeRelayersCacheTime = now;

@@ -1,4 +1,4 @@
-# MSQ Relayer Service
+# Solo Relayer Service
 
 **Blockchain Transaction Relayer System** - B2B Infrastructure for internal services
 
@@ -160,7 +160,7 @@ curl http://localhost:8080/api/v1/relay/status/550e8400-e29b-41d4-a716-446655440
 ## Project Structure
 
 ```
-msq-relayer-service/
+solo-relayer-service/
 ├── docker/                       # Docker Compose files
 │   ├── Dockerfile.packages       # Multi-stage build
 │   ├── docker-compose.yaml       # Main config
@@ -316,13 +316,13 @@ AWS_SECRET_ACCESS_KEY=test
 docker compose -f docker/docker-compose.yaml up -d
 
 # 2. Run migrations
-pnpm --filter @msq-relayer/relay-api run prisma:migrate:dev
+pnpm --filter @solo-relayer/relay-api run prisma:migrate:dev
 
 # 3. Start API in development mode
-pnpm --filter @msq-relayer/relay-api run start:dev
+pnpm --filter @solo-relayer/relay-api run start:dev
 
 # 4. Start Consumer in development mode
-pnpm --filter @msq-relayer/queue-consumer run start:dev
+pnpm --filter @solo-relayer/queue-consumer run start:dev
 
 # 5. Test API
 curl -X POST http://localhost:8080/api/v1/relay/direct \
@@ -335,14 +335,14 @@ curl -X POST http://localhost:8080/api/v1/relay/direct \
 
 ```bash
 # Unit tests
-pnpm --filter @msq-relayer/relay-api test
-pnpm --filter @msq-relayer/queue-consumer test
+pnpm --filter @solo-relayer/relay-api test
+pnpm --filter @solo-relayer/queue-consumer test
 
 # E2E tests
-pnpm --filter @msq-relayer/relay-api test:e2e
+pnpm --filter @solo-relayer/relay-api test:e2e
 
 # Coverage report
-pnpm --filter @msq-relayer/relay-api test:cov
+pnpm --filter @solo-relayer/relay-api test:cov
 ```
 
 ### Version Management
@@ -405,7 +405,7 @@ docker push <ECR_REPO>/relay-api:latest
 | `PORT` | `3000` | API Gateway port |
 | `RELAY_API_KEY` | `local-dev-api-key` | API authentication key |
 | `NODE_ENV` | `development` | Node environment |
-| `DATABASE_URL` | `mysql://root:password@localhost:3306/msq_relayer` | MySQL connection |
+| `DATABASE_URL` | `mysql://root:password@localhost:3306/solo_relayer` | MySQL connection |
 | `REDIS_HOST` | `localhost` | Redis host |
 | `REDIS_PORT` | `6379` | Redis port |
 

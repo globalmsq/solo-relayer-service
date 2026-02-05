@@ -17,11 +17,11 @@ docker compose -f docker/docker-compose.yaml up -d
 docker compose ps
 
 # 3. Run database migrations
-pnpm --filter @msq-relayer/relay-api run prisma:migrate:dev
+pnpm --filter @solo-relayer/relay-api run prisma:migrate:dev
 
 # 4. Start services in development
-pnpm --filter @msq-relayer/relay-api run start:dev
-pnpm --filter @msq-relayer/queue-consumer run start:dev
+pnpm --filter @solo-relayer/relay-api run start:dev
+pnpm --filter @solo-relayer/queue-consumer run start:dev
 
 # 5. Test
 curl http://localhost:3000/api/v1/health
@@ -169,16 +169,16 @@ docker compose exec mysql mysql -u root -p \
 
 ```bash
 # Run all pending migrations
-pnpm --filter @msq-relayer/relay-api run prisma:migrate:deploy
+pnpm --filter @solo-relayer/relay-api run prisma:migrate:deploy
 
 # Dev mode with prompt
-pnpm --filter @msq-relayer/relay-api run prisma:migrate:dev
+pnpm --filter @solo-relayer/relay-api run prisma:migrate:dev
 
 # Generate Prisma client
-pnpm --filter @msq-relayer/relay-api run prisma:generate
+pnpm --filter @solo-relayer/relay-api run prisma:generate
 
 # View database
-pnpm --filter @msq-relayer/relay-api run prisma:studio
+pnpm --filter @solo-relayer/relay-api run prisma:studio
 ```
 
 ### Schema

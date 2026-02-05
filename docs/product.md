@@ -1,9 +1,9 @@
-# MSQ Relayer Service - Product Document
+# Solo Relayer Service - Product Document
 
 ## Project Overview
 
 ### Project Name
-**Blockchain Transaction Relayer System (MSQ Relayer Service)**
+**Blockchain Transaction Relayer System (Solo Relayer Service)**
 
 ### Document Version
 - **Version**: 12.5
@@ -73,7 +73,7 @@ As OpenZeppelin Defender service will be discontinued in July 2026, we are build
 
 ## 2. Target Users
 
-> **Note**: MSQ Relayer Service is a **B2B Infrastructure**. End users do not use it directly; internal services call the Relayer API to process blockchain transactions.
+> **Note**: Solo Relayer Service is a **B2B Infrastructure**. End users do not use it directly; internal services call the Relayer API to process blockchain transactions.
 
 ### 2.1 Primary Users (Client Services)
 

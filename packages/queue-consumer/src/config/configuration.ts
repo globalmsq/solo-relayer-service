@@ -5,7 +5,7 @@ export default () => ({
   database: {
     url:
       process.env.DATABASE_URL ||
-      "mysql://root:pass@localhost:3307/msq_relayer",
+      "mysql://root:pass@localhost:3307/solo_relayer",
   },
 
   redis: {

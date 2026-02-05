@@ -1,4 +1,4 @@
-# MSQ Relayer Service - Technical Document
+# Solo Relayer Service - Technical Document
 
 ## Document Information
 - **Version**: 12.8
@@ -9,7 +9,7 @@
 > - Business requirements (WHAT/WHY): [product.md](./product.md)
 > - System architecture (WHERE): [structure.md](./structure.md)
 
-> **Note**: MSQ Relayer Service is a **B2B Infrastructure**. All API usage patterns in this document are written based on Client Services (Payment system, Airdrop system, NFT service, etc.) calling the Relayer API. API documentation is available at Swagger UI (`/api/docs`).
+> **Note**: Solo Relayer Service is a **B2B Infrastructure**. All API usage patterns in this document are written based on Client Services (Payment system, Airdrop system, NFT service, etc.) calling the Relayer API. API documentation is available at Swagger UI (`/api/docs`).
 
 ### Related Documents
 - [Product Requirements](./product.md) - WHAT/WHY
@@ -647,7 +647,7 @@ model Transaction {
 
 **Environment Variables**:
 ```bash
-DATABASE_URL=mysql://root:pass@localhost:3307/msq_relayer  # MySQL connection string
+DATABASE_URL=mysql://root:pass@localhost:3307/solo_relayer  # MySQL connection string
 ```
 
 ---
@@ -802,7 +802,7 @@ Error Responses:
 **Domain Structure** (from configuration):
 ```typescript
 const domain: TypedDataDomain = {
-  name: this.configService.get<string>("FORWARDER_NAME") || "MSQForwarder",
+  name: this.configService.get<string>("FORWARDER_NAME") || "SoloForwarder",
   version: "1",
   chainId: this.configService.get<number>("CHAIN_ID") || 31337,
   verifyingContract: this.configService.get<string>("FORWARDER_ADDRESS"),
@@ -2409,7 +2409,7 @@ x-relayer-common: &relayer-common
       condition: service_healthy
   restart: unless-stopped
   networks:
-    - msq-relayer-network
+    - solo-relayer-network
 
 # === Services block (after anchors definition) ===
 services:
@@ -2426,7 +2426,7 @@ services:
       timeout: 5s
       retries: 5
     networks:
-      - msq-relayer-network
+      - solo-relayer-network
 
   redis:
     image: redis:8.0-alpine
@@ -2438,9 +2438,9 @@ services:
       timeout: 5s
       retries: 5
     volumes:
-      - msq-relayer-redis-data:/data
+      - solo-relayer-redis-data:/data
     networks:
-      - msq-relayer-network
+      - solo-relayer-network
 
   # === API Gateway ===
   relay-api:
@@ -2462,7 +2462,7 @@ services:
     volumes:
       - ../packages/relay-api/config:/app/config
     networks:
-      - msq-relayer-network
+      - solo-relayer-network
 
   oz-relayer-1:
     <<: *relayer-common
@@ -2517,11 +2517,11 @@ services:
   #   profiles: ["phase2"]
 
 networks:
-  msq-relayer-network:
+  solo-relayer-network:
     driver: bridge
 
 volumes:
-  msq-relayer-redis-data:
+  solo-relayer-redis-data:
 ```
 
 **Environment Variable Strategy**:
@@ -2856,7 +2856,7 @@ services:
       timeout: 5s
       retries: 5
     networks:
-      - msq-relayer-network
+      - solo-relayer-network
 
   relay-api:
     depends_on:
@@ -3182,7 +3182,7 @@ SAMPLE_NFT_ADDRESS=0x9fE46736679d2D9a65F0992F2272dE9f3c7fa6e0
 docker compose -f docker/docker-compose.yaml up -d
 
 # Run lifecycle tests only
-pnpm --filter @msq-relayer/integration-tests test:lifecycle
+pnpm --filter @solo-relayer/integration-tests test:lifecycle
 ```
 
 #### 8.9.6 Difference from E2E Tests
@@ -3225,7 +3225,7 @@ pnpm --filter @msq-relayer/integration-tests test:lifecycle
 | 11.3 | 2025-12-15 | Section 11.3 OZ Relayer config file path fix - Changed nested directory structure to flat file structure (prd.txt, Docker Compose consistency), added Docker volume mount note |
 | 11.2 | 2025-12-15 | Docker Compose YAML Anchors pattern applied - Multi-Relayer Pool config duplication minimized, deploy.replicas non-usage reason explained (individual Private Key required) |
 | 11.1 | 2025-12-15 | Section 9.1 API Key authentication added - Phase 1 single environment variable method (RELAY_API_KEY), Phase 2+ extension plan specified |
-| 11.0 | 2025-12-15 | SPEC-INFRA-001 Docker structure sync - Consolidated to docker/ directory, multi-stage build (Dockerfile.packages), .env removed, Hardhat Node included, Redis 8.0-alpine (AOF), Named Volume (msq-relayer-redis-data), OZ Relayer RPC_URL/REDIS_HOST/REDIS_PORT env vars, Read-only volume mount (:ro), Section 13 v5.0 |
+| 11.0 | 2025-12-15 | SPEC-INFRA-001 Docker structure sync - Consolidated to docker/ directory, multi-stage build (Dockerfile.packages), .env removed, Hardhat Node included, Redis 8.0-alpine (AOF), Named Volume (solo-relayer-redis-data), OZ Relayer RPC_URL/REDIS_HOST/REDIS_PORT env vars, Read-only volume mount (:ro), Section 13 v5.0 |
 | 10.0 | 2025-12-15 | MySQL/Prisma moved to Phase 2+ - Phase 1 uses OZ Relayer + Redis only, no DB, mysql removed from Docker Compose |
 | 9.0 | 2025-12-15 | TX History, Webhook Handler moved to Phase 2+ - Phase 1 uses status polling method, MySQL/Webhook implemented in Phase 2+ |
 | 8.0 | 2025-12-15 | Rate Limiting, Quota Manager completely removed - Phase 1 keeps Auth + Relay features only |

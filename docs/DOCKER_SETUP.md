@@ -196,11 +196,11 @@ docker compose -f docker/docker-compose.yaml up -d
 
 ### Network Configuration
 
-Services communicate via Docker internal network `msq-relayer-network`:
+Services communicate via Docker internal network `solo-relayer-network`:
 
 ```yaml
 networks:
-  msq-relayer-network:
+  solo-relayer-network:
     driver: bridge
 ```
 

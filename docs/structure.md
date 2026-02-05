@@ -1,4 +1,4 @@
-# MSQ Relayer Service - Structure Document
+# Solo Relayer Service - Structure Document
 
 ## Document Information
 - **Version**: 12.4
@@ -15,7 +15,7 @@
 
 ## Project Structure Overview
 
-MSQ Relayer Service is a **B2B Infrastructure** that enables internal Client Services (Payment, Airdrop, NFT services, etc.) to easily process blockchain transactions.
+Solo Relayer Service is a **B2B Infrastructure** that enables internal Client Services (Payment, Airdrop, NFT services, etc.) to easily process blockchain transactions.
 
 It utilizes **OZ open-source (Relayer + Monitor)** as its core, with NestJS API Gateway handling authentication/policy/quota management.
 

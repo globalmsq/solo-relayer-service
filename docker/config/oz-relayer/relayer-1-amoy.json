@@ -2,7 +2,7 @@
   "relayers": [
     {
       "id": "relayer-1",
-      "name": "MSQ Relayer 1 (Amoy Testnet)",
+      "name": "Solo Relayer 1 (Amoy Testnet)",
       "network": "amoy",
       "network_type": "evm",
       "signer_id": "relayer-1-signer",

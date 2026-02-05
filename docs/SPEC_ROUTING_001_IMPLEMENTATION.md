@@ -613,6 +613,6 @@ SPEC-ROUTING-001 implementation is **complete and production-ready**:
 
 ---
 
-**Maintained by**: MSQ Relayer Team
+**Maintained by**: Solo Relayer Team
 **Last Reviewed**: 2026-01-09
 **Status**: Production-Ready

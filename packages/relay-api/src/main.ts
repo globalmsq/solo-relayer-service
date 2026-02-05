@@ -59,7 +59,7 @@ async function bootstrap() {
 
   // Swagger/OpenAPI configuration
   const swaggerConfig = new DocumentBuilder()
-    .setTitle("MSQ Relayer Service API")
+    .setTitle("Solo Relayer Service API")
     .setDescription("Meta Transaction Relay Infrastructure API Documentation")
     .setVersion("1.0.0")
     .addApiKey({ type: "apiKey", name: "x-api-key", in: "header" }, "api-key")
@@ -71,7 +71,7 @@ async function bootstrap() {
   const port = process.env.PORT || 3000;
   await app.listen(port);
 
-  logger.log(`MSQ Relayer API Gateway is running on port ${port}`);
+  logger.log(`Solo Relayer API Gateway is running on port ${port}`);
   logger.log(`Health check: http://localhost:${port}/api/v1/health`);
   logger.log(`Swagger UI: http://localhost:${port}/api/docs`);
   logger.log(`OpenAPI JSON: http://localhost:${port}/api/docs-json`);
