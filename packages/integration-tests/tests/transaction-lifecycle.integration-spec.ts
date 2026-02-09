@@ -50,6 +50,15 @@ describe('Transaction Lifecycle Tests', () => {
   let contracts: ContractAddresses;
   let contractsDeployed = false;
   let pollingConfig: PollingConfig;
+  let abortController: AbortController;
+
+  beforeEach(() => {
+    abortController = new AbortController();
+  });
+
+  afterEach(() => {
+    abortController.abort();
+  });
 
   beforeAll(async () => {
     const relayApiUrl = getRequiredEnv('RELAY_API_URL');
@@ -150,6 +159,7 @@ describe('Transaction Lifecycle Tests', () => {
       const finalStatus = await pollTransactionStatus(
         response.data.transactionId,
         pollingConfig,
+        abortController.signal,
       );
 
       expect(isSuccessStatus(finalStatus.status)).toBe(true);
@@ -179,7 +189,11 @@ describe('Transaction Lifecycle Tests', () => {
 
       expect(response.status).toBe(202);
 
-      const finalStatus = await pollTransactionStatus(response.data.transactionId);
+      const finalStatus = await pollTransactionStatus(
+        response.data.transactionId,
+        pollingConfig,
+        abortController.signal,
+      );
       expect(isSuccessStatus(finalStatus.status)).toBe(true);
 
       const finalBalance = await getTokenBalance(contracts.sampleToken, TEST_ADDRESSES.merchant);
@@ -260,6 +274,7 @@ describe('Transaction Lifecycle Tests', () => {
       const finalStatus = await pollTransactionStatus(
         response.data.transactionId,
         pollingConfig,
+        abortController.signal,
       );
       expect(isSuccessStatus(finalStatus.status)).toBe(true);
 

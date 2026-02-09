@@ -222,7 +222,7 @@ services:
       target: relayer-discovery
     command: ["pnpm", "run", "start"]
     ports:
-      - "3001:3001"
+      # - "3001:3001"
     depends_on:
       redis:
         condition: service_healthy
@@ -241,6 +241,12 @@ services:
       HEALTH_CHECK_TIMEOUT_MS: 500
       REDIS_HOST: redis
       REDIS_PORT: 6379
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3001/status"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 15s
     networks:
       - solo-relayer-network
     restart: unless-stopped
