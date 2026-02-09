@@ -46,47 +46,15 @@ SPEC-QUEUE-001 transforms the MSQ Relayer from a synchronous request-response sy
 
 ## Architecture Layers
 
-```
-┌─────────────────────────────────────────────────────────┐
-│                   Application Layer                      │
-│  Client Services (Payment, Airdrop, NFT, DeFi, Game)    │
-└────────────────────────┬────────────────────────────────┘
-                         │
-┌────────────────────────▼────────────────────────────────┐
-│            API Gateway Layer (relay-api)                 │
-│  • Authentication (X-API-Key)                           │
-│  • Transaction validation                               │
-│  • MySQL persistence (pending status)                   │
-│  • SQS message publishing                               │
-│  • 202 Accepted response                                │
-└────────────────────────┬────────────────────────────────┘
-                         │
-┌────────────────────────▼────────────────────────────────┐
-│         Message Queue Layer (AWS SQS)                    │
-│  • Queue: relay-transactions                            │
-│  • DLQ: relay-transactions-dlq                          │
-│  • Settings:                                            │
-│    - Visibility Timeout: 60s                            │
-│    - Message Retention: 4 days                          │
-│    - Long-poll: 20s                                     │
-│    - Max Receive Count: 3                               │
-└────────────────────────┬────────────────────────────────┘
-                         │
-┌────────────────────────▼────────────────────────────────┐
-│     Consumer Layer (queue-consumer)                      │
-│  • Long-poll SQS (20s wait)                             │
-│  • Message deserialization                              │
-│  • Idempotency check (MySQL)                            │
-│  • Transaction processing                               │
-│  • Result handling                                       │
-└────────────────────────┬────────────────────────────────┘
-                         │
-┌────────────────────────▼────────────────────────────────┐
-│        Transaction Execution Layer                       │
-│  • OZ Relayer (HTTP POST)                               │
-│  • Blockchain submission                                │
-│  • Status updates (MySQL + Redis)                       │
-└─────────────────────────────────────────────────────────┘
+```mermaid
+flowchart TD
+    APP["<b>Application Layer</b><br/>Client Services: Payment, Airdrop, NFT, DeFi, Game"]
+    API["<b>API Gateway Layer (relay-api)</b><br/>Authentication (X-API-Key)<br/>Transaction validation<br/>MySQL persistence (pending status)<br/>SQS message publishing<br/>202 Accepted response"]
+    MQ["<b>Message Queue Layer (AWS SQS)</b><br/>Queue: relay-transactions<br/>DLQ: relay-transactions-dlq<br/>Visibility Timeout: 60s | Retention: 4 days<br/>Long-poll: 20s | Max Receive Count: 3"]
+    CON["<b>Consumer Layer (queue-consumer)</b><br/>Long-poll SQS (20s wait)<br/>Message deserialization<br/>Idempotency check (MySQL)<br/>Transaction processing | Result handling"]
+    EXE["<b>Transaction Execution Layer</b><br/>OZ Relayer (HTTP POST)<br/>Blockchain submission<br/>Status updates (MySQL + Redis)"]
+
+    APP --> API --> MQ --> CON --> EXE
 ```
 
 ### Layer Responsibilities
@@ -105,142 +73,82 @@ SPEC-QUEUE-001 transforms the MSQ Relayer from a synchronous request-response sy
 
 ### 1. Producer Flow (relay-api)
 
-```
-1. Client: POST /api/v1/relay/direct
-   ├─ Payload: { to, data, value, gas, speed }
+```mermaid
+flowchart TD
+    S1["1. Client: POST /api/v1/relay/direct<br/>Payload: to, data, value, gas, speed"]
+    S2["2. relay-api: Request Validation<br/>Schema validation (X-API-Key, request body)"]
+    S3["3. relay-api: Database Write<br/>Create transaction record<br/>Status: pending<br/>Store: request payload, type (direct/gasless)"]
+    S4["4. relay-api: SQS Publishing<br/>Create message: messageId, transactionId,<br/>type, request, timestamp<br/>Send to relay-transactions queue"]
+    S5["5. relay-api: Response<br/>HTTP 202 Accepted<br/>Body: transactionId, status: pending, createdAt"]
+    S6["6. Client: Polling/Webhook<br/>GET /api/v1/relay/status/{transactionId}<br/>Or wait for webhook notification"]
 
-2. relay-api: Request Validation
-   ├─ Schema validation (X-API-Key, request body)
-
-3. relay-api: Database Write
-   ├─ Create transaction record
-   ├─ Status: "pending"
-   ├─ Store: request payload, type (direct/gasless)
-
-4. relay-api: SQS Publishing
-   ├─ Create message:
-   │  {
-   │    "messageId": "UUID",
-   │    "transactionId": "UUID",
-   │    "type": "direct",
-   │    "request": { ... },
-   │    "timestamp": "ISO8601"
-   │  }
-   ├─ Send to relay-transactions queue
-
-5. relay-api: Response
-   ├─ HTTP 202 Accepted
-   ├─ Body: { transactionId, status: "pending", createdAt }
-
-6. Client: Polling/Webhook
-   ├─ GET /api/v1/relay/status/{transactionId}
-   ├─ Or wait for webhook notification
+    S1 --> S2 --> S3 --> S4 --> S5 --> S6
 ```
 
 ### 2. Queue Flow (AWS SQS)
 
-```
-1. Message Arrival
-   ├─ Stored in relay-transactions queue
-   ├─ Visibility Timeout: 60 seconds
-   ├─ Retention: 4 days
+```mermaid
+flowchart TD
+    Q1["1. Message Arrival<br/>Stored in relay-transactions queue<br/>Visibility Timeout: 60s | Retention: 4 days"]
+    Q2["2. Message Reception by Consumer<br/>Long-poll (20s wait time)<br/>Batch receive (up to 10 messages)<br/>Message becomes invisible to other consumers"]
+    Q3["3. Message Processing<br/>Consumer processes message"]
+    Q3D{Success?}
+    Q3Y["Delete message from queue"]
+    Q3N["DO NOT DELETE<br/>Message becomes visible again<br/>Retry count increments"]
+    Q4["4. Retry Handling<br/>ApproximateReceiveCount tracks retries<br/>Max retries: 3"]
+    Q5["5. Dead Letter Queue<br/>Queue: relay-transactions-dlq<br/>Messages stuck after 3 retries<br/>Manual intervention required"]
 
-2. Message Reception by Consumer
-   ├─ Long-poll (20s wait time)
-   ├─ Batch receive (up to 10 messages)
-   ├─ Message becomes invisible to other consumers
-
-3. Message Processing
-   ├─ Consumer processes message
-   ├─ If success: Delete message from queue
-   ├─ If failure:
-   │  ├─ DO NOT DELETE
-   │  ├─ Message becomes visible again
-   │  ├─ Retry count increments
-
-4. Retry Handling
-   ├─ ApproximateReceiveCount header tracks retries
-   ├─ Max retries: 3
-   ├─ After 3 failures: Move to DLQ
-
-5. Dead Letter Queue (DLQ)
-   ├─ Queue: relay-transactions-dlq
-   ├─ Messages stuck after 3 retries
-   ├─ Manual intervention required
+    Q1 --> Q2 --> Q3 --> Q3D
+    Q3D -- Yes --> Q3Y
+    Q3D -- No --> Q3N --> Q4
+    Q4 -- "After 3 failures" --> Q5
 ```
 
 ### 3. Consumer Flow (queue-consumer)
 
-```
-1. Initialize Consumer
-   ├─ Connect to SQS
-   ├─ Connect to MySQL
-   ├─ Connect to OZ Relayer
-   ├─ Start long-polling loop
+```mermaid
+flowchart TD
+    C1["1. Initialize Consumer<br/>Connect to SQS, MySQL, OZ Relayer<br/>Start long-polling loop"]
+    C2["2. Receive Messages<br/>Long-poll SQS (20s)<br/>Receive batch (max 10)"]
+    C3["3. Per-Message Processing<br/>Parse message<br/>Extract: transactionId, type, request"]
+    C4["4. Idempotency Check<br/>Query MySQL: SELECT * FROM transactions WHERE id = ?"]
+    C4D{Status?}
+    C4Skip["Skip (already processed)"]
+    C5["5. OZ Relayer Call<br/>POST /api/v1/relay/{type}<br/>Headers: X-API-Key<br/>Timeout: 30 seconds"]
+    C6D{Response?}
+    C6OK["Success (200 OK)<br/>Extract: hash, transactionId<br/>Update MySQL: status = success<br/>Update Redis: Cache result (TTL: 600s)<br/>Delete message from SQS"]
+    C6Fail["Failure (4xx/5xx)<br/>Log error<br/>Update MySQL: error_message<br/>DO NOT DELETE message (retry)<br/>If retry count = 3: status = failed"]
 
-2. Receive Messages
-   ├─ Long-poll SQS (20s)
-   ├─ Receive batch (max 10)
-
-3. Per-Message Processing
-   ├─ Parse message
-   ├─ Extract: transactionId, type, request
-
-4. Idempotency Check
-   ├─ Query MySQL: SELECT * FROM transactions WHERE id = ?
-   ├─ If status = "success" or "failed": Skip (already processed)
-   ├─ If status = "pending": Continue
-
-5. OZ Relayer Call
-   ├─ POST /api/v1/relay/{type}
-   ├─ Headers: { "X-API-Key": "..." }
-   ├─ Body: request payload
-   ├─ Timeout: 30 seconds
-
-6. Result Handling
-   ├─ Success Response (200 OK):
-   │  ├─ Extract: hash, transactionId
-   │  ├─ Update MySQL: status = "success", result = { hash, ... }
-   │  ├─ Update Redis: Cache result (TTL: 600s)
-   │  ├─ Delete message from SQS
-   │
-   ├─ Failure Response (4xx/5xx):
-   │  ├─ Log error
-   │  ├─ Update MySQL: error_message = "..."
-   │  ├─ DO NOT DELETE message (retry)
-   │  ├─ If retry count = 3: Update status = "failed"
+    C1 --> C2 --> C3 --> C4 --> C4D
+    C4D -- "success or failed" --> C4Skip
+    C4D -- "pending" --> C5 --> C6D
+    C6D -- "200 OK" --> C6OK
+    C6D -- "4xx/5xx" --> C6Fail
 ```
 
 ### 4. Status Query Flow
 
-```
-Client: GET /api/v1/relay/status/:transactionId
+```mermaid
+flowchart TD
+    Client["Client: GET /api/v1/relay/status/:transactionId"]
+    T1["Tier 1: Redis (L1 Cache)<br/>Key: tx:{transactionId}"]
+    T1D{Cache Hit?}
+    T1Hit["Return cached result<br/>(~1-5ms)"]
+    T2["Tier 2: MySQL (L2 Storage)<br/>SELECT * FROM transactions WHERE id = ?"]
+    T2D{Found?}
+    T2Hit["Backfill Redis cache<br/>Return (~50ms)"]
+    T3["Tier 3: OZ Relayer (L3 External)<br/>GET /api/v1/txs/{transactionId}"]
+    T3D{Found?}
+    T3Hit["Store in MySQL<br/>Cache in Redis<br/>Return (~200ms)"]
+    T3Miss["Return Not Found (404)"]
 
-API Gateway: 3-Tier Lookup
-├─ Tier 1: Redis (L1 Cache)
-│  ├─ Key: "tx:{transactionId}"
-│  ├─ If hit: Return cached result (~1-5ms)
-│  ├─ If miss: Continue to Tier 2
-│
-├─ Tier 2: MySQL (L2 Storage)
-│  ├─ SELECT * FROM transactions WHERE id = ?
-│  ├─ If found: Backfill Redis cache, Return (~50ms)
-│  ├─ If not found: Continue to Tier 3
-│
-├─ Tier 3: OZ Relayer (L3 External)
-│  ├─ GET /api/v1/txs/{transactionId}
-│  ├─ If found: Store in MySQL, Cache in Redis, Return (~200ms)
-│  ├─ If not found: Return "Not Found" (404)
-
-Response: 200 OK
-{
-  "transactionId": "UUID",
-  "status": "success|pending|failed",
-  "hash": "0x...",
-  "confirmedAt": "ISO8601",
-  "result": { ... },
-  "error_message": null
-}
+    Client --> T1 --> T1D
+    T1D -- Hit --> T1Hit
+    T1D -- Miss --> T2 --> T2D
+    T2D -- Found --> T2Hit
+    T2D -- "Not Found" --> T3 --> T3D
+    T3D -- Found --> T3Hit
+    T3D -- "Not Found" --> T3Miss
 ```
 
 ---
@@ -364,12 +272,13 @@ TTL: 600 seconds (10 minutes)
 
 **Pattern**: At-Least-Once Delivery
 
-```
-Message → SQS (Durable Storage)
-       ├─ Consumer picks up message
-       ├─ Visibility Timeout: 60s (Message hidden from others)
-       ├─ Consumer processes
-       └─ Consumer deletes message (or message expires)
+```mermaid
+flowchart LR
+    A["Message"] --> B["SQS<br/>(Durable Storage)"]
+    B --> C["Consumer picks up message"]
+    C --> D["Visibility Timeout: 60s<br/>(Message hidden from others)"]
+    D --> E["Consumer processes"]
+    E --> F["Consumer deletes message<br/>(or message expires)"]
 ```
 
 **Implication**: Consumer MUST be idempotent
@@ -378,68 +287,72 @@ Message → SQS (Durable Storage)
 
 **Pattern**: Idempotent Message Processing
 
-```
-Message: { transactionId: "X", request: {...} }
+```mermaid
+flowchart TD
+    MSG["Message: transactionId X, request payload"]
+    CHK["1. Check MySQL<br/>SELECT status FROM transactions WHERE id = X"]
+    DEC{Status?}
+    SKIP["Already processed<br/>Skip processing<br/>Delete message from SQS"]
+    PROC["Process message<br/>Update status"]
 
-Consumer:
-1. Check MySQL: SELECT status FROM transactions WHERE id = "X"
-2. If status = "success" or "failed":
-   ├─ Already processed, skip processing
-   └─ Delete message from SQS
-3. If status = "pending":
-   ├─ Process message
-   └─ Update status
+    MSG --> CHK --> DEC
+    DEC -- "success or failed" --> SKIP
+    DEC -- "pending" --> PROC
 ```
 
 ### 3. Retry Strategy
 
 **Pattern**: Exponential Backoff via Visibility Timeout
 
-```
-Attempt 1: Visibility Timeout = 60s
-           ├─ Processing fails
-           └─ Message returned to queue
+```mermaid
+flowchart TD
+    A1["Attempt 1: Visibility Timeout = 60s"]
+    A1F["Processing fails<br/>Message returned to queue"]
+    A2["Attempt 2: Wait 60s, try again"]
+    A2F["Processing fails<br/>Message returned to queue"]
+    A3["Attempt 3: Wait 60s, try again"]
+    A3F["Processing fails<br/>ApproximateReceiveCount = 3"]
+    A4["Attempt 4: Message moved to DLQ<br/>No more automatic retries<br/>Manual intervention required"]
 
-Attempt 2: Wait 60s, try again
-           ├─ Processing fails
-           └─ Message returned to queue
-
-Attempt 3: Wait 60s, try again
-           ├─ Processing fails
-           └─ ApproximateReceiveCount = 3
-
-Attempt 4: Message moved to DLQ
-           ├─ No more automatic retries
-           └─ Manual intervention required
+    A1 --> A1F --> A2 --> A2F --> A3 --> A3F --> A4
 ```
 
 ### 4. Dead Letter Queue
 
 **Pattern**: Failure Isolation
 
-```
-Message Processing Failures:
-├─ Network error → Retry (automatic)
-├─ OZ Relayer error → Retry (automatic)
-├─ Invalid signature → DLQ (no retry)
-└─ Invalid contract → DLQ (no retry)
+```mermaid
+flowchart TD
+    FAIL["Message Processing Failures"]
+    NET["Network error"] --> RETRY1["Retry (automatic)"]
+    OZ["OZ Relayer error"] --> RETRY2["Retry (automatic)"]
+    SIG["Invalid signature"] --> DLQ1["DLQ (no retry)"]
+    CON["Invalid contract"] --> DLQ2["DLQ (no retry)"]
 
-DLQ Messages:
-├─ Stored for audit
-├─ Require manual investigation
-└─ Can be replayed after fixing
+    FAIL --> NET
+    FAIL --> OZ
+    FAIL --> SIG
+    FAIL --> CON
+
+    DLQ["DLQ Messages"]
+    DLQ --> AUD["Stored for audit"]
+    DLQ --> INV["Require manual investigation"]
+    DLQ --> REP["Can be replayed after fixing"]
 ```
 
 ### 5. Circuit Breaker (Optional)
 
 **Pattern**: Prevent Cascading Failures
 
-```
-If OZ Relayer health checks fail repeatedly:
-├─ Stop sending messages (circuit open)
-├─ Log alerts to monitoring
-├─ Wait for recovery
-└─ Resume when health returns
+```mermaid
+flowchart TD
+    A["OZ Relayer health checks fail repeatedly"]
+    B["Stop sending messages<br/>(circuit open)"]
+    C["Log alerts to monitoring"]
+    D["Wait for recovery"]
+    E["Resume when health returns"]
+
+    A --> B --> C --> D --> E
 ```
 
 ---
@@ -448,63 +361,41 @@ If OZ Relayer health checks fail repeatedly:
 
 ### Local Development (Docker)
 
-```
-┌─────────────────────────────────────────────────┐
-│            Docker Compose (docker-compose.yaml)  │
-│                                                  │
-│ ┌──────────┐  ┌──────────┐  ┌──────────────┐   │
-│ │ relay-api│  │queue-   │  │ localstack   │   │
-│ │          │  │consumer │  │ (SQS, DynamoDB)   │
-│ │:3000     │  │:depends │  │ :4566, :8080 │   │
-│ └──────────┘  └──────────┘  └──────────────┘   │
-│       │             │              │             │
-│       └─────────────┼──────────────┘             │
-│                     ▼                             │
-│ ┌──────────────────────────────────────┐        │
-│ │ MySQL  │ Redis  │ Hardhat (8545)    │        │
-│ │ :3307  │ :6379  │ Blockchain        │        │
-│ └──────────────────────────────────────┘        │
-└─────────────────────────────────────────────────┘
+```mermaid
+flowchart TD
+    subgraph Docker["Docker Compose (docker-compose.yaml)"]
+        subgraph AppServices["Application Services"]
+            RA["relay-api<br/>:3000"]
+            QC["queue-consumer"]
+            LS["localstack<br/>(SQS, DynamoDB)<br/>:4566, :8080"]
+        end
+        subgraph Infrastructure["Infrastructure"]
+            MY["MySQL<br/>:3307"]
+            RD["Redis<br/>:6379"]
+            HH["Hardhat<br/>:8545 (Blockchain)"]
+        end
+        RA --> MY
+        RA --> RD
+        RA --> LS
+        QC --> MY
+        QC --> LS
+        QC --> HH
+    end
 ```
 
 ### Production (AWS ECS/EKS)
 
-```
-┌───────────────────────────────────────────────────┐
-│              AWS ECS/EKS Cluster                   │
-│                                                    │
-│ ┌─────────────────────────────────────────────┐   │
-│ │          ECS Service (relay-api)             │   │
-│ │  Desired Count: 2+                           │   │
-│ │  Load Balancer (ALB)                         │   │
-│ │  Auto-scaling: CPU/Memory based              │   │
-│ └──────────┬──────────────────────────────────┘   │
-│            │                                       │
-│ ┌──────────▼──────────────────────────────────┐   │
-│ │              AWS SQS Queue                   │   │
-│ │  relay-transactions (Standard Queue)        │   │
-│ │  relay-transactions-dlq (Dead Letter Queue) │   │
-│ │  Visibility Timeout: 60s                    │   │
-│ └──────────┬──────────────────────────────────┘   │
-│            │                                       │
-│ ┌──────────▼──────────────────────────────────┐   │
-│ │      ECS Service (queue-consumer)            │   │
-│ │  Desired Count: 2+                           │   │
-│ │  Auto-scaling: Queue depth based             │   │
-│ │  Graceful shutdown: 120s timeout             │   │
-│ └──────────┬──────────────────────────────────┘   │
-│            │                                       │
-│ ┌──────────▼──────────────────────────────────┐   │
-│ │         OZ Relayer (Private Subnet)          │   │
-│ │  3x instances for HA and load distribution   │   │
-│ └──────────┬──────────────────────────────────┘   │
-│            │                                       │
-│ ┌──────────▼──────────────────────────────────┐   │
-│ │    AWS RDS (MySQL) + ElastiCache (Redis)    │   │
-│ │  Multi-AZ for high availability              │   │
-│ │  Automated backup and encryption             │   │
-│ └──────────────────────────────────────────────┘   │
-└───────────────────────────────────────────────────┘
+```mermaid
+flowchart TD
+    subgraph AWS["AWS ECS/EKS Cluster"]
+        API_SVC["ECS Service (relay-api)<br/>Desired Count: 2+<br/>Load Balancer (ALB)<br/>Auto-scaling: CPU/Memory based"]
+        SQS["AWS SQS Queue<br/>relay-transactions (Standard Queue)<br/>relay-transactions-dlq (Dead Letter Queue)<br/>Visibility Timeout: 60s"]
+        CON_SVC["ECS Service (queue-consumer)<br/>Desired Count: 2+<br/>Auto-scaling: Queue depth based<br/>Graceful shutdown: 120s timeout"]
+        OZ["OZ Relayer (Private Subnet)<br/>3x instances for HA and load distribution"]
+        DB["AWS RDS (MySQL) + ElastiCache (Redis)<br/>Multi-AZ for high availability<br/>Automated backup and encryption"]
+
+        API_SVC --> SQS --> CON_SVC --> OZ --> DB
+    end
 ```
 
 ### Scaling Considerations

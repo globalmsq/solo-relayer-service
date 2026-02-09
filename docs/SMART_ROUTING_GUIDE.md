@@ -47,37 +47,14 @@ The system manages 3 OZ Relayer instances deployed with unique configurations:
 
 ### Component Overview
 
-```
-┌─────────────────────────────────────────────────────────┐
-│              RelayerRouterService                        │
-│  (packages/queue-consumer/src/relay/)                   │
-└────────────────────┬────────────────────────────────────┘
-                     │
-        ┌────────────┴────────────┐
-        │                         │
-        ▼                         ▼
-┌──────────────────┐     ┌──────────────────┐
-│  Health Check    │     │  Pending TX      │
-│  Monitor         │     │  Query           │
-│                  │     │                  │
-│ (10s TTL)        │     │ (Redis/OZ API)   │
-└──────────────────┘     └──────────────────┘
-        │                         │
-        └────────────┬────────────┘
-                     │
-        ┌────────────▼────────────┐
-        │  Relayer Selection      │
-        │  Algorithm              │
-        │                         │
-        │ 1. Filter healthy       │
-        │ 2. Lowest pending count │
-        │ 3. Return URL           │
-        └────────────┬────────────┘
-                     │
-        ┌────────────▼────────────┐
-        │  OZ Relayer Instance    │
-        │  (Selected)             │
-        └────────────────────────┘
+```mermaid
+flowchart TD
+    A["RelayerRouterService<br/>(packages/queue-consumer/src/relay/)"]
+    A --> B["Health Check<br/>Monitor<br/>(10s TTL)"]
+    A --> C["Pending TX<br/>Query<br/>(Redis/OZ API)"]
+    B --> D["Relayer Selection<br/>Algorithm<br/><br/>1. Filter healthy<br/>2. Lowest pending count<br/>3. Return URL"]
+    C --> D
+    D --> E["OZ Relayer Instance<br/>(Selected)"]
 ```
 
 ### Service Interface

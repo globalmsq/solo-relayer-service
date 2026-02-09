@@ -4,32 +4,21 @@ Solo Relayer Service의 CI/CD 파이프라인 및 버전 관리 전략을 설명
 
 ## Overview
 
-```
-┌─────────────────────────────────────────────────────────────────────┐
-│  Developer Workflow                                                  │
-│  ───────────────────────────────────────────────────────────────────│
-│  1. Feature development                                              │
-│  2. pnpm changeset  ← Record change type (patch/minor/major)        │
-│  3. Create PR and merge                                             │
-│                                                                      │
-│  ⚠️ No changeset → Changeset Bot adds warning comment to PR         │
-└─────────────────────────────────────────────────────────────────────┘
-                              ↓
-┌─────────────────────────────────────────────────────────────────────┐
-│  Automation (GitHub Actions)                                         │
-│  ───────────────────────────────────────────────────────────────────│
-│  1. Main merge → Nightly Docker build & ECR Push                    │
-│  2. Changesets Bot → Auto-create "Version Packages" PR              │
-└─────────────────────────────────────────────────────────────────────┘
-                              ↓
-┌─────────────────────────────────────────────────────────────────────┐
-│  Release (Manual Approval)                                           │
-│  ───────────────────────────────────────────────────────────────────│
-│  1. Review & merge "Version Packages" PR                            │
-│  2. Auto-update package.json versions + generate CHANGELOG          │
-│  3. Auto-create Git tag (v1.1.0)                                    │
-│  4. GitHub Release → Release Docker build & ECR Push                │
-└─────────────────────────────────────────────────────────────────────┘
+```mermaid
+flowchart TD
+    subgraph dev["Developer Workflow"]
+        d1["1. Feature development<br/>2. pnpm changeset ← Record change type (patch/minor/major)<br/>3. Create PR and merge<br/><br/>⚠️ No changeset → Changeset Bot adds warning comment to PR"]
+    end
+
+    subgraph auto["Automation (GitHub Actions)"]
+        a1["1. Main merge → Nightly Docker build & ECR Push<br/>2. Changesets Bot → Auto-create 'Version Packages' PR"]
+    end
+
+    subgraph rel["Release (Manual Approval)"]
+        r1["1. Review & merge 'Version Packages' PR<br/>2. Auto-update package.json versions + generate CHANGELOG<br/>3. Auto-create Git tag (v1.1.0)<br/>4. GitHub Release → Release Docker build & ECR Push"]
+    end
+
+    dev --> auto --> rel
 ```
 
 ## Docker Image Tagging Strategy

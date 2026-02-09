@@ -33,77 +33,6 @@ It utilizes **OZ open-source (Relayer + Monitor)** as its core, with NestJS API 
 
 ### 1.1 High-Level Architecture (v4.0 B2B Infrastructure)
 
-```
-┌─────────────────────────────────────────────────────────────────┐
-│                    Client Services (B2B)                         │
-│  ┌───────────┐ ┌───────────┐ ┌───────────┐ ┌───────────────┐   │
-│  │ Payment   │ │ Airdrop   │ │ NFT       │ │ DeFi/Game     │   │
-│  │ System    │ │ System    │ │ Service   │ │ Service       │   │
-│  └───────────┘ └───────────┘ └───────────┘ └───────────────┘   │
-└─────────────────────────────────┬───────────────────────────────┘
-                                  │
-                                  ▼
-┌─────────────────────────────────────────────────────────────────┐
-│                   NestJS API Gateway (Custom Development)        │
-│  ┌───────────┐ ┌───────────┐ ┌───────────┐                     │
-│  │ Auth      │ │ Queue     │ │ Policy    │                     │
-│  │ (API Key) │ │ Adapter   │ │ Engine    │                     │
-│  └───────────┘ └───────────┘ └───────────┘                     │
-│  ┌───────────┐ ┌───────────────────────────────────────────┐   │
-│  │ Gasless   │ │ API Documentation                         │   │
-│  │Coordinator│ │ (Swagger/OpenAPI)                         │   │
-│  └───────────┘ └───────────────────────────────────────────┘   │
-└─────────────────────────────────┬───────────────────────────────┘
-                                  │
-          ┌───────────────────────┼───────────────────────┐
-          │                       │                       │
-          ▼                       ▼                       ▼
-┌──────────────────┐ ┌─────────────────┐   ┌─────────────────┐
-│  Nginx LB        │ │  OZ Monitor     │   │ Smart Contracts │
-│  (Port 8080)     │ │  v1.1.0 (Rust)  │   │ (Solidity)      │
-│  ──────────────  │ │  ─────────────  │   │ ─────────────   │
-│ • ip_hash        │ │  • Block Watch  │   │ • ERC2771       │
-│ • Round-robin    │ │  • Event Filter │   │   Forwarder     │
-│ • Health check   │ │  • Balance Alert│   │ • Sample ERC20  │
-│ • Failover       │ │  • Slack/Discord│   │ • Sample ERC721 │
-│ • Access logging │ │  • Custom Script│   │                 │
-│                  │ │                 │   │                 │
-│ ┌──────────────┐ │ └────────┬────────┘   └─────────────────┘
-│ │ OZ Relayer 1 │ │
-│ │ (Port 8081)  │ │
-│ └──────────────┘ │
-│ ┌──────────────┐ │
-│ │ OZ Relayer 2 │ │
-│ │ (Port 8082)  │ │
-│ └──────────────┘ │
-│ ┌──────────────┐ │
-│ │ OZ Relayer 3 │ │
-│ │ (Port 8083)  │ │
-│ └──────────────┘ │
-└──────────────────┘
-         │                     │
-         └──────────┬──────────┘
-                    ▼
-┌─────────────────────────────────────────────────────────────────┐
-│                      Infrastructure                              │
-│  ┌───────────┐ ┌───────────┐ ┌───────────┐                     │
-│  │ LocalStack│ │ Redis     │ │ Prometheus│                     │
-│  │ (SQS)     │ │ (Relayer) │ │ + Grafana │                     │
-│  └───────────┘ └───────────┘ └───────────┘                     │
-└─────────────────────────────────────────────────────────────────┘
-                    │
-                    ▼
-┌─────────────────────────────────────────────────────────────────┐
-│                    Blockchain Networks                           │
-│  ┌───────────┐ ┌───────────┐ ┌───────────┐                     │
-│  │ Polygon   │ │ Ethereum  │ │ BNB Chain │                     │
-│  │ (P0)      │ │ (P1)      │ │ (P2)      │                     │
-│  └───────────┘ └───────────┘ └───────────┘                     │
-└─────────────────────────────────────────────────────────────────┘
-```
-
-#### Mermaid Architecture Diagram
-
 ```mermaid
 flowchart TB
     subgraph Clients["Client Services (B2B)"]
@@ -113,27 +42,34 @@ flowchart TB
         DeFi["DeFi/Game Service"]
     end
 
-    subgraph Gateway["NestJS API Gateway"]
+    subgraph Gateway["NestJS API Gateway (Custom Development)"]
         Auth["Auth\n(API Key)"]
         QueueAdapter["Queue\nAdapter"]
         Policy["Policy\nEngine"]
         GaslessCoord["Gasless\nCoordinator"]
-        APIDocs["API Docs\n(Swagger)"]
+        APIDocs["API Documentation\n(Swagger/OpenAPI)"]
     end
 
-    subgraph OZServices["OZ Open Source Services"]
-        Relayer["OZ Relayer v1.3.0\n(Rust/Docker)"]
-        Monitor["OZ Monitor v1.1.0\n(Rust/Docker)"]
+    subgraph NginxLB["Nginx LB (Port 8080)"]
+        LBInfo["ip_hash | Round-robin | Health check\nFailover | Access logging"]
+        R1["OZ Relayer 1 (Port 8081)"]
+        R2["OZ Relayer 2 (Port 8082)"]
+        R3["OZ Relayer 3 (Port 8083)"]
     end
 
-    subgraph SmartContracts["Smart Contracts"]
-        Forwarder["ERC2771Forwarder"]
-        Target["Target Contracts\n(ERC20, ERC721)"]
+    subgraph Monitor["OZ Monitor v1.1.0 (Rust)"]
+        MonFeatures["Block Watch | Event Filter\nBalance Alert | Slack/Discord\nCustom Script"]
+    end
+
+    subgraph SmartContracts["Smart Contracts (Solidity)"]
+        Forwarder["ERC2771 Forwarder"]
+        SampleERC20["Sample ERC20"]
+        SampleERC721["Sample ERC721"]
     end
 
     subgraph Infra["Infrastructure"]
-        LocalStack["LocalStack\n(SQS Queue)"]
-        Redis["Redis\n(OZ Relayer)"]
+        LocalStack["LocalStack\n(SQS)"]
+        Redis["Redis\n(Relayer)"]
         Prometheus["Prometheus\n+ Grafana"]
     end
 
@@ -144,11 +80,12 @@ flowchart TB
     end
 
     Clients --> Gateway
-    Gateway --> OZServices
-    Relayer --> SmartContracts
-    SmartContracts --> Blockchain
-    OZServices --> Infra
-    Gateway --> Infra
+    Gateway --> NginxLB
+    Gateway --> Monitor
+    Gateway --> SmartContracts
+    NginxLB --> Infra
+    Monitor --> Infra
+    Infra --> Blockchain
     Monitor --> Blockchain
 ```
 
@@ -165,41 +102,31 @@ flowchart TB
 
 **Relayer Pool Approach**: Each Relayer holds an independent Private Key for parallel processing without Nonce collisions
 
-```
-┌─────────────────────────────────────────────────────────────┐
-│                NestJS API Gateway                            │
-│  ┌───────────┐ ┌───────────────┐ ┌─────────────────────┐   │
-│  │ Auth      │ │ Queue         │ │ Pool Health         │   │
-│  │ Module    │ │ Service (SQS) │ │ Monitor             │   │
-│  └───────────┘ └───────────────┘ └─────────────────────┘   │
-└─────────────────────────┬───────────────────────────────────┘
-                          │
-                          ▼
-┌─────────────────────────────────────────────────────────────┐
-│                Nginx Load Balancer                           │
-│  ┌─────────────────────────────────────────────────────┐   │
-│  │  upstream oz-relayers { least_conn; }                │   │
-│  └─────────────────────────────────────────────────────┘   │
-└─────────────────────────┬───────────────────────────────────┘
-                          │ Routing Strategy: Least Connections
-          ┌───────────────┼───────────────┐
-          ▼               ▼               ▼
-┌─────────────────┐ ┌─────────────────┐ ┌─────────────────┐
-│ OZ Relayer #1   │ │ OZ Relayer #2   │ │ OZ Relayer #3   │
-│ ─────────────── │ │ ─────────────── │ │ ─────────────── │
-│ Key: 0xAAA...   │ │ Key: 0xBBB...   │ │ Key: 0xCCC...   │
-│ Port: 8081      │ │ Port: 8082      │ │ Port: 8083      │
-│ Status: Active  │ │ Status: Active  │ │ Status: Active  │
-└────────┬────────┘ └────────┬────────┘ └────────┬────────┘
-         │                   │                   │
-         └───────────────────┴───────────────────┘
-                             │
-                             ▼
-                    ┌─────────────────┐
-                    │     Redis       │
-                    │ (OZ Relayer     │
-                    │  Internal Queue)│
-                    └─────────────────┘
+```mermaid
+flowchart TD
+    subgraph Gateway["NestJS API Gateway"]
+        AuthMod["Auth\nModule"]
+        QueueSvc["Queue\nService (SQS)"]
+        PoolMon["Pool Health\nMonitor"]
+    end
+
+    subgraph NginxLB["Nginx Load Balancer"]
+        Upstream["upstream oz-relayers\nleast_conn"]
+    end
+
+    R1["OZ Relayer #1\nKey: 0xAAA...\nPort: 8081\nStatus: Active"]
+    R2["OZ Relayer #2\nKey: 0xBBB...\nPort: 8082\nStatus: Active"]
+    R3["OZ Relayer #3\nKey: 0xCCC...\nPort: 8083\nStatus: Active"]
+
+    RedisQ["Redis\n(OZ Relayer\nInternal Queue)"]
+
+    Gateway --> NginxLB
+    NginxLB -->|"Least Connections"| R1
+    NginxLB -->|"Least Connections"| R2
+    NginxLB -->|"Least Connections"| R3
+    R1 --> RedisQ
+    R2 --> RedisQ
+    R3 --> RedisQ
 ```
 
 **Pool Management Features**:
@@ -217,36 +144,45 @@ flowchart TB
 
 ### 1.4 Unified Request Flow
 
-```
-┌──────────────────────────────────────────────────────────────┐
-│                        API Layer                              │
-├──────────────┬──────────────┬─────────────┬─────────────────┤
-│ POST         │ POST         │ GET         │ GET             │
-│ /relay/direct│ /relay/gasless│ /relay/nonce│ /relay/status   │
-└──────┬───────┴──────┬───────┴──────┬──────┴────────┬────────┘
-       │              │              │               │
-       ▼              ▼              │               │
-┌──────────────┐ ┌───────────────────┴───────────────┴────────┐
-│ Direct Path  │ │           Gasless Middleware               │
-├──────────────┤ ├────────────────────────────────────────────┤
-│ Whitelist    │ │ 1. Signature Verifier (EIP-712 pre-verify) │
-│ validation   │ │ 2. Policy Engine (Contract/Method limits)  │
-│ (NestJS)     │ │                                            │
-└──────┬───────┘ │ 4. Forwarder TX Builder                    │
-       │         └────────────────────┬───────────────────────┘
-       │                              │
-       └──────────────┬───────────────┘
-                      ▼
-┌─────────────────────────────────────────────────────────────┐
-│                 OZ Relayer (v1.3.0 Rust)                     │
-├─────────────┬─────────────┬─────────────┬───────────────────┤
-│ Nonce       │ Gas         │ Signer      │ Queue             │
-│ Manager     │ Estimator   │ Service     │ (Redis)           │
-├─────────────┴─────────────┴─────────────┴───────────────────┤
-│                    Retry Handler (Built-in)                  │
-├─────────────────────────────────────────────────────────────┤
-│                 Transaction Submitter                        │
-└─────────────────────────────────────────────────────────────┘
+```mermaid
+flowchart TD
+    subgraph API["API Layer"]
+        EP1["POST\n/relay/direct"]
+        EP2["POST\n/relay/gasless"]
+        EP3["GET\n/relay/nonce"]
+        EP4["GET\n/relay/status"]
+    end
+
+    subgraph DirectPath["Direct Path"]
+        WL["Whitelist validation\n(NestJS)"]
+    end
+
+    subgraph GaslessMW["Gasless Middleware"]
+        SV["1. Signature Verifier\n(EIP-712 pre-verify)"]
+        PE["2. Policy Engine\n(Contract/Method limits)"]
+        FB["4. Forwarder TX Builder"]
+        SV --> PE --> FB
+    end
+
+    subgraph OZR["OZ Relayer (v1.3.0 Rust)"]
+        subgraph CoreModules[" "]
+            direction LR
+            NM["Nonce Manager"]
+            GE["Gas Estimator"]
+            SS["Signer Service"]
+            QR["Queue (Redis)"]
+        end
+        RH["Retry Handler (Built-in)"]
+        TS["Transaction Submitter"]
+        CoreModules --> RH --> TS
+    end
+
+    EP1 --> DirectPath
+    EP2 --> GaslessMW
+    EP3 --> GaslessMW
+    EP4 --> GaslessMW
+    DirectPath --> OZR
+    GaslessMW --> OZR
 ```
 
 ---
@@ -255,16 +191,21 @@ flowchart TB
 
 Following OpenZeppelin official recommendations, security controls such as Contract/Method Whitelist are implemented in the **NestJS API Gateway**.
 
-```
-Request → [API Key Auth] → [Contract Whitelist] → [Method Whitelist]
-                                                    ↓
-                                            [User Blacklist]
-                                                    ↓
-         [EIP-712 Signature Pre-verify] → OZ Relayer → [Forwarder.execute()]
-         (NestJS)                        (Rust)        (On-chain)
-                                                    ↓
-         OZ Forwarder: [EIP-712 Verify] → [Nonce Mgmt] → [Deadline Verify]
-                       (On-chain)        (On-chain)      (On-chain)
+```mermaid
+flowchart TD
+    Req["Request"] --> Auth["API Key Auth"]
+    Auth --> CWL["Contract Whitelist"]
+    CWL --> MWL["Method Whitelist"]
+    MWL --> UBL["User Blacklist"]
+    UBL --> SigVerify["EIP-712 Signature Pre-verify\n(NestJS)"]
+    SigVerify --> OZR["OZ Relayer\n(Rust)"]
+    OZR --> FwdExec["Forwarder.execute()\n(On-chain)"]
+
+    subgraph OnChain["OZ Forwarder (On-chain)"]
+        EIPVerify["EIP-712 Verify"] --> NonceMgmt["Nonce Mgmt"] --> DeadlineVerify["Deadline Verify"]
+    end
+
+    FwdExec --> OnChain
 ```
 
 ---

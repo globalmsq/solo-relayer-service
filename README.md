@@ -191,51 +191,41 @@ solo-relayer-service/
 
 ### System Diagram
 
-```
-┌──────────────────────────────────────────────────────────────────┐
-│                    Client Services (B2B)                          │
-│  ┌───────────┐ ┌───────────┐ ┌───────────┐ ┌────────────────┐   │
-│  │ Payment   │ │ Airdrop   │ │ NFT       │ │ DeFi/Game      │   │
-│  │ System    │ │ System    │ │ Service   │ │ Service        │   │
-│  └───────────┘ └───────────┘ └───────────┘ └────────────────┘   │
-└──────────────────┬─────────────────────────────────────────────────┘
-                   ▼
-┌──────────────────────────────────────────────────────────────────┐
-│                  NestJS API Gateway (relay-api)                   │
-│  Producer - Accepts requests, saves to MySQL, sends to SQS       │
-└──────────────────┬──────────────────────────────────────────────┬─┘
-                   │                                              │
-                   ▼                                              ▼
-        ┌──────────────────┐                          ┌──────────────────┐
-        │  AWS SQS Queue   │                          │ Queue Consumer   │
-        │  (LocalStack)    │                          │ (Background      │
-        │                  │                          │  Worker)         │
-        │ Message Format:  │                          │                  │
-        │ {                │                          │ Long-poll: 20s   │
-        │   txId,          │                          │ Retry: 3x        │
-        │   request,       │ ◄──────────────────────► │ DLQ: Dead Letter │
-        │   type           │                          │ Queue            │
-        │ }                │                          │                  │
-        └──────────────────┘                          └────────┬─────────┘
-                                                               │
-                                                               ▼
-                                                   ┌──────────────────┐
-                                                   │  OZ Relayer      │
-                                                   │  (TX Signing)    │
-                                                   │                  │
-                                                   │ • Nonce Mgmt     │
-                                                   │ • Gas Est        │
-                                                   │ • Signing        │
-                                                   │ • Submission     │
-                                                   └────────┬─────────┘
-                                                           │
-                                                           ▼
-                                        ┌──────────────────────────────┐
-                                        │   Blockchain Network         │
-                                        │   • Polygon                  │
-                                        │   • Ethereum                 │
-                                        │   • BNB Chain                │
-                                        └──────────────────────────────┘
+```mermaid
+flowchart TD
+    subgraph Clients["Client Services (B2B)"]
+        C1["Payment System"]
+        C2["Airdrop System"]
+        C3["NFT Service"]
+        C4["DeFi/Game Service"]
+    end
+
+    subgraph Gateway["NestJS API Gateway (relay-api)"]
+        GW["Producer\nAccepts requests, saves to MySQL, sends to SQS"]
+    end
+
+    subgraph SQS["AWS SQS Queue (LocalStack)"]
+        Q["Message Format:\n{ txId, request, type }"]
+    end
+
+    subgraph Consumer["Queue Consumer (Background Worker)"]
+        W["Long-poll: 20s\nRetry: 3x\nDLQ: Dead Letter Queue"]
+    end
+
+    subgraph Relayer["OZ Relayer (TX Signing)"]
+        R["Nonce Mgmt\nGas Estimation\nSigning\nSubmission"]
+    end
+
+    subgraph Blockchain["Blockchain Network"]
+        B["Polygon / Ethereum / BNB Chain"]
+    end
+
+    Clients --> Gateway
+    Gateway --> SQS
+    Gateway --> Consumer
+    SQS <--> Consumer
+    Consumer --> Relayer
+    Relayer --> Blockchain
 ```
 
 ### Phase Implementation
@@ -252,15 +242,22 @@ solo-relayer-service/
 ### 1. Async Transaction Processing
 
 **Before SPEC-QUEUE-001** (Synchronous):
-```
-Client → API Gateway → OZ Relayer → Blockchain → Response (hash)
-         [Blocking, ~200ms]
+```mermaid
+flowchart LR
+    A["Client"] --> B["API Gateway\nBlocking, ~200ms"]
+    B --> C["OZ Relayer"]
+    C --> D["Blockchain"]
+    D --> E["Response (hash)"]
 ```
 
 **After SPEC-QUEUE-001** (Asynchronous):
-```
-Client → API Gateway → SQS Queue → Background Worker → OZ Relayer → Blockchain
-         [202 Accepted, ~10ms]                      [Async processing]
+```mermaid
+flowchart LR
+    A["Client"] --> B["API Gateway\n202 Accepted, ~10ms"]
+    B --> C["SQS Queue"]
+    C --> D["Background Worker\nAsync processing"]
+    D --> E["OZ Relayer"]
+    E --> F["Blockchain"]
 ```
 
 ### 2. Dual Credentials Strategy

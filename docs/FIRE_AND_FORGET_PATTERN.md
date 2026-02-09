@@ -45,25 +45,23 @@ The Fire-and-Forget pattern is a core optimization in SPEC-ROUTING-001 that enab
 
 ### Traditional Polling Approach (Before)
 
-```
-Client                API Gateway              OZ Relayer
-  │                       │                         │
-  ├─ POST /relay/direct ──>│                        │
-  │                        ├─ POST /transactions ──>│
-  │                        │ (waiting...)           │
-  │                        │<─ 201 Created ─────────┤
-  │                        │                        │
-  │                        ├─ GET /status/txId ────>│
-  │                        │ (polling loop)         │
-  │                        │<─ status=pending ──────┤
-  │                        │ (wait 1s)              │
-  │                        ├─ GET /status/txId ────>│
-  │                        │<─ status=pending ──────┤
-  │                        │ (wait 1s)              │
-  │                        │ ... (repeats 10-20x)   │
-  │                        │<─ status=confirmed ────┤
-  │<─ 200 OK ─────────────┤                        │
-  │ {status: confirmed}   │                        │
+```mermaid
+sequenceDiagram
+    participant Client
+    participant API as API Gateway
+    participant OZ as OZ Relayer
+
+    Client->>API: POST /relay/direct
+    API->>OZ: POST /transactions
+    Note over API: waiting...
+    OZ-->>API: 201 Created
+    loop Polling loop (repeats 10-20x)
+        API->>OZ: GET /status/txId
+        OZ-->>API: status=pending
+        Note over API: wait 1s
+    end
+    OZ-->>API: status=confirmed
+    API-->>Client: 200 OK {status: confirmed}
 ```
 
 **Issues**:
@@ -74,20 +72,21 @@ Client                API Gateway              OZ Relayer
 
 ### Fire-and-Forget Approach (After)
 
-```
-Client                API Gateway              OZ Relayer
-  │                       │                         │
-  ├─ POST /relay/direct ──>│                        │
-  │                        ├─ POST /transactions ──>│
-  │                        │<─ 201 Created ─────────┤
-  │<─ 202 Accepted ───────┤ (return immediately)   │
-  │ {transactionId: ...}  │                        │
-  │                       │ (background processing) │
-  │                       │                         │
-  │                       │ (later, via webhook)    │
-  │<─ Webhook POST ───────┼────────────────────────┤
-  │ {status: confirmed,   │ (async status update)  │
-  │  hash: 0x...}         │                        │
+```mermaid
+sequenceDiagram
+    participant Client
+    participant API as API Gateway
+    participant OZ as OZ Relayer
+
+    Client->>API: POST /relay/direct
+    API->>OZ: POST /transactions
+    OZ-->>API: 201 Created
+    API-->>Client: 202 Accepted {transactionId: ...}
+    Note over API: return immediately
+    Note over API,OZ: background processing
+    Note over API,OZ: later, via webhook
+    OZ->>Client: Webhook POST {status: confirmed, hash: 0x...}
+    Note over API,OZ: async status update
 ```
 
 **Improvements**:
@@ -102,105 +101,57 @@ Client                API Gateway              OZ Relayer
 
 ### Components
 
-```
-┌─────────────────────────────────────────────────────────────┐
-│                      Relay API Gateway                       │
-│                   (Port 8080)                               │
-├─────────────────────────────────────────────────────────────┤
-│                                                               │
-│  POST /relay/direct                                         │
-│  ├─ Input: {to, data, value, ...}                          │
-│  ├─ Validation                                              │
-│  ├─ Store TX with status=pending (MySQL)                   │
-│  └─ Publish to SQS (async)                                 │
-│       └─ Return 202 Accepted immediately                    │
-│                                                               │
-│  POST /relay/status/{id}                                   │
-│  └─ Query MySQL (Redis L1 cache)                           │
-│       └─ Return current status                              │
-│                                                               │
-│  POST /webhooks/oz-relayer (Webhook Receiver)              │
-│  ├─ Verify signature                                        │
-│  ├─ Parse {status, hash, ozRelayerTxId, ...}              │
-│  ├─ Update MySQL transaction record                         │
-│  └─ Update Redis cache                                      │
-└─────────────────────────────────────────────────────────────┘
-              │                           │
-              ▼                           ▼
-    ┌──────────────────┐      ┌──────────────────┐
-    │   AWS SQS        │      │   OZ Relayer     │
-    │                  │      │                  │
-    │ (async queue)    │      │ (Port 8081-8083) │
-    └────────┬─────────┘      └────────┬─────────┘
-             │                         │
-             ▼                         ▼
-    ┌──────────────────┐      ┌──────────────────┐
-    │ Queue Consumer   │      │  Blockchain      │
-    │                  │      │  (Ethereum, etc) │
-    │ - Long-poll SQS  │      │                  │
-    │ - Relay TX       │      │ - Submit TX      │
-    │ - Handle results │      │ - Confirm TX     │
-    └──────────────────┘      └──────────────────┘
+```mermaid
+flowchart TD
+    subgraph Gateway["Relay API Gateway (Port 8080)"]
+        EP1["POST /relay/direct\nInput: to, data, value, ...\nValidate → Store TX pending (MySQL)\n→ Publish to SQS → Return 202 Accepted"]
+        EP2["POST /relay/status/{id}\nQuery MySQL (Redis L1 cache)\n→ Return current status"]
+        EP3["POST /webhooks/oz-relayer\nVerify signature → Parse payload\n→ Update MySQL → Update Redis"]
+    end
+
+    Gateway --> SQS["AWS SQS\n(async queue)"]
+    Gateway --> OZR["OZ Relayer\n(Port 8081-8083)"]
+    SQS --> Consumer["Queue Consumer\n- Long-poll SQS\n- Relay TX\n- Handle results"]
+    OZR --> BC["Blockchain\n(Ethereum, etc)\n- Submit TX\n- Confirm TX"]
 ```
 
 ### Flow Diagram (Detailed)
 
-```
-Step 1: API Submission (202 Accepted)
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-Client                    Relay API
-  │                           │
-  ├─ POST /relay/direct ─────>│
-  │  {to, data, value}        │
-  │                           ├─ Validate
-  │                           ├─ Store (MySQL)
-  │                           ├─ Publish SQS
-  │<─ 202 Accepted ───────────┤
-  │  {transactionId}          │ (< 200ms)
+```mermaid
+sequenceDiagram
+    participant Client
+    participant API as Relay API
+    participant SQS as SQS Queue
+    participant Consumer as Consumer (Worker)
+    participant OZ as OZ Relayer
+    participant BC as Blockchain
 
-Step 2: Queue Processing
-━━━━━━━━━━━━━━━━━━━━━━━━
-      Relay API              SQS Queue           Consumer
-      (Producer)            (Async)             (Worker)
-        │                      │                   │
-        ├─ Publish ───────────>│                   │
-        │                      │                   │
-        │                      ├─ Receive <────────┤
-        │                      │   (20s long-poll) │
-        │                      │                   │
-        │                      │                   ├─ Process
-        │                      │                   ├─ Select relayer
-        │                      │                   ├─ Submit TX
+    Note over Client,API: Step 1: API Submission (202 Accepted)
+    Client->>API: POST /relay/direct {to, data, value}
+    API->>API: Validate
+    API->>API: Store (MySQL)
+    API->>SQS: Publish
+    API-->>Client: 202 Accepted {transactionId} (< 200ms)
 
-Step 3: OZ Relayer Processing
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-Consumer              OZ Relayer           Blockchain
-  │                      │                    │
-  ├─ POST /transactions ─>│                   │
-  │  {to, data, value}    │                   │
-  │<─ 201 Created ────────┤                   │
-  │  {id: txId}           │                   │
-  │  (Fire-and-Forget)    │                   │
-  │                       │                   │
-  │                       ├─ Sign TX ─────────>│
-  │                       │<─ Confirmation ───┤
-  │                       │  (async)          │
-  │<─ Webhook ────────────┤                   │
-  │  {status, hash}       │                   │
-  │                       │                   │
+    Note over SQS,Consumer: Step 2: Queue Processing
+    Consumer->>SQS: Receive (20s long-poll)
+    SQS-->>Consumer: Message
+    Consumer->>Consumer: Process
+    Consumer->>Consumer: Select relayer
 
-Step 4: Status Update via Webhook
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-OZ Relayer              Relay API
-  │                         │
-  ├─ POST /webhooks ───────>│
-  │  {status: confirmed,    │
-  │   hash: 0x...,          │
-  │   ozRelayerTxId: txId}  │
-  │<─ 200 OK ──────────────┤
-  │                         ├─ Verify signature
-  │                         ├─ Update MySQL
-  │                         ├─ Update Redis
+    Note over Consumer,BC: Step 3: OZ Relayer Processing
+    Consumer->>OZ: POST /transactions {to, data, value}
+    OZ-->>Consumer: 201 Created {id: txId} (Fire-and-Forget)
+    OZ->>BC: Sign TX
+    BC-->>OZ: Confirmation (async)
+    OZ->>Consumer: Webhook {status, hash}
+
+    Note over OZ,API: Step 4: Status Update via Webhook
+    OZ->>API: POST /webhooks {status: confirmed, hash: 0x..., ozRelayerTxId: txId}
+    API-->>OZ: 200 OK
+    API->>API: Verify signature
+    API->>API: Update MySQL
+    API->>API: Update Redis
 ```
 
 ---
@@ -505,35 +456,36 @@ The system is idempotent at multiple levels:
 
 ### Consistency Model
 
-```
-Timeline                    API State            Blockchain State
-─────────────────────────────────────────────────────────────
-T0: Client submits TX
-    status = pending
-    (stored in MySQL)
+```mermaid
+sequenceDiagram
+    participant Client
+    participant API as API State
+    participant BC as Blockchain State
 
-T1: API returns 202
-    (client sees pending)
+    Note over Client,API: T0: Client submits TX
+    Client->>API: Submit TX
+    Note over API: status = pending (stored in MySQL)
 
-T2: Consumer submits to
-    OZ Relayer
-    status = submitted
+    Note over Client,API: T1: API returns 202
+    API-->>Client: 202 Accepted
+    Note over Client: client sees pending
 
-T3: OZ Relayer submits
-    to blockchain
-    status = submitted         TX in mempool
+    Note over API: T2: Consumer submits to OZ Relayer
+    Note over API: status = submitted
 
-T4: Blockchain includes TX
-                              TX confirmed
-                              (but API doesn't know yet)
+    Note over API,BC: T3: OZ Relayer submits to blockchain
+    Note over API: status = submitted
+    Note over BC: TX in mempool
 
-T5: Webhook arrives
-    status = confirmed
-    (updated in MySQL)        TX confirmed
-    (client can now query)
+    Note over BC: T4: Blockchain includes TX
+    Note over BC: TX confirmed (but API doesn't know yet)
 
-Total time: 0.5-2 seconds
-Eventual consistency: ≤2s (usually <1s)
+    Note over API,BC: T5: Webhook arrives
+    Note over API: status = confirmed (updated in MySQL)
+    Note over BC: TX confirmed
+    Note over Client: client can now query
+
+    Note over Client,BC: Total time: 0.5-2 seconds | Eventual consistency: ≤2s (usually <1s)
 ```
 
 ---
@@ -542,72 +494,74 @@ Eventual consistency: ≤2s (usually <1s)
 
 ### Scenario 1: OZ Relayer Timeout
 
-```
-Client                API       Consumer       OZ Relayer
-  │                    │          │              │
-  ├─ submit ────────────>          │              │
-  │                     ├─ queue   │              │
-  │<─ 202 ────────────┤           │              │
-  │                              │              │
-  │                              ├─ submit ────>│
-  │                              │ (waiting...)  │
-  │                              │ 30s timeout   │
-  │                              │<─ ERROR ──────┤
-  │                              │               │
-  │                              ├─ Log error
-  │                              ├─ SQS retries
-  │                              │ (visibility)
-  │                              │
-  │ (later)                      │
-  ├─ GET /status ──────>         │
-  │<─ pending ─────────┤         │
-  │                    │         │
-  │<─ Webhook (retry)──┤         │
-  │ {status: success}  │         │
+```mermaid
+sequenceDiagram
+    participant Client
+    participant API
+    participant Consumer
+    participant OZ as OZ Relayer
 
-Recovery: OZ Relayer retried, eventually succeeds
+    Client->>API: submit
+    API->>API: queue
+    API-->>Client: 202
+
+    Consumer->>OZ: submit
+    Note over Consumer: waiting...
+    Note over Consumer: 30s timeout
+    OZ-->>Consumer: ERROR
+
+    Consumer->>Consumer: Log error
+    Consumer->>Consumer: SQS retries (visibility)
+
+    Note over Client,API: later
+    Client->>API: GET /status
+    API-->>Client: pending
+
+    API->>Client: Webhook (retry) {status: success}
+
+    Note over Client,OZ: Recovery: OZ Relayer retried, eventually succeeds
 ```
 
 ### Scenario 2: Webhook Delivery Failure
 
-```
-OZ Relayer                     Relay API
-  │                               │
-  ├─ POST /webhooks ─────────────>│
-  │ (connection timeout)          │
-  │<─ no response ────────────────┤
-  │                               │
-  ├─ Retry (exponential backoff)
-  │ 1s, 2s, 4s, 8s...
-  │
-  ├─ POST /webhooks ─────────────>│
-  │<─ 200 OK ─────────────────────┤
-  │                               ├─ Update status
-  │                               ├─ Cache invalidate
+```mermaid
+sequenceDiagram
+    participant OZ as OZ Relayer
+    participant API as Relay API
 
-Total latency: 1-30 seconds (depending on retry schedule)
-API eventually receives status update
+    OZ->>API: POST /webhooks
+    Note over OZ,API: connection timeout
+    API--xOZ: no response
+
+    Note over OZ: Retry (exponential backoff) 1s, 2s, 4s, 8s...
+
+    OZ->>API: POST /webhooks
+    API-->>OZ: 200 OK
+    API->>API: Update status
+    API->>API: Cache invalidate
+
+    Note over OZ,API: Total latency: 1-30 seconds (depending on retry schedule)
+    Note over OZ,API: API eventually receives status update
 ```
 
 ### Scenario 3: Webhook Lost (Permanent)
 
-```
-OZ Relayer                     Relay API
-  │                               │
-  ├─ POST /webhooks ─────────────>│
-  │ (network failure, never retried)
-  │                               │
-  │                               TX status = "submitted"
-  │                               (stuck forever)
+```mermaid
+sequenceDiagram
+    participant OZ as OZ Relayer
+    participant API as Relay API
+    participant Client
 
-Recovery: Query OZ Relayer manually
-  ├─ Client calls GET /relay/status/{txId}
-  │<─ Currently "submitted" ──────┤
-  │                               │
-  │ Can manually update via:
-  │ - Direct DB update
-  │ - Admin API call
-  │ - Manual webhook replay
+    OZ->>API: POST /webhooks
+    Note over OZ,API: network failure, never retried
+
+    Note over API: TX status = "submitted" (stuck forever)
+
+    Note over OZ,API: Recovery: Query OZ Relayer manually
+    Client->>API: GET /relay/status/{txId}
+    API-->>Client: Currently "submitted"
+
+    Note over API: Can manually update via:<br/>- Direct DB update<br/>- Admin API call<br/>- Manual webhook replay
 ```
 
 ---
@@ -616,37 +570,37 @@ Recovery: Query OZ Relayer manually
 
 ### Response Time
 
+```mermaid
+flowchart LR
+    subgraph Polling["Polling (OLD) - 2-5 seconds, blocking"]
+        P0["T0: Submit TX"] --> P1["T1: Polling starts"]
+        P1 --> P2["T2: Poll #1 pending"]
+        P2 --> P3["T3: Poll #2 pending"]
+        P3 --> P4["T4: Poll #3 pending"]
+        P4 --> P5["T5: Poll #4 confirmed\nReturn 200"]
+    end
+    subgraph FireForget["Fire-and-Forget (NEW) - 200-300ms, non-blocking"]
+        F0["T0: Submit TX"] --> F1["T1: Return 202"]
+        F1 -.-> F2["T2-T3: OZ processes\n(no polling)"]
+    end
 ```
-Polling (OLD)                Fire-and-Forget (NEW)
-─────────────────────────────────────────────────
-T0: Submit TX                T0: Submit TX
-T1: Polling starts           T1: Return 202 ✓
-T2: Poll #1 pending
-T3: Poll #2 pending
-T4: Poll #3 pending          T2-T3: OZ processes
-T5: Poll #4 confirmed         (no polling)
-    Return 200 ✓
 
-Response time:                Response time:
-≈ 2-5 seconds               ≈ 200-300ms
-(blocking)                   (non-blocking)
-
-Improvement: 10x faster
-```
+**Improvement: 10x faster**
 
 ### Throughput
 
+```mermaid
+flowchart LR
+    subgraph Polling["Polling (OLD)"]
+        P["Avg TX latency: 3s\nWorkers blocked: 8\nTPS: 8 / 3s = 2.6"]
+    end
+    subgraph FireForget["Fire-and-Forget (NEW)"]
+        F["Avg TX latency: 250ms\nWorkers blocked: 0.5-1\nTPS: 8 / 0.25s = 32"]
+    end
+    Polling -- "12x improvement" --> FireForget
 ```
-Single API Server (8 workers)
 
-Polling (OLD):              Fire-and-Forget (NEW):
-─────────────────           ──────────────────────
-Avg TX latency: 3s          Avg TX latency: 250ms
-Workers blocked: 8          Workers blocked: 0.5-1
-TPS: 8 TXs / 3s = 2.6      TPS: 8 TXs / 0.25s = 32
-
-Improvement: 12x more transactions/second
-```
+**Single API Server (8 workers) -- Improvement: 12x more transactions/second**
 
 ### Complexity
 

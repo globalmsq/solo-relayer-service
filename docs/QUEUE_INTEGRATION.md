@@ -761,29 +761,29 @@ The Fire-and-Forget pattern combines the queue system with immediate response to
 
 ### Request Flow
 
-```
-Client                Relay API               SQS Queue          Queue Consumer         OZ Relayer
-  │                       │                      │                    │                     │
-  ├─ POST /direct ────────>│                      │                    │                     │
-  │                        │                      │                    │                     │
-  │                        ├─ Validate
-  │                        ├─ Store MySQL
-  │                        ├─ Publish ────────────>│                    │                     │
-  │<─ 202 Accepted ───────┤                      │                    │                     │
-  │ {transactionId}        │ (< 200ms)            │                    │                     │
-  │                        │                      │                    │                     │
-  │                        │                      ├─ Receive <────────┤                     │
-  │                        │                      │   (long-poll)      │                     │
-  │                        │                      │                    ├─ Process
-  │                        │                      │                    ├─ Smart Routing
-  │                        │                      │                    ├─ Submit ───────────>│
-  │                        │                      │                    │ (fire-and-forget)   │
-  │                        │                      │                    │                     ├─ Sign
-  │                        │                      │                    │                     ├─ Submit
-  │                        │                      │                    │<─ Webhook ─────────┤
-  │<─ Webhook (optional) ──────────────────────────────────────────────┤ {status, hash}     │
-  │ {transactionId,        │                      │                    │                     │
-  │  status, hash}         │                      │                    │                     │
+```mermaid
+sequenceDiagram
+    participant Client
+    participant API as Relay API
+    participant SQS as SQS Queue
+    participant Consumer as Queue Consumer
+    participant OZ as OZ Relayer
+
+    Client->>API: POST /direct
+    API->>API: Validate
+    API->>API: Store MySQL
+    API->>SQS: Publish
+    API-->>Client: 202 Accepted {transactionId} (< 200ms)
+
+    Consumer->>SQS: Receive (long-poll)
+    SQS-->>Consumer: Message
+    Consumer->>Consumer: Process
+    Consumer->>Consumer: Smart Routing
+    Consumer->>OZ: Submit (fire-and-forget)
+    OZ->>OZ: Sign
+    OZ->>OZ: Submit to blockchain
+    OZ-->>Consumer: Webhook {status, hash}
+    Consumer-->>Client: Webhook (optional) {transactionId, status, hash}
 ```
 
 ### Implementation
