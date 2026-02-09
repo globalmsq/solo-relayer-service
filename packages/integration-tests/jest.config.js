@@ -17,4 +17,6 @@ module.exports = {
   collectCoverageFrom: ['tests/**/*.ts'],
   // Prevent Jest worker serialization issues with Axios circular references
   maxWorkers: 1,
+  // Force Jest to exit even with pending timers (safety net for polling)
+  forceExit: true,
 };

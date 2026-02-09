@@ -45,10 +45,17 @@ export const HARDHAT_POLLING_CONFIG: PollingConfig = {
 };
 
 /**
- * Sleep for specified milliseconds
+ * Sleep for specified milliseconds (cancellable via AbortSignal)
  */
-function sleep(ms: number): Promise<void> {
-  return new Promise((resolve) => setTimeout(resolve, ms));
+function sleep(ms: number, signal?: AbortSignal): Promise<void> {
+  return new Promise((resolve) => {
+    if (signal?.aborted) { resolve(); return; }
+    const timer = setTimeout(resolve, ms);
+    signal?.addEventListener('abort', () => {
+      clearTimeout(timer);
+      resolve();
+    }, { once: true });
+  });
 }
 
 /**
@@ -111,11 +118,14 @@ export async function getTransactionStatus(transactionId: string): Promise<TxSta
 export async function pollTransactionStatus(
   transactionId: string,
   config: PollingConfig = HARDHAT_POLLING_CONFIG,
+  abortSignal?: AbortSignal,
 ): Promise<TxStatusResult> {
   let attempt = 0;
   let delay = config.initialDelayMs;
 
   while (attempt < config.maxAttempts) {
+    if (abortSignal?.aborted) break;
+
     try {
       const status = await getTransactionStatus(transactionId);
 
@@ -131,7 +141,7 @@ export async function pollTransactionStatus(
     }
 
     // Wait with exponential backoff
-    await sleep(delay);
+    await sleep(delay, abortSignal);
     delay = Math.min(delay * config.backoffMultiplier, config.maxDelayMs);
     attempt++;
   }
