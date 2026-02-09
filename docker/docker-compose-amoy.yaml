@@ -222,7 +222,7 @@ services:
       target: relayer-discovery
     command: ["pnpm", "run", "start"]
     ports:
-      # - "3001:3001"
+      - "3001:3001"
     depends_on:
       redis:
         condition: service_healthy
