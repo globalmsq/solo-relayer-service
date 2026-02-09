@@ -8,7 +8,7 @@
 
 ## Overview
 
-This guide explains how to use MSQ Relayer Service smart contracts for gasless transaction support. It covers ERC2771Forwarder deployment, contract integration patterns, and signature verification.
+This guide explains how to use Solo Relayer Service smart contracts for gasless transaction support. It covers ERC2771Forwarder deployment, contract integration patterns, and signature verification.
 
 ## Table of Contents
 
@@ -157,7 +157,7 @@ export PRIVATE_KEY="0x..."
 npx hardhat run scripts/deploy-forwarder.ts --network external
 
 # 3. Verify on block explorer (optional)
-npx hardhat verify --network external <CONTRACT_ADDRESS>
+pnpm verify --contract <CONTRACT_PATH> <CONTRACT_ADDRESS> "<CONSTRUCTOR_ARGS>"
 ```
 
 **Artifact**: `deployments/external/forwarder.json`
@@ -514,4 +514,4 @@ curl http://localhost:3000/api/v1/health
 
 **Last Updated**: 2025-12-19
 **Version**: 1.0
-**Author**: MSQ Relayer Team
+**Author**: Solo Relayer Team

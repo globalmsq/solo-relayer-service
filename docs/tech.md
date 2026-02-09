@@ -551,7 +551,7 @@ describe('ERC2771Forwarder', () => {
 **Verification Command**:
 
 ```bash
-npx hardhat verify --network amoy <CONTRACT_ADDRESS> --constructor-args scripts/args.js
+pnpm verify --contract <CONTRACT_PATH> <CONTRACT_ADDRESS> "<CONSTRUCTOR_ARGS>"
 ```
 
 ### 4.10 Related Specifications

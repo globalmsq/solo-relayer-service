@@ -213,7 +213,7 @@ flowchart TD
 ## 3. Directory Structure (v5.0 - SPEC-INFRA-001 Standard)
 
 ```
-msq-relayer-service/
+solo-relayer-service/
 ├── docker/                          # Docker files directory
 │   ├── Dockerfile.packages          # Multi-stage build (relay-api tsx execution)
 │   ├── docker-compose.yaml          # Main config (includes Hardhat Node)
@@ -522,7 +522,7 @@ packages/relay-api/src/relay/gasless/
 - `deployments/localhost/forwarder.json` - Forwarder deployment on Hardhat Node
 - `deployments/localhost/sample-token.json` - SampleToken deployment on Hardhat Node
 - `deployments/localhost/sample-nft.json` - SampleNFT deployment on Hardhat Node
-- `deployments/amoy/forwarder.json` - Forwarder deployment on Polygon Amoy
+- `deployments/polygon-amoy.json` - All contracts deployment on Polygon Amoy (ERC2771Forwarder, SampleToken, SampleNFT)
 
 **Artifact Contents** (Example):
 ```json
@@ -554,7 +554,7 @@ npx hardhat run scripts/deploy-forwarder.ts --network amoy
 npx hardhat test
 
 # Verify contract on Polygonscan (Amoy)
-npx hardhat verify --network amoy <CONTRACT_ADDRESS>
+pnpm verify --contract <CONTRACT_PATH> <CONTRACT_ADDRESS> "<CONSTRUCTOR_ARGS>"
 ```
 
 #### Related Specifications

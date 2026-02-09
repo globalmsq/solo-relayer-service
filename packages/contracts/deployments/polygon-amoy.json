@@ -3,26 +3,28 @@
   "chainId": 80002,
   "contracts": {
     "ERC2771Forwarder": {
-      "address": "0xF034a404241707F347A952Cd4095f9035AF877Bf",
-      "constructorArgs": ["MSQForwarder"],
-      "deployedAt": "2024-12-23",
+      "address": "0xE8a3C8e530dddd14e02DA1C81Df6a15f41ad78DE",
+      "constructorArgs": ["SoloForwarder"],
+      "deployedAt": "2025-01-15",
       "deployer": "0x9B00bF7321e8Dc5f253Ab73c95D2b5b573a5e3bb",
       "verified": true,
-      "verifiedUrl": "https://amoy.polygonscan.com/address/0xF034a404241707F347A952Cd4095f9035AF877Bf#code"
+      "verifiedUrl": "https://amoy.polygonscan.com/address/0xE8a3C8e530dddd14e02DA1C81Df6a15f41ad78DE#code"
     },
     "SampleToken": {
-      "address": "0x1F89f1C43dc1fbF335A7131BcCe87e9c1AE49c4f",
-      "constructorArgs": ["0xF034a404241707F347A952Cd4095f9035AF877Bf"],
-      "deployedAt": "2025-01-15",
+      "address": "0x2D5DF49783c4F192B08f478C5CdDFBbbe2aD50fd",
+      "constructorArgs": ["0xE8a3C8e530dddd14e02DA1C81Df6a15f41ad78DE"],
+      "deployedAt": "2026-02-09",
       "deployer": "0x9B00bF7321e8Dc5f253Ab73c95D2b5b573a5e3bb",
-      "verified": false
+      "verified": true,
+      "verifiedUrl": "https://amoy.polygonscan.com/address/0x2D5DF49783c4F192B08f478C5CdDFBbbe2aD50fd#code"
     },
     "SampleNFT": {
-      "address": "0x7c126B0E79912966Ffd08911CbA6cEA2D9Cd40B2",
-      "constructorArgs": ["0xF034a404241707F347A952Cd4095f9035AF877Bf"],
-      "deployedAt": "2025-01-15",
+      "address": "0x6517f1CB9852c1a38Bad42935673B79cD7c37129",
+      "constructorArgs": ["0xE8a3C8e530dddd14e02DA1C81Df6a15f41ad78DE"],
+      "deployedAt": "2026-02-09",
       "deployer": "0x9B00bF7321e8Dc5f253Ab73c95D2b5b573a5e3bb",
-      "verified": false
+      "verified": true,
+      "verifiedUrl": "https://amoy.polygonscan.com/address/0x6517f1CB9852c1a38Bad42935673B79cD7c37129#code"
     }
   },
   "notes": "ERC2771Forwarder is a stateless utility contract. Once deployed, it can be used permanently by any contract that trusts it. SampleToken and SampleNFT are for integration testing purposes."

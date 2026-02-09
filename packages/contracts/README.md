@@ -1,6 +1,6 @@
-# Smart Contracts - MSQ Relayer Service
+# Smart Contracts - Solo Relayer Service
 
-This package contains the smart contracts for the MSQ Relayer Service, including ERC20 token (SampleToken) and ERC721 NFT (SampleNFT) with ERC2771 meta-transaction support.
+This package contains the smart contracts for the Solo Relayer Service, including ERC20 token (SampleToken) and ERC721 NFT (SampleNFT) with ERC2771 meta-transaction support.
 
 ## Quick Start
 
@@ -91,19 +91,21 @@ ERC2771Forwarder deployed to: 0x...
 **Step 3: Verify Contract**
 
 ```bash
-pnpm verify --contract contracts/ERC2771Forwarder.sol:ERC2771Forwarder <FORWARDER_ADDRESS> "MSQForwarder"
+pnpm verify --contract contracts/ERC2771Forwarder.sol:ERC2771Forwarder <FORWARDER_ADDRESS> "SoloForwarder"
 ```
 
 Example:
 ```bash
-pnpm verify --contract contracts/ERC2771Forwarder.sol:ERC2771Forwarder 0xF034a404241707F347A952Cd4095f9035AF877Bf "MSQForwarder"
+pnpm verify --contract contracts/ERC2771Forwarder.sol:ERC2771Forwarder 0xE8a3C8e530dddd14e02DA1C81Df6a15f41ad78DE "SoloForwarder"
 ```
 
 **Deployed Contracts (Polygon Amoy)**
 
 | Contract | Address |
 |----------|---------|
-| ERC2771Forwarder | `0xF034a404241707F347A952Cd4095f9035AF877Bf` |
+| ERC2771Forwarder | `0xE8a3C8e530dddd14e02DA1C81Df6a15f41ad78DE` |
+| SampleToken | `0x2D5DF49783c4F192B08f478C5CdDFBbbe2aD50fd` |
+| SampleNFT | `0x6517f1CB9852c1a38Bad42935673B79cD7c37129` |
 
 ## Contract Architecture
 
@@ -287,7 +289,7 @@ The pause mechanism allows the owner to freeze all transfers:
 
 ## OpenZeppelin Version
 
-- **@openzeppelin/contracts**: 5.3.0
+- **@openzeppelin/contracts**: 5.4.0
 - Uses latest V5 patterns with Solidity 0.8.27
 
 ## Docker Integration

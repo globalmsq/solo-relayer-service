@@ -145,7 +145,7 @@ services:
       RPC_URL: ${RPC_URL:-https://rpc-amoy.polygon.technology}
       RELAY_API_KEY: ${RELAY_API_KEY:-amoy-dev-api-key}
       CHAIN_ID: 80002
-      FORWARDER_ADDRESS: "0xF034a404241707F347A952Cd4095f9035AF877Bf"
+      FORWARDER_ADDRESS: "0xE8a3C8e530dddd14e02DA1C81Df6a15f41ad78DE"
       # SPEC-DISCOVERY-001: OZ_RELAYER_URL removed - transactions processed via queue-consumer
       # Phase 2: Webhook & Notification settings
       WEBHOOK_SIGNING_KEY: ${WEBHOOK_SIGNING_KEY:-amoy-dev-webhook-signing-key-32ch}
@@ -307,7 +307,7 @@ services:
     environment:
       RPC_URL: ${RPC_URL:-https://rpc-amoy.polygon.technology}
       CHAIN_ID: 80002
-      FORWARDER_ADDRESS: "0xF034a404241707F347A952Cd4095f9035AF877Bf"
+      FORWARDER_ADDRESS: "0xE8a3C8e530dddd14e02DA1C81Df6a15f41ad78DE"
       RELAY_API_URL: http://relay-api:8080
       RELAY_API_KEY: ${RELAY_API_KEY:-amoy-dev-api-key}
       OZ_RELAYER_URL: http://oz-relayer-0:8080
