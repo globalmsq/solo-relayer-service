@@ -59,12 +59,12 @@ services:
     ports:
       - "3307:3306"
     environment:
-      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:-pass}
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD}
       MYSQL_DATABASE: solo_relayer
     volumes:
       - solo-relayer-mysql-data-mainnet:/var/lib/mysql
     healthcheck:
-      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-u", "root", "-p${MYSQL_ROOT_PASSWORD:-pass}"]
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-u", "root", "-p${MYSQL_ROOT_PASSWORD}"]
       interval: 10s
       timeout: 5s
       retries: 5
@@ -139,7 +139,7 @@ services:
       NODE_ENV: production
       REDIS_URL: redis://redis:6379
       REDIS_STATUS_TTL_SECONDS: ${REDIS_STATUS_TTL_SECONDS:-600}
-      DATABASE_URL: ${DATABASE_URL:-mysql://root:${MYSQL_ROOT_PASSWORD:-pass}@mysql:3306/solo_relayer}
+      DATABASE_URL: ${DATABASE_URL:-mysql://root:${MYSQL_ROOT_PASSWORD}@mysql:3306/solo_relayer}
       RPC_URL: ${RPC_URL:-https://polygon-rpc.com}
       RELAY_API_KEY: ${RELAY_API_KEY}
       CHAIN_ID: 137
@@ -273,7 +273,7 @@ services:
     environment:
       NODE_ENV: production
       # Database
-      DATABASE_URL: ${DATABASE_URL:-mysql://root:${MYSQL_ROOT_PASSWORD:-pass}@mysql:3306/solo_relayer}
+      DATABASE_URL: ${DATABASE_URL:-mysql://root:${MYSQL_ROOT_PASSWORD}@mysql:3306/solo_relayer}
       # Redis
       REDIS_URL: redis://redis:6379
       # SQS Configuration

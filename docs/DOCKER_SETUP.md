@@ -316,7 +316,7 @@ cp docker/.env.mainnet docker/.env.mainnet.local
 #   KEYSTORE_PASSPHRASE  - Keystore decryption password
 #   FORWARDER_ADDRESS    - ERC2771Forwarder contract address
 #   RPC_URL              - (optional) Override default polygon-rpc.com
-#   MYSQL_ROOT_PASSWORD  - (optional) Default: pass
+#   MYSQL_ROOT_PASSWORD  - Database root password
 ```
 
 #### Step 4: Start Services
