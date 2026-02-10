@@ -1,0 +1,59 @@
+{
+  "relayers": [
+    {
+      "id": "relayer-1",
+      "name": "Solo Relayer 1 (Polygon Mainnet)",
+      "network": "polygon",
+      "network_type": "evm",
+      "signer_id": "relayer-1-signer",
+      "notification_id": "relayer-1-webhook",
+      "paused": false,
+      "custom_rpc_urls": [
+        {
+          "url": "https://polygon-rpc.com",
+          "weight": 100
+        }
+      ],
+      "policies": {
+        "gas_price_cap": 5000000000000,
+        "min_balance": 100000000000000000
+      }
+    }
+  ],
+  "signers": [
+    {
+      "id": "relayer-1-signer",
+      "type": "local",
+      "config": {
+        "path": "/app/config/keys/keystore.json",
+        "passphrase": {
+          "type": "env",
+          "value": "KEYSTORE_PASSPHRASE"
+        }
+      }
+    }
+  ],
+  "notifications": [
+    {
+      "id": "relayer-1-webhook",
+      "type": "webhook",
+      "url": "http://relay-api:8080/api/v1/webhooks/oz-relayer",
+      "signing_key": {
+        "type": "env",
+        "value": "WEBHOOK_SIGNING_KEY"
+      }
+    }
+  ],
+  "networks": [
+    {
+      "type": "evm",
+      "network": "polygon",
+      "chain_id": 137,
+      "required_confirmations": 5,
+      "rpc_urls": ["https://polygon-rpc.com"],
+      "symbol": "POL",
+      "is_testnet": false,
+      "average_blocktime_ms": 2000
+    }
+  ]
+}

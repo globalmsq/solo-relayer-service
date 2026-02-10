@@ -23,7 +23,6 @@ x-relayer-common: &relayer-common
 
 x-relayer-env: &relayer-env
   RUST_LOG: info
-  RELAY_API_KEY: ${RELAY_API_KEY:-amoy-dev-api-key}
   KEYSTORE_PASSPHRASE: ${KEYSTORE_PASSPHRASE:-amoy-test-passphrase}
   WEBHOOK_SIGNING_KEY: ${WEBHOOK_SIGNING_KEY:-amoy-dev-webhook-signing-key-32ch}
   RPC_URL: ${RPC_URL:-https://rpc-amoy.polygon.technology}
@@ -178,7 +177,7 @@ services:
       - "8081:8080"
       - "8091:8081"
     volumes:
-      - ./config/oz-relayer/relayer-0-amoy.json:/app/config/config.json:ro
+      - ./config/oz-relayer/amoy/relayer-0.json:/app/config/config.json:ro
       - ./keys-amoy/relayer-0:/app/config/keys:ro
     environment:
       <<: *relayer-env
@@ -192,7 +191,7 @@ services:
       - "8082:8080"
       - "8092:8081"
     volumes:
-      - ./config/oz-relayer/relayer-1-amoy.json:/app/config/config.json:ro
+      - ./config/oz-relayer/amoy/relayer-1.json:/app/config/config.json:ro
       - ./keys-amoy/relayer-1:/app/config/keys:ro
     environment:
       <<: *relayer-env
@@ -206,7 +205,7 @@ services:
       - "8083:8080"
       - "8093:8081"
     volumes:
-      - ./config/oz-relayer/relayer-2-amoy.json:/app/config/config.json:ro
+      - ./config/oz-relayer/amoy/relayer-2.json:/app/config/config.json:ro
       - ./keys-amoy/relayer-2:/app/config/keys:ro
     environment:
       <<: *relayer-env

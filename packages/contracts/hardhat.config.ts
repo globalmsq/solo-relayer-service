@@ -62,6 +62,14 @@ const config: HardhatUserConfig = {
           browserURL: "https://amoy.polygonscan.com",
         },
       },
+      {
+        network: "external",
+        chainId: 137,
+        urls: {
+          apiURL: "https://api.polygonscan.com/api",
+          browserURL: "https://polygonscan.com",
+        },
+      },
     ],
   },
   gasReporter: {
