@@ -99,18 +99,20 @@ ls -la docker/
 # Expected structure:
 # docker/
 # ├── Dockerfile.packages
-# ├── docker-compose.yaml
-# ├── docker-compose-amoy.yaml
+# ├── docker-compose.yaml            # Local development (Hardhat)
+# ├── docker-compose-amoy.yaml       # Polygon Amoy Testnet
+# ├── docker-compose-mainnet.yaml    # Polygon Mainnet
+# ├── .env.mainnet                   # Mainnet env template
 # ├── config/
 # │   └── oz-relayer/
-# │       ├── relayer-0.json
-# │       ├── relayer-1.json
-# │       └── relayer-2.json
+# │       ├── local/                 # Local dev configs
+# │       ├── amoy/                  # Amoy testnet configs
+# │       └── mainnet-example/       # Mainnet config template
 # ├── keys-example/
 # │   ├── relayer-1/keystore.json
 # │   ├── relayer-2/keystore.json
 # │   └── relayer-3/keystore.json
-# └── keys/
+# └── keys/                          # Your local keystores (git-ignored)
 ```
 
 ### Step 3: Create Keys Directory (if not exists)
@@ -269,6 +271,97 @@ docker compose -f docker/docker-compose-amoy.yaml logs -f
 
 # Stop services
 docker compose -f docker/docker-compose-amoy.yaml down
+```
+
+### Polygon Mainnet
+
+#### Prerequisites
+
+- Funded wallets (POL for gas fees) with keystore files
+- RPC endpoint (free: polygon-rpc.com, recommended: Infura/Alchemy/dRPC paid plan)
+- Environment variables configured in `.env.mainnet`
+
+#### Step 1: Prepare Config Files
+
+```bash
+# Copy mainnet example configs
+cp -r docker/config/oz-relayer/mainnet-example docker/config/oz-relayer/mainnet
+
+# Edit RPC URLs if using a paid provider (recommended for production)
+# Edit each relayer-*.json: change custom_rpc_urls.url
+```
+
+#### Step 2: Prepare Keystore Files
+
+```bash
+# Create keystore directories
+mkdir -p docker/keys-mainnet/relayer-{0,1,2}
+
+# Place your keystore.json in each directory
+# docker/keys-mainnet/relayer-0/keystore.json
+# docker/keys-mainnet/relayer-1/keystore.json
+# docker/keys-mainnet/relayer-2/keystore.json
+```
+
+#### Step 3: Configure Environment
+
+```bash
+# Copy and edit the mainnet environment template
+cp docker/.env.mainnet docker/.env.mainnet.local
+
+# Required variables to set:
+#   RELAY_API_KEY        - API authentication key
+#   WEBHOOK_SIGNING_KEY  - Webhook signature verification key
+#   OZ_RELAYER_API_KEY   - OZ Relayer API authentication key
+#   KEYSTORE_PASSPHRASE  - Keystore decryption password
+#   FORWARDER_ADDRESS    - ERC2771Forwarder contract address
+#   RPC_URL              - (optional) Override default polygon-rpc.com
+#   MYSQL_ROOT_PASSWORD  - (optional) Default: pass
+```
+
+#### Step 4: Start Services
+
+```bash
+# Start all mainnet services
+docker compose -f docker/docker-compose-mainnet.yaml --env-file docker/.env.mainnet.local up -d
+
+# Check service status
+docker compose -f docker/docker-compose-mainnet.yaml ps
+
+# View logs
+docker compose -f docker/docker-compose-mainnet.yaml logs -f
+
+# Stop services
+docker compose -f docker/docker-compose-mainnet.yaml down
+```
+
+#### Step 5: Verify Health
+
+```bash
+# API Gateway
+curl http://localhost:8080/api/v1/health
+
+# Relayer Discovery
+curl http://localhost:3001/status
+
+# Individual OZ Relayers
+curl http://localhost:8081/api/v1/health
+curl http://localhost:8082/api/v1/health
+curl http://localhost:8083/api/v1/health
+```
+
+#### Config Directory Structure
+
+```
+docker/
+├── config/oz-relayer/
+│   ├── local/              # Local dev (Hardhat)
+│   ├── amoy/               # Polygon Amoy Testnet
+│   ├── mainnet-example/    # Mainnet template (DO NOT edit directly)
+│   └── mainnet/            # Your mainnet config (git-ignored)
+├── keys-example/           # Sample keystores (local dev)
+├── keys/                   # Your local keystores (git-ignored)
+└── keys-mainnet/           # Your mainnet keystores (git-ignored)
 ```
 
 ### Service Management

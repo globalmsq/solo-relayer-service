@@ -1,8 +1,13 @@
 name: relayer
 
+# Setup: Copy mainnet-example configs, then replace RPC URLs with your paid provider
+#   cp -r config/oz-relayer/mainnet-example config/oz-relayer/mainnet
+#   # Edit config/oz-relayer/mainnet/relayer-*.json to set your RPC URLs
+#
 # === YAML Anchors Definition (Top-level, outside services block) ===
-# Note: Each Relayer needs unique Private Key to prevent Nonce collision
-# YAML Anchors reuse common configuration to minimize duplication
+# Polygon Mainnet Configuration
+# Production infrastructure with Polygon Mainnet RPC endpoints
+# IMPORTANT: All security-sensitive values MUST be provided via environment variables
 
 x-relayer-common: &relayer-common
   image: openzeppelin/openzeppelin-relayer:latest
@@ -22,68 +27,13 @@ x-relayer-common: &relayer-common
 
 x-relayer-env: &relayer-env
   RUST_LOG: info
-  KEYSTORE_PASSPHRASE: ${KEYSTORE_PASSPHRASE:-hardhat-test-passphrase}
-  WEBHOOK_SIGNING_KEY: ${WEBHOOK_SIGNING_KEY:-local-dev-webhook-signing-key-32ch}
-  # Uses local hardhat-node (shared with msqpay-monorepo via solo-network)
-  RPC_URL: ${RPC_URL:-http://hardhat-node:8545}
+  KEYSTORE_PASSPHRASE: ${KEYSTORE_PASSPHRASE}
+  WEBHOOK_SIGNING_KEY: ${WEBHOOK_SIGNING_KEY}
+  RPC_URL: ${RPC_URL:-https://polygon-rpc.com}
   REDIS_URL: redis://redis:6379
 
 # === Services Block (after anchors definition) ===
 services:
-  # === Local Blockchain (Standalone mode only) ===
-  # Use profile "standalone" to run with local hardhat
-  # Default: uses external hardhat from msqpay-monorepo via shared network
-  hardhat-node:
-    build:
-      context: ..
-      dockerfile: docker/Dockerfile.packages
-      target: hardhat-node
-    ports:
-      - "8545:8545"
-    environment:
-      CHAIN_ID: 31337
-      NETWORK_ID: 31337
-      ACCOUNTS_TO_CREATE: 20
-    healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8545"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
-      start_period: 10s
-    networks:
-      - solo-relayer-network
-      - solo-network
-    restart: unless-stopped
-
-  # === Contracts Deployment (Standalone mode only) ===
-  # Use profile "standalone" to deploy own contracts
-  # Default: uses contracts deployed by msqpay-monorepo
-  # === Contracts Deployment (SPEC-CONTRACTS-002) ===
-  # Supports selective deployment via environment variables:
-  # - DEPLOY_FORWARDER: Deploy ERC2771Forwarder (default: true)
-  # - DEPLOY_SAMPLE_TOKEN: Deploy SampleToken (default: false for production, true for local)
-  # - DEPLOY_SAMPLE_NFT: Deploy SampleNFT (default: false for production, true for local)
-  contracts-init:
-    build:
-      context: ..
-      dockerfile: docker/Dockerfile.packages
-      target: contracts-deploy
-    depends_on:
-      hardhat-node:
-        condition: service_healthy
-    environment:
-      RPC_URL: http://hardhat-node:8545
-      CHAIN_ID: 31337
-      # Hardhat Account #0 (well-known test key, no real funds)
-      PRIVATE_KEY: "0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80"
-      # Local development: deploy all contracts
-      DEPLOY_FORWARDER: "true"
-      DEPLOY_SAMPLE_TOKEN: "true"
-      DEPLOY_SAMPLE_NFT: "true"
-    networks:
-      - solo-relayer-network
-    restart: "no"
-
   # === Redis Cache & Queue ===
   redis:
     image: redis/redis-stack:latest
@@ -98,7 +48,7 @@ services:
       timeout: 3s
       retries: 5
     volumes:
-      - solo-relayer-redis-data:/data
+      - solo-relayer-redis-data-mainnet:/data
     networks:
       - solo-relayer-network
     restart: unless-stopped
@@ -109,13 +59,12 @@ services:
     ports:
       - "3307:3306"
     environment:
-      MYSQL_ROOT_PASSWORD: pass
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:-pass}
       MYSQL_DATABASE: solo_relayer
     volumes:
-      - solo-relayer-mysql-data:/var/lib/mysql
-      # Note: Schema initialization moved to relay-api entrypoint (prisma migrate deploy)
+      - solo-relayer-mysql-data-mainnet:/var/lib/mysql
     healthcheck:
-      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-u", "root", "-ppass"]
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-u", "root", "-p${MYSQL_ROOT_PASSWORD:-pass}"]
       interval: 10s
       timeout: 5s
       retries: 5
@@ -138,10 +87,6 @@ services:
       AWS_SECRET_ACCESS_KEY: test
       SQS_ENDPOINT_URL: http://localhost:4566
     volumes:
-      # SECURITY WARNING: Docker socket mount grants container full host Docker access.
-      # In production, use LOCALSTACK_DOCKER_SOCK_DIR env var to specify a restricted socket
-      # or consider using LocalStack Pro with ECS/Lambda isolation features.
-      # For local development only - do NOT use in production without proper isolation.
       - "${LOCALSTACK_DOCKER_SOCK_DIR:-/var/run/docker.sock}:/var/run/docker.sock"
       - ./scripts/init-localstack.sh:/etc/localstack/init/ready.d/init-localstack.sh
     healthcheck:
@@ -191,19 +136,16 @@ services:
         condition: service_healthy
     environment:
       PORT: 8080
-      NODE_ENV: development
+      NODE_ENV: production
       REDIS_URL: redis://redis:6379
       REDIS_STATUS_TTL_SECONDS: ${REDIS_STATUS_TTL_SECONDS:-600}
-      DATABASE_URL: ${DATABASE_URL:-mysql://root:pass@mysql:3306/solo_relayer}
-      # Uses local hardhat-node (shared with msqpay-monorepo via solo-network)
-      RPC_URL: ${RPC_URL:-http://hardhat-node:8545}
-      RELAY_API_KEY: ${RELAY_API_KEY:-local-dev-api-key}
-      CHAIN_ID: 31337
-      # Forwarder address from msqpay-monorepo (deployed after MockERC20)
-      FORWARDER_ADDRESS: ${FORWARDER_ADDRESS:-0x5FbDB2315678afecb367f032d93F642f64180aa3}
-      # SPEC-DISCOVERY-001: OZ_RELAYER_URL removed - transactions processed via queue-consumer
+      DATABASE_URL: ${DATABASE_URL:-mysql://root:${MYSQL_ROOT_PASSWORD:-pass}@mysql:3306/solo_relayer}
+      RPC_URL: ${RPC_URL:-https://polygon-rpc.com}
+      RELAY_API_KEY: ${RELAY_API_KEY}
+      CHAIN_ID: 137
+      FORWARDER_ADDRESS: ${FORWARDER_ADDRESS}
       # Phase 2: Webhook & Notification settings
-      WEBHOOK_SIGNING_KEY: ${WEBHOOK_SIGNING_KEY:-local-dev-webhook-signing-key-32ch}
+      WEBHOOK_SIGNING_KEY: ${WEBHOOK_SIGNING_KEY}
       CLIENT_WEBHOOK_URL: ${CLIENT_WEBHOOK_URL:-http://host.docker.internal:9000/webhooks/transaction-updates}
       # SPEC-QUEUE-001: SQS Configuration
       AWS_REGION: ap-northeast-2
@@ -223,51 +165,49 @@ services:
       retries: 3
       start_period: 30s
 
-  # === OZ Relayers Pool (SPEC-ROUTING-001 Multi-Relayer Support) ===
-  # All relayers share single Redis instance for nonce management
-  # Each relayer uses unique private key to prevent nonce collision
-  # DC-001: Redis key isolation by signer address (relayer:nonce:{signerAddress})
+  # === OZ Relayer Pool (3 Instances) ===
+  # SPEC-ROUTING-001: Multi-relayer smart routing with fire-and-forget pattern
   # SPEC-DISCOVERY-001: Zero-based naming (relayer-0, relayer-1, relayer-2)
   oz-relayer-0:
     <<: *relayer-common
+    container_name: oz-relayer-mainnet-0
     ports:
       - "8081:8080"
       - "8091:8081"
     volumes:
-      - ./config/oz-relayer/local/relayer-0.json:/app/config/config.json:ro
-      - ./keys/relayer-0:/app/config/keys:ro
+      - ./config/oz-relayer/mainnet/relayer-0.json:/app/config/config.json:ro
+      - ./keys-mainnet/relayer-0:/app/config/keys:ro
     environment:
       <<: *relayer-env
-      API_KEY: ${OZ_RELAYER_API_KEY:-oz-relayer-shared-api-key-local-dev}
-      # SPEC-ROUTING-001: Unique Redis key prefix to prevent consumer conflicts
+      API_KEY: ${OZ_RELAYER_API_KEY}
       REDIS_KEY_PREFIX: oz-relayer-0
 
   oz-relayer-1:
     <<: *relayer-common
+    container_name: oz-relayer-mainnet-1
     ports:
       - "8082:8080"
       - "8092:8081"
     volumes:
-      - ./config/oz-relayer/local/relayer-1.json:/app/config/config.json:ro
-      - ./keys/relayer-1:/app/config/keys:ro
+      - ./config/oz-relayer/mainnet/relayer-1.json:/app/config/config.json:ro
+      - ./keys-mainnet/relayer-1:/app/config/keys:ro
     environment:
       <<: *relayer-env
-      API_KEY: ${OZ_RELAYER_API_KEY:-oz-relayer-shared-api-key-local-dev}
-      # SPEC-ROUTING-001: Unique Redis key prefix to prevent consumer conflicts
+      API_KEY: ${OZ_RELAYER_API_KEY}
       REDIS_KEY_PREFIX: oz-relayer-1
 
   oz-relayer-2:
     <<: *relayer-common
+    container_name: oz-relayer-mainnet-2
     ports:
       - "8083:8080"
       - "8093:8081"
     volumes:
-      - ./config/oz-relayer/local/relayer-2.json:/app/config/config.json:ro
-      - ./keys/relayer-2:/app/config/keys:ro
+      - ./config/oz-relayer/mainnet/relayer-2.json:/app/config/config.json:ro
+      - ./keys-mainnet/relayer-2:/app/config/keys:ro
     environment:
       <<: *relayer-env
-      API_KEY: ${OZ_RELAYER_API_KEY:-oz-relayer-shared-api-key-local-dev}
-      # SPEC-ROUTING-001: Unique Redis key prefix to prevent consumer conflicts
+      API_KEY: ${OZ_RELAYER_API_KEY}
       REDIS_KEY_PREFIX: oz-relayer-2
 
   # === Relayer Discovery Service (SPEC-DISCOVERY-001) ===
@@ -278,8 +218,8 @@ services:
       dockerfile: docker/Dockerfile.packages
       target: relayer-discovery
     command: ["pnpm", "run", "start"]
-    # ports:
-    #   - "3001:3001"
+    ports:
+      - "3001:3001"
     depends_on:
       redis:
         condition: service_healthy
@@ -293,7 +233,7 @@ services:
       PORT: 3001
       RELAYER_COUNT: 3
       RELAYER_PORT: 8080
-      OZ_RELAYER_API_KEY: ${OZ_RELAYER_API_KEY:-oz-relayer-shared-api-key-local-dev}
+      OZ_RELAYER_API_KEY: ${OZ_RELAYER_API_KEY}
       HEALTH_CHECK_INTERVAL_MS: 10000
       HEALTH_CHECK_TIMEOUT_MS: 500
       REDIS_HOST: redis
@@ -302,7 +242,7 @@ services:
       test: ["CMD", "curl", "-f", "http://localhost:3001/status"]
       interval: 10s
       timeout: 5s
-      retries: 5
+      retries: 3
       start_period: 15s
     networks:
       - solo-relayer-network
@@ -331,9 +271,9 @@ services:
       relayer-discovery:
         condition: service_healthy
     environment:
-      NODE_ENV: development
+      NODE_ENV: production
       # Database
-      DATABASE_URL: ${DATABASE_URL:-mysql://root:pass@mysql:3306/solo_relayer}
+      DATABASE_URL: ${DATABASE_URL:-mysql://root:${MYSQL_ROOT_PASSWORD:-pass}@mysql:3306/solo_relayer}
       # Redis
       REDIS_URL: redis://redis:6379
       # SQS Configuration
@@ -343,22 +283,17 @@ services:
       SQS_ENDPOINT_URL: http://localstack:4566
       SQS_QUEUE_URL: http://localstack:4566/000000000000/relay-transactions
       SQS_DLQ_URL: http://localstack:4566/000000000000/relay-transactions-dlq
-      # SPEC-ROUTING-001 + SPEC-DISCOVERY-001: Multi-Relayer Smart Routing
-      # Primary: Queue-consumer queries Redis 'relayer:active' Set for active relayers
-      # Fallback: OZ_RELAYER_URLS used when Redis is unavailable
+      # SPEC-ROUTING-001: Multi-Relayer Smart Routing
       OZ_RELAYER_URL: http://oz-relayer-0:8080
-      # SPEC-DISCOVERY-001 Phase 2: Fallback URLs when Redis is unavailable
       OZ_RELAYER_URLS: http://oz-relayer-0:8080,http://oz-relayer-1:8080,http://oz-relayer-2:8080
-      OZ_RELAYER_API_KEY: ${OZ_RELAYER_API_KEY:-oz-relayer-shared-api-key-local-dev}
+      OZ_RELAYER_API_KEY: ${OZ_RELAYER_API_KEY}
     networks:
       - solo-relayer-network
     restart: unless-stopped
     stop_grace_period: 30s
 
   # === Integration Tests (profile: manual) ===
-  # Run with: docker compose run --rm integration-tests
-  # Note: Tests call relay-api via HTTP, no direct Redis/MySQL connection needed
-  # FIX: Added all relayer dependencies to prevent race conditions
+  # Run with: docker compose -f docker-compose-mainnet.yaml run --rm integration-tests
   integration-tests:
     build:
       context: ..
@@ -370,39 +305,19 @@ services:
         condition: service_healthy
       oz-relayer-0:
         condition: service_healthy
-      oz-relayer-1:
-        condition: service_healthy
-      oz-relayer-2:
-        condition: service_healthy
-      queue-consumer:
-        condition: service_started
-      relayer-discovery:
-        condition: service_healthy
     environment:
-      # Blockchain RPC for on-chain verification (balance, nonce, contract calls)
-      RPC_URL: ${RPC_URL:-http://hardhat-node:8545}
-      CHAIN_ID: 31337
-      # Forwarder address for EIP-712 signing
-      FORWARDER_ADDRESS: ${FORWARDER_ADDRESS:-0x5FbDB2315678afecb367f032d93F642f64180aa3}
-      # Sample Contracts (optional - defaults to Hardhat addresses)
-      SAMPLE_TOKEN_ADDRESS: 0xe7f1725E7734CE288F8367e1Bb143E90bb3F0512
-      SAMPLE_NFT_ADDRESS: 0x9fE46736679d2D9a65F0992F2272dE9f3c7fa6e0
-      # Relay API endpoint (tests call via HTTP, not direct import)
+      RPC_URL: ${RPC_URL:-https://polygon-rpc.com}
+      CHAIN_ID: 137
+      FORWARDER_ADDRESS: ${FORWARDER_ADDRESS}
+      SAMPLE_TOKEN_ADDRESS: ${SAMPLE_TOKEN_ADDRESS}
+      SAMPLE_NFT_ADDRESS: ${SAMPLE_NFT_ADDRESS}
       RELAY_API_URL: http://relay-api:8080
-      RELAY_API_KEY: ${RELAY_API_KEY:-local-dev-api-key}
-
+      RELAY_API_KEY: ${RELAY_API_KEY}
+      OZ_RELAYER_URL: http://oz-relayer-0:8080
+      OZ_RELAYER_API_KEY: ${OZ_RELAYER_API_KEY}
     networks:
       - solo-relayer-network
       - solo-network
-
-  # === Phase 2+: Services (commented, enabled via profiles) ===
-  # oz-monitor:
-  #   image: openzeppelin/openzeppelin-monitor:latest
-  #   profiles: ["monitoring"]
-  #   volumes:
-  #     - ./config/oz-monitor:/app/config
-  #   networks:
-  #     - solo-relayer-network
 
 networks:
   solo-relayer-network:
@@ -411,7 +326,7 @@ networks:
     external: true
 
 volumes:
-  solo-relayer-redis-data:
+  solo-relayer-redis-data-mainnet:
     driver: local
-  solo-relayer-mysql-data:
+  solo-relayer-mysql-data-mainnet:
     driver: local

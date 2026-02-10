@@ -25,6 +25,8 @@ A self-hosted blockchain transaction relay system built on OZ Relayer (Rust) wit
 
 ### Run Services
 
+#### Local Development (Hardhat)
+
 ```bash
 # 1. Copy keystore files for local development
 cp -R docker/keys-example docker/keys
@@ -34,13 +36,49 @@ docker compose -f docker/docker-compose.yaml up -d
 
 # 3. Health check
 curl http://localhost:8080/api/v1/health
-
-# View logs
-docker compose -f docker/docker-compose.yaml logs -f relay-api
-
-# Stop
-docker compose -f docker/docker-compose.yaml down
 ```
+
+#### Polygon Amoy Testnet
+
+```bash
+# 1. Prepare keystore files for Amoy
+cp -R docker/keys-example docker/keys
+
+# 2. Start services (uses Amoy RPC)
+docker compose -f docker/docker-compose-amoy.yaml up -d
+
+# 3. Health check
+curl http://localhost:8080/api/v1/health
+```
+
+#### Polygon Mainnet
+
+```bash
+# 1. Copy mainnet config template
+cp -r docker/config/oz-relayer/mainnet-example docker/config/oz-relayer/mainnet
+
+# 2. Edit RPC URLs in config files (replace with your paid provider)
+#    docker/config/oz-relayer/mainnet/relayer-0.json
+#    docker/config/oz-relayer/mainnet/relayer-1.json
+#    docker/config/oz-relayer/mainnet/relayer-2.json
+
+# 3. Prepare mainnet keystore files
+mkdir -p docker/keys-mainnet/relayer-{0,1,2}
+# Place your keystore.json files in each directory
+
+# 4. Configure environment variables
+cp docker/.env.mainnet docker/.env.mainnet.local
+# Edit docker/.env.mainnet.local with your actual values:
+#   RELAY_API_KEY, WEBHOOK_SIGNING_KEY, OZ_RELAYER_API_KEY, KEYSTORE_PASSPHRASE
+
+# 5. Start services
+docker compose -f docker/docker-compose-mainnet.yaml --env-file docker/.env.mainnet.local up -d
+
+# 6. Health check
+curl http://localhost:8080/api/v1/health
+```
+
+> See [docs/DOCKER_SETUP.md](./docs/DOCKER_SETUP.md) for detailed setup and troubleshooting.
 
 ### Services
 
@@ -163,9 +201,18 @@ curl http://localhost:8080/api/v1/relay/status/550e8400-e29b-41d4-a716-446655440
 solo-relayer-service/
 ├── docker/                       # Docker Compose files
 │   ├── Dockerfile.packages       # Multi-stage build
-│   ├── docker-compose.yaml       # Main config
-│   ├── config/                   # Service configs
-│   └── keys/                     # Keystores
+│   ├── docker-compose.yaml       # Local development (Hardhat)
+│   ├── docker-compose-amoy.yaml  # Polygon Amoy Testnet
+│   ├── docker-compose-mainnet.yaml # Polygon Mainnet
+│   ├── .env.mainnet              # Mainnet env template
+│   ├── config/
+│   │   └── oz-relayer/
+│   │       ├── local/            # Local dev configs
+│   │       ├── amoy/             # Amoy testnet configs
+│   │       └── mainnet-example/  # Mainnet config template
+│   ├── keys-example/             # Sample keystores (local dev)
+│   ├── keys/                     # Local keystores (git-ignored)
+│   └── keys-mainnet/             # Mainnet keystores (git-ignored)
 ├── packages/
 │   ├── relay-api/                # NestJS API Gateway (Producer)
 │   ├── queue-consumer/           # Queue Consumer Service

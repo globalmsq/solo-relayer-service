@@ -1,0 +1,28 @@
+{
+  "network": "polygon-mainnet",
+  "chainId": 137,
+  "contracts": {
+    "ERC2771Forwarder": {
+      "address": "0xec63c3E7BD0c51AA6DC08f587A2B147a671cf888",
+      "constructorArgs": ["SoloForwarder"],
+      "deployedAt": "2026-02-10",
+      "deployer": "0x9B00bF7321e8Dc5f253Ab73c95D2b5b573a5e3bb",
+      "verified": true,
+      "verifiedUrl": "https://polygonscan.com/address/0xec63c3E7BD0c51AA6DC08f587A2B147a671cf888#code"
+    },
+    "SampleToken": {
+      "address": "0x5B3bd35a37E7135F6e508883a4Ac6d23B2600793",
+      "constructorArgs": ["0xec63c3E7BD0c51AA6DC08f587A2B147a671cf888"],
+      "deployedAt": "2026-02-10",
+      "deployer": "0x1b4fD4610B198E77541cDc064E258100F71AE6A4",
+      "verified": false
+    },
+    "SampleNFT": {
+      "address": "0x958C7EdD9bB6F26B36250447E2D4Ba2fd242eA61",
+      "constructorArgs": ["0xec63c3E7BD0c51AA6DC08f587A2B147a671cf888"],
+      "deployedAt": "2026-02-10",
+      "deployer": "0x1b4fD4610B198E77541cDc064E258100F71AE6A4",
+      "verified": false
+    }
+  }
+}

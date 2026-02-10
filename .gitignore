@@ -135,6 +135,7 @@ coverage.json
 .env.*
 !.env.example
 !.env.amoy
+!.env.mainnet
 
 # AWS
 .aws/credentials
@@ -197,10 +198,15 @@ coverage.json
 
 # Private Keys (CRITICAL - SPEC-INFRA-001)
 docker/keys/
+docker/keys-mainnet/
 
 # Sample keys included in Git (for development)
 !docker/keys-example/
 !docker/keys-example/**
+
+# OZ Relayer mainnet config (may contain paid RPC API keys)
+docker/config/oz-relayer/mainnet/
+!docker/config/oz-relayer/mainnet-example/
 
 # ===========================================
 # Project-Specific: Hardhat (packages/contracts)

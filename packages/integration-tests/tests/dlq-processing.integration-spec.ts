@@ -63,7 +63,11 @@ describe('SPEC-DLQ-001: DLQ Processing Integration Tests', () => {
     }
 
     contracts = getContractAddresses();
-    contractsDeployed = await verifyContractDeployed(contracts.forwarder);
+    const [forwarderDeployed, tokenDeployed] = await Promise.all([
+      verifyContractDeployed(contracts.forwarder),
+      verifyContractDeployed(contracts.sampleToken),
+    ]);
+    contractsDeployed = forwarderDeployed && tokenDeployed;
 
     // Pre-fund accounts with tokens for testing (only on local Hardhat network)
     if (contractsDeployed && isLocalNetwork()) {
