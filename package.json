@@ -1,6 +1,6 @@
 {
   "name": "solo-relayer-service",
-  "version": "0.0.1",
+  "version": "1.0.0",
   "private": true,
   "description": "Solo Relayer Service - Meta Transaction Relay Infrastructure",
   "packageManager": "pnpm@9.15.1",

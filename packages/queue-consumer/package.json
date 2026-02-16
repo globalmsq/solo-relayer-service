@@ -1,6 +1,6 @@
 {
   "name": "@solo-relayer/queue-consumer",
-  "version": "0.0.1",
+  "version": "1.0.0",
   "private": true,
   "description": "SQS Queue Consumer for Solo Relayer Service",
   "main": "dist/main.js",
