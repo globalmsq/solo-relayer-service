@@ -135,7 +135,6 @@ coverage.json
 .env.*
 !.env.example
 !.env.amoy
-!.env.mainnet
 
 # AWS
 .aws/credentials
